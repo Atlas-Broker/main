@@ -1,26 +1,189 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ─── Atlas Design System ─────────────────────────────────────────────────── */
+
+@theme {
+  /* Backgrounds — deep navy-black, IBKR terminal feel */
+  --color-void:     #07080B;
+  --color-deep:     #0C1016;
+  --color-surface:  #111820;
+  --color-elevated: #182030;
+  --color-line:     #1C2B3A;
+  --color-line2:    #263D52;
+
+  /* Brand — IBKR-adjacent crimson */
+  --color-brand:    #C8102E;
+  --color-signal:   #E8001D;
+
+  /* Trade signals */
+  --color-bull:     #00C896;
+  --color-bear:     #FF2D55;
+  --color-hold:     #F5A623;
+
+  /* Text */
+  --color-ink:      #E8EDF3;
+  --color-dim:      #7A8FA0;
+  --color-ghost:    #3D5060;
+
+  /* Fonts — loaded via next/font */
+  --font-display: var(--font-syne,    "Syne",           system-ui, sans-serif);
+  --font-mono:    var(--font-jb,      "JetBrains Mono", monospace);
+  --font-body:    var(--font-nunito,  "Nunito Sans",    system-ui, sans-serif);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ─── Keyframes ──────────────────────────────────────────────────────────── */
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.85); }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
 }
+
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes glow-brand {
+  0%, 100% { box-shadow: 0 0 20px rgba(200, 16, 46, 0.2); }
+  50%       { box-shadow: 0 0 50px rgba(200, 16, 46, 0.45); }
+}
+
+@keyframes glow-bull {
+  0%, 100% { box-shadow: 0 0 20px rgba(0, 200, 150, 0.15); }
+  50%       { box-shadow: 0 0 50px rgba(0, 200, 150, 0.35); }
+}
+
+@keyframes glow-bear {
+  0%, 100% { box-shadow: 0 0 20px rgba(255, 45, 85, 0.15); }
+  50%       { box-shadow: 0 0 50px rgba(255, 45, 85, 0.35); }
+}
+
+/* ─── Base ───────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #07080B;
+  color: #E8EDF3;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar         { width: 3px; height: 3px; }
+::-webkit-scrollbar-track   { background: #07080B; }
+::-webkit-scrollbar-thumb   { background: #1C2B3A; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #C8102E; }
+
+/* ─── Utility classes ─────────────────────────────────────────────────────── */
+
+/* Live dot — green for system OK, red for urgent */
+.live-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #00C896;
+  animation: pulse-live 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.live-dot-red {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #C8102E;
+  animation: pulse-live 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+/* Ticker tape */
+.ticker-tape {
+  display: flex;
+  white-space: nowrap;
+  animation: ticker-scroll 35s linear infinite;
+}
+.ticker-tape:hover { animation-play-state: paused; }
+
+/* Page entrance */
+.fade-up     { animation: fade-up  0.5s ease both; }
+.slide-in    { animation: slide-in 0.4s ease both; }
+
+/* Grid texture background */
+.grid-texture {
+  background-image:
+    linear-gradient(rgba(28, 43, 58, 0.45) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(28, 43, 58, 0.45) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Diagonal slash — echoes IBKR logo's angular motif */
+.slash-mark {
+  display: inline-block;
+  width: 3px;
+  height: 1.2em;
+  background: #C8102E;
+  transform: skewX(-14deg);
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+/* Signal ambient glow variants */
+.signal-glow-bull { animation: glow-bull  3s ease-in-out infinite; }
+.signal-glow-bear { animation: glow-bear  3s ease-in-out infinite; }
+.signal-glow-hold { box-shadow: 0 0 30px rgba(245, 166, 35, 0.15); }
+
+/* Card base */
+.card {
+  background: #111820;
+  border: 1px solid #1C2B3A;
+  border-radius: 10px;
+  transition: border-color 0.2s ease;
+}
+.card:hover { border-color: #263D52; }
+
+/* Cursor blink for terminal feel */
+.cursor::after {
+  content: '|';
+  animation: blink-cursor 1s step-end infinite;
+  color: #C8102E;
+  margin-left: 1px;
+}
+
+/* Number formatting — always tabular mono */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Confidence bar */
+.conf-bar-track {
+  height: 3px;
+  background: #1C2B3A;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.conf-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.6s ease;
 }
