@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReasoningTrace",
+  "description": "Schema for agent reasoning trace documents stored in MongoDB",
+  "type": "object",
+  "required": ["ticker", "user_id", "created_at", "pipeline_run"],
+  "properties": {
+    "_id": { "type": "string", "description": "MongoDB ObjectId" },
+    "ticker": { "type": "string" },
+    "user_id": { "type": "string", "description": "Supabase user UUID" },
+    "boundary_mode": {
+      "type": "string",
+      "enum": ["advisory", "conditional", "autonomous"]
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "pipeline_run": {
+      "type": "object",
+      "properties": {
+        "technical": {
+          "type": "object",
+          "properties": {
+            "signal": { "type": "string" },
+            "indicators": { "type": "object" },
+            "reasoning": { "type": "string" },
+            "model": { "type": "string" },
+            "latency_ms": { "type": "number" }
+          }
+        },
+        "fundamental": {
+          "type": "object",
+          "properties": {
+            "signal": { "type": "string" },
+            "metrics": { "type": "object" },
+            "reasoning": { "type": "string" },
+            "model": { "type": "string" },
+            "latency_ms": { "type": "number" }
+          }
+        },
+        "sentiment": {
+          "type": "object",
+          "properties": {
+            "signal": { "type": "string" },
+            "sentiment_score": { "type": "number" },
+            "sources": { "type": "array", "items": { "type": "string" } },
+            "reasoning": { "type": "string" },
+            "model": { "type": "string" },
+            "latency_ms": { "type": "number" }
+          }
+        },
+        "synthesis": {
+          "type": "object",
+          "properties": {
+            "bull_case": { "type": "string" },
+            "bear_case": { "type": "string" },
+            "verdict": { "type": "string" },
+            "reasoning": { "type": "string" }
+          }
+        },
+        "risk": {
+          "type": "object",
+          "properties": {
+            "position_size": { "type": "number" },
+            "stop_loss": { "type": "number" },
+            "risk_reward_ratio": { "type": "number" },
+            "reasoning": { "type": "string" }
+          }
+        },
+        "final_decision": {
+          "type": "object",
+          "properties": {
+            "action": { "type": "string", "enum": ["BUY", "SELL", "HOLD"] },
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+            "reasoning": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
