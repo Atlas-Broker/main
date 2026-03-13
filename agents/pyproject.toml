@@ -1,3 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = ".."}
+packages = [
+    "agents",
+    "agents.analysts",
+    "agents.data",
+    "agents.llm",
+    "agents.memory",
+    "agents.portfolio",
+    "agents.risk",
+    "agents.synthesis",
+]
+
 [project]
 name = "atlas-agents"
 version = "0.1.0"

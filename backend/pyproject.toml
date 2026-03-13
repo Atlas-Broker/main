@@ -13,7 +13,13 @@ dependencies = [
     "httpx>=0.27.0",
     "yfinance>=0.2.0",
     "pandas>=2.0.0",
+    "alpaca-py>=0.28.0",
+    "langgraph>=0.2.0",
+    "atlas-agents",
 ]
+
+[tool.uv.sources]
+atlas-agents = { path = "../agents", editable = true }
 
 [dependency-groups]
 dev = [

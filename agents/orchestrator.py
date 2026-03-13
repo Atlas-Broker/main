@@ -1,28 +1,16 @@
 """
-Atlas Orchestrator — sequential pipeline coordinator.
+Atlas Orchestrator — thin wrapper over the LangGraph pipeline.
 
-Pipeline:
-  Market Data (yfinance)
-    → [Technical, Fundamental, Sentiment] analysts
-    → Synthesis
-    → Risk
-    → Portfolio Decision
-    → Save trace to MongoDB
-    → Return structured signal
-
-Phase 3: replace with LangGraph state graph for parallel analyst execution.
+The graph (agents/graph.py) handles all agent coordination including
+parallel analyst execution. This module provides a stable import
+surface for backend/services/pipeline_service.py.
 """
-
+import asyncio
 import time
 
 from pydantic import BaseModel
 
-from agents.data import market
-from agents.analysts import technical, fundamental, sentiment
-from agents.synthesis import agent as synthesis_agent
-from agents.risk import agent as risk_agent
-from agents.portfolio import agent as portfolio_agent
-from agents.memory import trace as trace_store
+from agents.graph import get_graph
 
 
 class AgentSignal(BaseModel):
@@ -36,55 +24,36 @@ class AgentSignal(BaseModel):
     latency_ms: int
 
 
-def run_pipeline(
+async def run_pipeline_async(
     ticker: str,
     boundary_mode: str = "advisory",
     user_id: str = "system",
 ) -> AgentSignal:
-    pipeline_start = time.time()
+    start = time.time()
+    graph = get_graph()
 
-    # 1. Fetch market data
-    ohlcv = market.fetch_ohlcv(ticker)
-    info = market.fetch_info(ticker)
-    news = market.fetch_news(ticker)
+    initial_state = {
+        "ticker": ticker,
+        "user_id": user_id,
+        "boundary_mode": boundary_mode,
+        "analyst_outputs": {},
+        "synthesis": None,
+        "risk": None,
+        "portfolio_decision": None,
+        "trace_id": None,
+    }
 
-    current_price = info.get("currentPrice") or (ohlcv[-1]["close"] if ohlcv else 0.0)
+    final_state = await graph.ainvoke(initial_state)
 
-    # 2. Run analysts
-    tech = technical.analyse(ticker, ohlcv)
-    fund = fundamental.analyse(ticker, info)
-    sent = sentiment.analyse(ticker, news)
-
-    # 3. Synthesis
-    synth = synthesis_agent.synthesize(ticker, tech, fund, sent)
-
-    # 4. Risk assessment
-    risk = risk_agent.assess(ticker, current_price, synth["verdict"], tech)
-
-    # 5. Final portfolio decision
-    decision = portfolio_agent.decide(ticker, synth, risk)
-
-    # 6. Save reasoning trace to MongoDB
-    trace_id = trace_store.save_trace(
-        ticker=ticker,
-        user_id=user_id,
-        boundary_mode=boundary_mode,
-        technical=tech,
-        fundamental=fund,
-        sentiment=sent,
-        synthesis=synth,
-        risk=risk,
-        final_decision=decision,
-    )
-
-    total_ms = round((time.time() - pipeline_start) * 1000)
+    decision = final_state["portfolio_decision"]
+    risk = final_state["risk"]
 
     return AgentSignal(
         ticker=ticker,
         action=decision["action"],
         confidence=decision["confidence"],
         reasoning=decision["reasoning"],
-        trace_id=trace_id,
+        trace_id=final_state.get("trace_id", ""),
         boundary_mode=boundary_mode,
         risk={
             "stop_loss": risk["stop_loss"],
@@ -92,5 +61,14 @@ def run_pipeline(
             "position_size": risk["position_size"],
             "risk_reward_ratio": risk["risk_reward_ratio"],
         },
-        latency_ms=total_ms,
+        latency_ms=round((time.time() - start) * 1000),
     )
+
+
+def run_pipeline(
+    ticker: str,
+    boundary_mode: str = "advisory",
+    user_id: str = "system",
+) -> AgentSignal:
+    """Sync wrapper — safe to call from FastAPI sync route handlers."""
+    return asyncio.run(run_pipeline_async(ticker, boundary_mode, user_id))
