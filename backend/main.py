@@ -1,12 +1,17 @@
 import asyncio
 import logging
 import os
+import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 import httpx
-from fastapi import FastAPI
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -153,3 +158,33 @@ def reject_signal(signal_id: str):
 def override_trade(trade_id: str):
     """Autonomous mode: user overrides an already-executed trade."""
     return {"trade_id": trade_id, "status": "override_requested", "message": "Override submitted. Trade will be reversed."}
+
+
+# --- Real pipeline ---
+
+class PipelineRequest(BaseModel):
+    ticker: str = "AAPL"
+    boundary_mode: str = "advisory"
+
+
+@app.post("/v1/pipeline/run")
+def run_pipeline(req: PipelineRequest):
+    """Run the full agent pipeline for a ticker. Returns a real AI-generated signal."""
+    try:
+        from agents.orchestrator import run_pipeline as _run
+        signal = _run(ticker=req.ticker.upper(), boundary_mode=req.boundary_mode)
+        return {
+            "id": f"sig-{uuid.uuid4().hex[:8]}",
+            "ticker": signal.ticker,
+            "action": signal.action,
+            "confidence": signal.confidence,
+            "reasoning": signal.reasoning,
+            "boundary_mode": signal.boundary_mode,
+            "risk": signal.risk,
+            "trace_id": signal.trace_id,
+            "latency_ms": signal.latency_ms,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as exc:
+        logger.exception("Pipeline failed for %s", req.ticker)
+        raise HTTPException(status_code=500, detail=str(exc))

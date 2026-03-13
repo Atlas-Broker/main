@@ -22,8 +22,8 @@ The trading logic is identical across all three modes. Only the execution author
 |--------|-----------|---------|
 | [`frontend/`](./frontend/) | Vercel | Next.js dashboard |
 | [`backend/`](./backend/) | Render | FastAPI REST API |
-| [`agents/`](./agents/) | (worker / imported by backend) | LangGraph multi-agent pipeline |
-| [`database/`](./database/) | Supabase + MongoDB Atlas | Schema definitions |
+| [`agents/`](./agents/) | (worker / imported by backend) | Multi-agent pipeline (Gemini + yfinance) |
+| [`database/`](./database/) | Supabase + MongoDB Atlas | Schema definitions and migrations |
 | [`docs/`](./docs/) | — | Architecture, context, plans |
 
 ## Quick Start
@@ -43,13 +43,24 @@ cp backend/.env.example backend/.env
 cp agents/.env.example agents/.env
 ```
 
+## Run the Agent Pipeline
+
+```bash
+# POST to the real pipeline — runs Gemini + yfinance end-to-end
+curl -X POST http://localhost:8000/v1/pipeline/run \
+  -H "Content-Type: application/json" \
+  -d '{"ticker": "AAPL", "boundary_mode": "advisory"}'
+```
+
+Returns a real AI-generated signal with full risk parameters and a MongoDB trace ID.
+
 ## Tech Stack
 
 - **Frontend** — Next.js 16, TypeScript, Tailwind CSS
 - **Backend** — FastAPI, Python 3.11+, uv
-- **Agents** — LangGraph, Google Gemini (Flash Lite / Flash)
-- **Databases** — Supabase (PostgreSQL, RLS) + MongoDB Atlas (reasoning traces)
-- **Brokers** — Alpaca (paper trading) → Interactive Brokers (production)
+- **Agents** — Google Gemini 2.5 Flash (`google-genai` SDK), yfinance
+- **Databases** — Supabase (PostgreSQL + RLS, managed via Supabase CLI) + MongoDB Atlas (reasoning traces with JSON Schema validation)
+- **Brokers** — Alpaca (paper trading) → Interactive Brokers (production, Phase 4)
 
 ## Academic Context
 

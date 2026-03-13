@@ -33,8 +33,8 @@ API docs available at `http://localhost:8000/docs` (Swagger UI).
 | `MONGODB_URI` | Yes | MongoDB Atlas connection string |
 | `MONGODB_DB_NAME` | No | Database name (default: `atlas`) |
 | `GEMINI_API_KEY` | Yes | Google Gemini API key |
-| `LLM_QUICK_MODEL` | No | Fast model ID (default: `gemini-2.0-flash-lite`) |
-| `LLM_DEEP_MODEL` | No | Deep model ID (default: `gemini-2.0-flash-lite`) |
+| `LLM_QUICK_MODEL` | No | Fast model ID (default: `gemini-2.5-flash`) |
+| `LLM_DEEP_MODEL` | No | Deep model ID (default: `gemini-2.5-flash`) |
 | `ALPACA_API_KEY` | Yes (Phase 4+) | Alpaca API key |
 | `ALPACA_SECRET_KEY` | Yes (Phase 4+) | Alpaca secret key |
 | `ALPACA_BASE_URL` | No | Alpaca base URL (default: paper trading endpoint) |
@@ -45,12 +45,23 @@ API docs available at `http://localhost:8000/docs` (Swagger UI).
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/health` | Health check |
-| `GET` | `/v1/signals` | Latest trade signals |
+| `GET` | `/v1/signals` | Stub signals (hardcoded — for frontend wiring) |
 | `POST` | `/v1/signals/{id}/approve` | Approve a signal (Conditional mode) |
 | `POST` | `/v1/signals/{id}/reject` | Reject a signal (Conditional mode) |
-| `GET` | `/v1/portfolio` | Portfolio summary |
-| `GET` | `/v1/trades` | Trade history |
+| `GET` | `/v1/portfolio` | Portfolio summary (stub) |
+| `GET` | `/v1/trades` | Trade history (stub) |
 | `POST` | `/v1/trades/{id}/override` | Override an executed trade (Autonomous mode) |
+| `POST` | `/v1/pipeline/run` | **Real pipeline** — runs full agent pipeline for a ticker |
+
+### Run the Real Pipeline
+
+```bash
+curl -X POST http://localhost:8000/v1/pipeline/run \
+  -H "Content-Type: application/json" \
+  -d '{"ticker": "AAPL", "boundary_mode": "advisory"}'
+```
+
+Returns a live AI-generated signal with action, confidence, reasoning, risk parameters, and a MongoDB trace ID.
 
 ## Docker
 

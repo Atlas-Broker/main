@@ -5,53 +5,52 @@ Model selection is driven entirely by environment variables — no code changes
 needed when upgrading to a new model generation.
 
 To upgrade models, update these env vars:
-  LLM_QUICK_MODEL=gemini-2.0-flash-lite   # fast, cheap — data retrieval, scanning
-  LLM_DEEP_MODEL=gemini-2.0-flash-lite    # analysis, synthesis, final decisions
+  LLM_QUICK_MODEL=gemini-2.0-flash   # fast — data retrieval, scanning, analysts
+  LLM_DEEP_MODEL=gemini-2.0-flash    # synthesis, final decisions
 
 Known Gemini model IDs (update env vars as new generations release):
-  gemini-2.0-flash-lite      cheapest, good for simple tasks
-  gemini-2.0-flash           balanced speed/quality
-  gemini-2.5-flash           next gen flash (when available)
-  gemini-2.5-pro             deepest reasoning (when available)
+  gemini-2.0-flash           balanced speed/quality (current default)
+  gemini-2.5-flash           next gen flash
+  gemini-2.5-pro             deepest reasoning
 """
 
 import os
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
-# Defaults — override with env vars, no code change needed
 _DEFAULTS = {
-    "quick": "gemini-2.0-flash-lite",
-    "deep": "gemini-2.0-flash-lite",
+    "quick": "gemini-2.5-flash",
+    "deep": "gemini-2.5-flash",
 }
 
-_configured = False
+_client: genai.Client | None = None
 
 
-def _ensure_configured() -> None:
-    global _configured
-    if not _configured:
+def _get_client() -> genai.Client:
+    global _client
+    if _client is None:
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             raise EnvironmentError("GEMINI_API_KEY is not set")
-        genai.configure(api_key=api_key)
-        _configured = True
+        _client = genai.Client(api_key=api_key)
+    return _client
 
 
 def get_model_id(mode: str = "quick") -> str:
-    """Returns the model ID string for the given mode, without creating a client."""
+    """Returns the model ID string for the given mode."""
     env_key = f"LLM_{mode.upper()}_MODEL"
     return os.environ.get(env_key, _DEFAULTS.get(mode, _DEFAULTS["quick"]))
 
 
-def get_llm(mode: str = "quick") -> genai.GenerativeModel:
+def get_llm(mode: str = "quick"):
     """
-    Returns a configured Gemini GenerativeModel.
+    Returns (client, model_id) tuple for Gemini calls.
+
+    Usage:
+        client, model_id = get_llm("quick")
+        response = client.models.generate_content(model=model_id, contents=prompt, ...)
 
     Args:
         mode: "quick" (fast/cheap) or "deep" (slower/better)
-
-    To switch models: set LLM_QUICK_MODEL or LLM_DEEP_MODEL in your .env
     """
-    _ensure_configured()
-    model_id = get_model_id(mode)
-    return genai.GenerativeModel(model_id)
+    return _get_client(), get_model_id(mode)
