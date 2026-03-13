@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Syne, JetBrains_Mono, Nunito_Sans } from "next/font/google";
 import "./globals.css";
+import { ThemeProvider } from "./components/ThemeProvider";
 
 const syne = Syne({
   subsets: ["latin"],
@@ -36,7 +37,9 @@ export default function RootLayout({
       lang="en"
       className={`${syne.variable} ${jetBrainsMono.variable} ${nunitoSans.variable}`}
     >
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   );
 }

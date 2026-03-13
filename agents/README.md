@@ -1,20 +1,20 @@
 # Atlas — Agents
 
-Multi-agent trading pipeline using Google Gemini and yfinance. Imported by the backend as a local Python package during the capstone phase; designed to run as an independent background worker in production.
+Multi-agent trading pipeline using LangGraph, Google Gemini, and yfinance. Installed as a local editable package (`atlas-agents`) and imported by the backend. The full pipeline is live and running.
 
 ## Pipeline
 
 ```
 Market Data (yfinance — OHLCV, fundamentals, news)
     ↓
-Analysis Team (sequential in Phase 2, parallel in Phase 3)
+Analysis Team (parallel — LangGraph fan-out)
   ├── Technical Analyst  — RSI, SMA, volume, price action
   ├── Fundamental Analyst — P/E, growth, valuation, analyst targets
   └── Sentiment Analyst  — recent news headlines
-    ↓
+    ↓ (fan-in — synthesis waits for all three)
 Synthesis Agent — bull/bear debate → unified trade thesis
     ↓
-Risk Management Agent — position sizing (2% risk rule), stop-loss, R/R ratio
+Risk Management Agent — position sizing (2% risk rule), stop-loss, 2:1 R/R
     ↓
 Portfolio Decision Agent — final BUY/SELL/HOLD + confidence score
     ↓
@@ -25,7 +25,8 @@ Execution Boundary Controller (in backend)
 
 ## Stack
 
-- **LLM** — Google Gemini 2.5 Flash via `google-genai` SDK
+- **Orchestration** — LangGraph (`StateGraph` with parallel fan-out via `Annotated` dict reducer)
+- **LLM** — Google Gemini 2.5 Flash via `google-genai` SDK (both quick-think and deep-think slots)
 - **Market data** — yfinance (90-day OHLCV, fundamentals, news)
 - **Memory** — MongoDB Atlas (`reasoning_traces` collection)
 - **Package manager** — uv
@@ -69,13 +70,15 @@ LLM_DEEP_MODEL=gemini-2.5-pro
 
 | Module | Description |
 |--------|-------------|
-| `orchestrator.py` | Pipeline coordinator — entry point for all pipeline runs |
+| `state.py` | `AgentState` TypedDict — shared state with `Annotated` dict reducer for parallel analyst fan-out |
+| `graph.py` | `StateGraph` definition — nodes, fan-out edges, fan-in edges, compiled singleton |
+| `orchestrator.py` | Thin wrapper — sync (`run_pipeline`) and async (`run_pipeline_async`) entry points |
 | `data/market.py` | yfinance wrapper — OHLCV, fundamentals, news |
 | `analysts/technical.py` | Technical analysis agent (RSI, SMA, trend, key levels) |
 | `analysts/fundamental.py` | Fundamental analysis agent (valuation, growth, analyst targets) |
 | `analysts/sentiment.py` | Sentiment analysis agent (news headlines) |
 | `synthesis/agent.py` | Synthesis agent — bull/bear debate, unified verdict |
-| `risk/agent.py` | Risk agent — position sizing, stop-loss, take-profit |
+| `risk/agent.py` | Risk agent — position sizing (2% risk rule), stop-loss, take-profit (2:1 R/R) |
 | `portfolio/agent.py` | Portfolio decision agent — final action + confidence |
 | `memory/trace.py` | MongoDB trace persistence — saves full pipeline run |
 | `llm/factory.py` | LLM provider factory — always use this, never call Gemini directly |

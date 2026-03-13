@@ -1,7 +1,17 @@
-from fastapi import APIRouter
+import logging
+
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/v1", tags=["signals"])
+logger = logging.getLogger(__name__)
+
+
+class RiskParams(BaseModel):
+    stop_loss: float
+    take_profit: float
+    position_size: int
+    risk_reward_ratio: float
 
 
 class Signal(BaseModel):
@@ -11,24 +21,30 @@ class Signal(BaseModel):
     confidence: float
     reasoning: str
     boundary_mode: str
+    risk: RiskParams
     created_at: str
 
 
 @router.get("/signals", response_model=list[Signal])
-def get_signals():
-    return [
-        Signal(id="sig-001", ticker="AAPL", action="BUY", confidence=0.78,
-               reasoning="Strong momentum with RSI divergence on weekly timeframe.",
-               boundary_mode="advisory", created_at="2026-03-13T09:00:00Z"),
-        Signal(id="sig-002", ticker="MSFT", action="HOLD", confidence=0.62,
-               reasoning="Consolidating at key support zone.",
-               boundary_mode="conditional", created_at="2026-03-12T14:30:00Z"),
-    ]
+def get_signals(limit: int = 20):
+    try:
+        from services.signals_service import get_recent_signals
+        return get_recent_signals(limit=limit)
+    except Exception as exc:
+        logger.exception("Failed to fetch signals from MongoDB")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.post("/signals/{signal_id}/approve")
 def approve_signal(signal_id: str):
-    return {"signal_id": signal_id, "status": "approved"}
+    try:
+        from services.signals_service import approve_and_execute
+        return approve_and_execute(signal_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        logger.exception("Failed to approve signal %s", signal_id)
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.post("/signals/{signal_id}/reject")

@@ -9,6 +9,32 @@ FastAPI REST API for the Atlas AI trading assistant.
 - **Package manager** — uv
 - **Runtime** — Uvicorn (ASGI)
 - **Containerisation** — Docker
+- **Deployment** — Render (UAT)
+
+## Structure
+
+```
+backend/
+├── main.py                        # App entry point — wires routers, keep-alive task
+├── api/
+│   ├── middleware/cors.py          # CORS middleware
+│   └── routes/
+│       ├── pipeline.py            # POST /v1/pipeline/run (live)
+│       ├── signals.py             # GET /v1/signals, POST /v1/signals/{id}/approve (stubs)
+│       ├── portfolio.py           # GET /v1/portfolio (stub)
+│       └── trades.py              # GET /v1/trades, POST /v1/trades/{id}/override (stubs)
+├── broker/
+│   ├── base.py                    # BrokerAdapter Protocol
+│   ├── alpaca.py                  # AlpacaAdapter (paper trading)
+│   └── factory.py                 # Broker factory
+├── boundary/
+│   ├── modes.py                   # BoundaryMode enum + MODE_CONFIG
+│   └── controller.py              # ExecutionBoundaryController — execute()
+└── services/
+    └── pipeline_service.py        # run_pipeline_with_ebc — wires agents → EBC
+```
+
+`atlas-agents` (the `agents/` package) is installed as a local editable dependency.
 
 ## Getting Started
 
@@ -35,8 +61,8 @@ API docs available at `http://localhost:8000/docs` (Swagger UI).
 | `GEMINI_API_KEY` | Yes | Google Gemini API key |
 | `LLM_QUICK_MODEL` | No | Fast model ID (default: `gemini-2.5-flash`) |
 | `LLM_DEEP_MODEL` | No | Deep model ID (default: `gemini-2.5-flash`) |
-| `ALPACA_API_KEY` | Yes (Phase 4+) | Alpaca API key |
-| `ALPACA_SECRET_KEY` | Yes (Phase 4+) | Alpaca secret key |
+| `ALPACA_API_KEY` | Yes | Alpaca API key (paper trading) |
+| `ALPACA_SECRET_KEY` | Yes | Alpaca secret key (paper trading) |
 | `ALPACA_BASE_URL` | No | Alpaca base URL (default: paper trading endpoint) |
 | `RENDER_EXTERNAL_URL` | Auto | Set by Render — enables keep-alive ping |
 

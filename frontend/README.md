@@ -1,13 +1,17 @@
 # Atlas — Frontend
 
-Next.js 16 dashboard for the Atlas AI trading assistant.
+Next.js 16 dashboard for the Atlas AI trading assistant. Deployed on Vercel (UAT).
 
 ## Stack
 
 - **Framework** — Next.js 16 (App Router)
 - **Language** — TypeScript
 - **Styling** — Tailwind CSS v4
-- **Fonts** — Geist (via `next/font`)
+- **Fonts** — Syne (display/headings), JetBrains Mono (data and labels), Nunito Sans (body)
+
+## Design
+
+IBKR-adjacent dark theme with crimson `#C8102E` and void `#07080B`. Light mode with dark toggle is being added.
 
 ## Getting Started
 
@@ -31,8 +35,9 @@ npm run dev                  # → http://localhost:3000
 
 | Route | Description |
 |-------|-------------|
-| `/` | Landing page |
-| `/dashboard` | Main trading dashboard — portfolio, signals, positions |
+| `/` | Landing page — ticker tape, execution mode explainer |
+| `/dashboard` | Mobile-first user view — 4 tabs: Overview, Signals, Positions, Settings. Currently reads from hardcoded stub data; API wiring in progress. |
+| `/admin` | Desktop-first admin view — sidebar layout, runs the live pipeline via `POST /v1/pipeline/run` |
 
 ## Commands
 
@@ -44,4 +49,4 @@ npm run lint     # ESLint
 
 ## Deployment
 
-Connect this repo to Vercel and set the root directory to `frontend/`. Add environment variables in the Vercel dashboard before deploying.
+Connect this repo to Vercel and set the root directory to `frontend/`. Add environment variables in the Vercel dashboard before deploying. `NEXT_PUBLIC_API_URL` must be set for pipeline calls from the admin page to work.

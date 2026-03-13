@@ -1,34 +1,70 @@
 @import "tailwindcss";
 
-/* ─── Atlas Design System ─────────────────────────────────────────────────── */
+/* ─── Atlas Design System — Theme-aware CSS variables ─────────────────────── */
 
-@theme {
-  /* Backgrounds — deep navy-black, IBKR terminal feel */
-  --color-void:     #07080B;
-  --color-deep:     #0C1016;
-  --color-surface:  #111820;
-  --color-elevated: #182030;
-  --color-line:     #1C2B3A;
-  --color-line2:    #263D52;
+:root {
+  /* Light mode (default) */
+  --bg:          #F4F6F9;
+  --deep:        #EDF0F4;
+  --surface:     #FFFFFF;
+  --elevated:    #F0F2F6;
+  --line:        #E0E6ED;
+  --line2:       #C8D4DF;
 
-  /* Brand — IBKR-adjacent crimson */
-  --color-brand:    #C8102E;
-  --color-signal:   #E8001D;
+  --ink:         #0D1117;
+  --dim:         #46606E;
+  --ghost:       #8DA4B2;
 
-  /* Trade signals */
-  --color-bull:     #00C896;
-  --color-bear:     #FF2D55;
-  --color-hold:     #F5A623;
+  --header-bg:   rgba(244,246,249,0.93);
+  --nav-bg:      rgba(244,246,249,0.96);
+  --card-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
 
-  /* Text */
-  --color-ink:      #E8EDF3;
-  --color-dim:      #7A8FA0;
-  --color-ghost:    #3D5060;
+  --brand:       #C8102E;
+  --signal:      #E8001D;
 
-  /* Fonts — loaded via next/font */
+  --bull:        #00A876;
+  --bear:        #D92040;
+  --hold:        #D97B00;
+  --bull-bg:     rgba(0,168,118,0.10);
+  --bear-bg:     rgba(217,32,64,0.10);
+  --hold-bg:     rgba(217,123,0,0.10);
+
   --font-display: var(--font-syne,    "Syne",           system-ui, sans-serif);
   --font-mono:    var(--font-jb,      "JetBrains Mono", monospace);
   --font-body:    var(--font-nunito,  "Nunito Sans",    system-ui, sans-serif);
+}
+
+html.dark {
+  --bg:          #07080B;
+  --deep:        #0C1016;
+  --surface:     #111820;
+  --elevated:    #182030;
+  --line:        #1C2B3A;
+  --line2:       #263D52;
+
+  --ink:         #E8EDF3;
+  --dim:         #7A8FA0;
+  --ghost:       #3D5060;
+
+  --header-bg:   rgba(7,8,11,0.92);
+  --nav-bg:      rgba(7,8,11,0.95);
+  --card-shadow: none;
+
+  --bull:        #00C896;
+  --bear:        #FF2D55;
+  --hold:        #F5A623;
+  --bull-bg:     rgba(0,200,150,0.12);
+  --bear-bg:     rgba(255,45,85,0.12);
+  --hold-bg:     rgba(245,166,35,0.12);
+}
+
+/* Smooth theme transition */
+*, *::before, *::after {
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+/* Exclude elements where transitions look wrong */
+.live-dot, .live-dot-red, .ticker-tape, .fade-up, .slide-in {
+  transition: none;
 }
 
 /* ─── Keyframes ──────────────────────────────────────────────────────────── */
@@ -80,8 +116,8 @@
 html { scroll-behavior: smooth; }
 
 body {
-  background-color: #07080B;
-  color: #E8EDF3;
+  background-color: var(--bg);
+  color: var(--ink);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -90,18 +126,17 @@ body {
 /* ─── Scrollbar ──────────────────────────────────────────────────────────── */
 
 ::-webkit-scrollbar         { width: 3px; height: 3px; }
-::-webkit-scrollbar-track   { background: #07080B; }
-::-webkit-scrollbar-thumb   { background: #1C2B3A; border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: #C8102E; }
+::-webkit-scrollbar-track   { background: var(--bg); }
+::-webkit-scrollbar-thumb   { background: var(--line2); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--brand); }
 
-/* ─── Utility classes ─────────────────────────────────────────────────────── */
+/* ─── Live dots ──────────────────────────────────────────────────────────── */
 
-/* Live dot — green for system OK, red for urgent */
 .live-dot {
   display: inline-block;
   width: 7px; height: 7px;
   border-radius: 50%;
-  background: #00C896;
+  background: var(--bull);
   animation: pulse-live 2s ease-in-out infinite;
   flex-shrink: 0;
 }
@@ -110,12 +145,13 @@ body {
   display: inline-block;
   width: 7px; height: 7px;
   border-radius: 50%;
-  background: #C8102E;
+  background: var(--brand);
   animation: pulse-live 1.4s ease-in-out infinite;
   flex-shrink: 0;
 }
 
-/* Ticker tape */
+/* ─── Ticker tape ────────────────────────────────────────────────────────── */
+
 .ticker-tape {
   display: flex;
   white-space: nowrap;
@@ -123,11 +159,13 @@ body {
 }
 .ticker-tape:hover { animation-play-state: paused; }
 
-/* Page entrance */
+/* ─── Page entrance ──────────────────────────────────────────────────────── */
+
 .fade-up     { animation: fade-up  0.5s ease both; }
 .slide-in    { animation: slide-in 0.4s ease both; }
 
-/* Grid texture background */
+/* ─── Grid texture ───────────────────────────────────────────────────────── */
+
 .grid-texture {
   background-image:
     linear-gradient(rgba(28, 43, 58, 0.45) 1px, transparent 1px),
@@ -135,50 +173,57 @@ body {
   background-size: 48px 48px;
 }
 
-/* Diagonal slash — echoes IBKR logo's angular motif */
+/* ─── Slash mark ─────────────────────────────────────────────────────────── */
+
 .slash-mark {
   display: inline-block;
   width: 3px;
   height: 1.2em;
-  background: #C8102E;
+  background: var(--brand);
   transform: skewX(-14deg);
   border-radius: 1px;
   flex-shrink: 0;
 }
 
-/* Signal ambient glow variants */
-.signal-glow-bull { animation: glow-bull  3s ease-in-out infinite; }
-.signal-glow-bear { animation: glow-bear  3s ease-in-out infinite; }
+/* ─── Signal glows ───────────────────────────────────────────────────────── */
+
+.signal-glow-bull { animation: glow-bull 3s ease-in-out infinite; }
+.signal-glow-bear { animation: glow-bear 3s ease-in-out infinite; }
 .signal-glow-hold { box-shadow: 0 0 30px rgba(245, 166, 35, 0.15); }
 
-/* Card base */
+/* ─── Card ───────────────────────────────────────────────────────────────── */
+
 .card {
-  background: #111820;
-  border: 1px solid #1C2B3A;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 10px;
+  box-shadow: var(--card-shadow);
   transition: border-color 0.2s ease;
 }
-.card:hover { border-color: #263D52; }
+.card:hover { border-color: var(--line2); }
 
-/* Cursor blink for terminal feel */
+/* ─── Cursor ─────────────────────────────────────────────────────────────── */
+
 .cursor::after {
   content: '|';
   animation: blink-cursor 1s step-end infinite;
-  color: #C8102E;
+  color: var(--brand);
   margin-left: 1px;
 }
 
-/* Number formatting — always tabular mono */
+/* ─── Number formatting ──────────────────────────────────────────────────── */
+
 .num {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
 
-/* Confidence bar */
+/* ─── Confidence bar ─────────────────────────────────────────────────────── */
+
 .conf-bar-track {
   height: 3px;
-  background: #1C2B3A;
+  background: var(--line);
   border-radius: 2px;
   overflow: hidden;
 }

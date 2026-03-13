@@ -20,9 +20,9 @@ The trading logic is identical across all three modes. Only the execution author
 
 | Folder | Deploys to | Purpose |
 |--------|-----------|---------|
-| [`frontend/`](./frontend/) | Vercel | Next.js dashboard |
-| [`backend/`](./backend/) | Render | FastAPI REST API |
-| [`agents/`](./agents/) | (worker / imported by backend) | Multi-agent pipeline (Gemini + yfinance) |
+| [`frontend/`](./frontend/) | Vercel (UAT) | Next.js 16 dashboard (App Router) |
+| [`backend/`](./backend/) | Render (UAT) | FastAPI REST API |
+| [`agents/`](./agents/) | Imported by backend | LangGraph multi-agent pipeline (Gemini + yfinance) |
 | [`database/`](./database/) | Supabase + MongoDB Atlas | Schema definitions and migrations |
 | [`docs/`](./docs/) | — | Architecture, context, plans |
 
@@ -56,11 +56,20 @@ Returns a real AI-generated signal with full risk parameters and a MongoDB trace
 
 ## Tech Stack
 
-- **Frontend** — Next.js 16, TypeScript, Tailwind CSS
-- **Backend** — FastAPI, Python 3.11+, uv
-- **Agents** — Google Gemini 2.5 Flash (`google-genai` SDK), yfinance
+- **Frontend** — Next.js 16, TypeScript, Tailwind CSS v4
+- **Backend** — FastAPI, Python 3.11+, uv, Docker (deployed on Render)
+- **Agents** — LangGraph (parallel fan-out), Google Gemini 2.5 Flash (`google-genai` SDK), yfinance
 - **Databases** — Supabase (PostgreSQL + RLS, managed via Supabase CLI) + MongoDB Atlas (reasoning traces with JSON Schema validation)
-- **Brokers** — Alpaca (paper trading) → Interactive Brokers (production, Phase 4)
+- **Brokers** — Alpaca paper trading (connected); Interactive Brokers planned for production
+
+## Current Status
+
+The full agent pipeline is built and running:
+- LangGraph parallel execution: technical, fundamental, and sentiment analysts run concurrently
+- Execution Boundary Controller (EBC) with all 3 modes implemented
+- Alpaca paper trading adapter connected
+- Backend deployed on Render (UAT); frontend deployed on Vercel (UAT)
+- Dashboard data wiring is in progress (currently reads from stub data)
 
 ## Academic Context
 
