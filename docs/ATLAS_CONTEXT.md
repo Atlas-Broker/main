@@ -1,221 +1,284 @@
-# Project Atlas — Full Context Briefing
+# Product Atlas — Full Context Briefing
 
-> This document captures the complete context of Product Atlas as discussed between Lin Zhenming (Edmund) and Claude (chat interface) in March 2026. Use this as the source of truth for all development work.
+> Single source of truth for all development work. Updated 16 March 2026.
 >
-> **Note on naming**: This is deliberately called a **Product**, not a Project. A project ends. A product compounds. Every design and build decision should reflect that intent.
+> **Naming**: This is a **Product**, not a Project. A project ends. A product compounds.
 
 ---
 
 ## 1. What is Atlas?
 
-Atlas is simultaneously a **final year capstone project** (BAC3004 at Singapore Institute of Technology) and a **real B2C product**. The dual intent is:
+Atlas is simultaneously a **final year capstone** (BAC3004, Singapore Institute of Technology) and a **real B2C product**.
 
-1. **Academic**: Score well on the capstone. Interim report due 12 April 2026, final report due 19 July 2026.
-2. **Product**: Build a subscription-based AI trading assistant for retail investors. Dogfood it first (use Atlas to earn first stock market profits via swing trading), then roll out as a monthly subscription service.
+1. **Academic**: Score well on the capstone. Interim report due **12 April 2026**, final report due **19 July 2026**.
+2. **Product**: Subscription-based AI trading assistant for retail investors. Dogfood it first — use Atlas to earn first stock market profits via swing trading (days-to-weeks). Once validated, roll out as a monthly subscription.
 
-The architecture must be **product-ready from day one**. The capstone uses paper trading only, but every design decision should assume real money and real users are coming.
+Architecture is **product-ready from day one**. Capstone uses paper trading, but every decision assumes real money and real users are coming.
 
-**Full title**: Agentic AI Support System for Investment and Trading
+**Full title**: Agentic AI Support System for Investment and Trading  
 **Academic framing**: Human–Agent Boundary Evaluation Framework for AI-Assisted Retail Trading Systems
 
 ---
 
 ## 2. The People
 
-- **Student**: Lin Zhenming (Edmund), Matriculation 2302993, Applied Computing Fintech, SIT
-- **Academic Supervisor**: Xu Bing Jie (bingjie.xu@singaporetech.edu.sg) — Assistant Professor at SIT. Feedback: technical complexity is appropriate, but needs stronger business/finance domain impact considerations. Frame around MAS regulations, SGX investor protection, and the transparency gap in Singapore retail trading platforms (moomoo, Tiger Brokers, Syfe Trade).
-- **Industry Supervisor**: Chin Wei Shan (wei.shan.chin@prudential.com.sg) — AI Engineer at Prudential Singapore. Feedback: direction and purpose well thought out.
-- **Organization**: Prudential Assurance Company Singapore (Edmund is concurrently an AI Engineering Intern here, 40h/week, Jan–Aug 2026)
+| Role | Name | Contact | Notes |
+|------|------|---------|-------|
+| Student | Lin Zhenming (Edmund) | 2302993@sit.singaporetech.edu.sg | Applied Computing Fintech, Matriculation 2302993 |
+| Academic Supervisor | Xu Bing Jie | bingjie.xu@singaporetech.edu.sg | Key feedback: needs stronger business/finance domain impact. Frame via MAS regulations, SGX investor protection, SG retail platform transparency gap. |
+| Industry Supervisor | Chin Wei Shan | wei.shan.chin@prudential.com.sg | AI Engineer, Prudential Singapore. Feedback: direction and purpose well thought out. |
+
+Edmund is concurrently an AI Engineering Intern at Prudential, 40h/week, Jan–Aug 2026. Atlas is built in parallel.
 
 ---
 
-## 3. Core Concept
+## 3. Core Concept: The Execution Boundary Controller
 
-Atlas is a **multi-agent AI trading system** with a unique differentiator: the **Execution Boundary Controller (EBC)** — a configurable mechanism that lets users choose how much authority the AI has over trade execution.
+Atlas is a **multi-agent AI trading system** whose unique differentiator is the **Execution Boundary Controller (EBC)** — a configurable mechanism governing how much authority the AI has over trade execution.
 
-### Three Execution Modes (the experimental variable AND pricing moat):
+| Mode | Behavior | Product Tier | Confidence Threshold | Current State |
+|------|----------|--------------|---------------------|---------------|
+| **Advisory** | AI generates signals; human executes manually | Free | N/A | ✅ Working |
+| **Conditional** | AI proposes trades; human must approve | Pro ($30–50/mo) | ≥ 60% | ✅ Working |
+| **Autonomous** | AI executes automatically; human has override window | Premium ($80–120/mo) | ≥ 65% | ⚠️ Executes, but override not wired |
 
-| Mode | Behavior | Product Tier |
-|------|----------|--------------|
-| **Advisory** | AI generates recommendations; human executes manually | Free tier |
-| **Conditional** | AI proposes trades; execution requires explicit human approval | Mid tier |
-| **Autonomous** | AI executes automatically; human has override window | Premium tier |
+The trading logic is **identical** across all three modes. Only the execution authority changes. This enables controlled academic comparison AND creates natural pricing tiers.
 
-The key insight: the trading logic remains **identical** across all three modes. Only the execution authority changes. This enables controlled comparison for the academic evaluation AND creates natural pricing tiers for the product.
-
-The EBC is Atlas's primary moat. No existing retail platform — not NexusTrade, not 3Commas, not Cryptohopper — offers a configurable execution authority boundary. They are all binary: either the bot trades, or it doesn't.
+The EBC is Atlas's primary moat. No existing retail platform — not Trade Ideas, not Composer, not 3Commas, not any OpenClaw skill — offers a configurable execution authority boundary. They are all binary: the bot trades, or it doesn't.
 
 ---
 
-## 4. Market & Competitive Landscape (Updated March 2026)
+## 4. Current Build State (16 March 2026)
 
-### The OpenClaw Ecosystem (New, March 2026)
+### What's live and working
 
-OpenClaw (formerly Clawdbot/Moltbot) is an open-source AI agent that reached 250,000+ GitHub stars in under 60 days and spawned a large ecosystem of trading skills. As of March 2026, its ClawHub marketplace hosts 13,700+ skills, with 311+ in the finance/investing category.
+**Agent Pipeline** — Fully operational. LangGraph `StateGraph` runs three analyst agents in parallel (fan-out), fans in to synthesis, risk, and portfolio decision. All nodes are real implementations. All LLM calls use Gemini 2.5 Flash with structured JSON output (`response_mime_type="application/json"`). Latency tracked per node.
 
-**Key OpenClaw trading tools:**
-- **BankrBot**: Crypto trading across Base, Ethereum, Polygon, Solana. Natural language → on-chain execution. No position limits, no confirmation, no reasoning transparency. 0.8% per trade fee.
-- **Alpaca Skill**: Natural language → US equity orders via Alpaca API. Execution wrapper with no intelligence.
-- **Polyclaw**: Polymarket prediction market trading. Arbitrage windows have compressed to 2.7 seconds; 92.4% of Polymarket traders lose money.
+```
+Market Data (yfinance: 90-day OHLCV, fundamentals, news)
+    ↓
+[Technical | Fundamental | Sentiment]  ← parallel via LangGraph
+    ↓ fan-in
+Synthesis (bull/bear debate) → Risk (2% rule, 2:1 R/R) → Portfolio Decision
+    ↓
+MongoDB Atlas (full reasoning trace per run)
+    ↓
+Execution Boundary Controller → Alpaca paper trading
+```
 
-**Critical weakness of the OpenClaw approach**: These are execution wrappers, not intelligence systems. There is no reasoning, no debate, no configurable control. The most honest summary of the space: people are "giving an LLM $2,000 to trade based on vibes."
+**Agent detail**:
+- **Technical Analyst**: RSI, 20/50-day SMA, price change %, volume trend → Gemini structured signal
+- **Fundamental Analyst**: P/E, EPS growth, debt/equity, analyst targets → Gemini structured signal
+- **Sentiment Analyst**: News headline tone, key themes → Gemini sentiment score
+- **Synthesis Agent**: Bull case + bear case → unified trade thesis with confidence weighting
+- **Risk Agent**: Deterministic — 2% portfolio risk rule, stop-loss from support or 5% fixed, 2:1 R/R take-profit
+- **Portfolio Decision Agent**: Final BUY/SELL/HOLD + confidence score (0–1)
 
-**Security note for codebase**: The OpenClaw ecosystem suffered ClawHavoc (Feb 2026) — 1,184 malicious skills in the official marketplace, ~20% of all skills were malicious at peak. Atlas must never be distributed as an OpenClaw skill.
+**Execution Boundary Controller** — Three modes with confidence thresholds. Advisory returns signal only. Conditional marks `awaiting_approval`. Autonomous executes immediately at ≥ 65%.
 
-### Established Bots (Pre-OpenClaw)
+**Broker Adapter** — Protocol-based `BrokerAdapter` with working `AlpacaAdapter`. Places market orders, fetches equity/cash/positions. IBKR is a future implementation of the same protocol.
 
-| Platform | Model | Strength | Critical Weakness |
-|----------|-------|----------|-------------------|
-| **Pionex** | Free, exchange-integrated | 16 built-in bots, 0.05% fees, beginner-friendly | No reasoning, locked to one exchange |
-| **3Commas** | $20–200/month | Multi-exchange, DCA/Grid, SmartTrade | No AI reasoning, rule-based only |
-| **Cryptohopper** | $29–129/month | Cloud-native, AI Strategy Designer, social copying | Black box, no transparency |
-| **HaasOnline** | $20–100/month | HaasScript, institutional-grade, self-hostable | Expert-only, no retail UX |
-| **NexusTrade (Aurora)** | Subscription | LLM as strategy engineer, not trader — correct framing | Still binary execution, no EBC |
+**Backend API** (FastAPI, deployed on Render):
 
-### Signal Generators
+| Endpoint | Status |
+|----------|--------|
+| `POST /v1/pipeline/run` | ✅ Live — full pipeline execution |
+| `GET /v1/portfolio` | ✅ Live — real Alpaca account data |
+| `GET /v1/signals` | ✅ Live — recent signals from MongoDB |
+| `POST /v1/signals/{id}/approve` | ✅ Live — places Alpaca order, idempotent |
+| `POST /v1/signals/{id}/reject` | ❌ Stub — not persisted |
+| `GET /v1/trades` | ❌ Stub — mock data |
+| `POST /v1/trades/{id}/override` | ❌ Stub — Alpaca cancel not wired |
 
-- **Trade Ideas / Holly AI**: 70+ strategies, backtested nightly, zero reasoning transparency. $178–254/month. Black box.
-- **Composer**: Natural language → trading algorithm. AI is a translator, not a thinker. $32/month.
+**Frontend** (Next.js 16, deployed on Vercel):
+- `/` — Landing page with ticker tape, execution mode explainer
+- `/dashboard` — 4 tabs: Overview, Signals, Positions, Settings. Calls live backend. Signal approval wired. Theme toggle working.
+- `/admin` — Desktop sidebar. Manual pipeline trigger, system status.
 
-### Institutional (Out of Reach for Retail)
+**Databases**:
+- **MongoDB Atlas** — `reasoning_traces` collection active. Every pipeline run writes a full trace. Powers signals list. ✅
+- **Supabase (PostgreSQL)** — 5 tables deployed with RLS policies, `user_id` on every table (multi-tenancy ready). **Not yet used by the app** — state lives in Alpaca + MongoDB. ⚠️
 
-- **JPMorgan LOXM, D.E. Shaw**: Full explainability and audit trails. Inaccessible to retail.
+**UAT URLs**:
+- Backend: `https://atlas-broker-backend-uat.onrender.com`
+- Frontend: `https://atlas-broker-frontend-uat.vercel.app`
 
-### The Gap Atlas Fills
+### The five gaps
 
-No retail platform currently offers **configurable control over execution authority** combined with **full reasoning transparency**.
+Ordered by severity. Gaps 1–3 are blockers for any real usage.
 
-The market is split between:
-- "Here's a signal, you figure it out" (signal generators)
-- "Give us your money, trust the black box" (automated bots)
+| # | Gap | Severity | Fix |
+|---|-----|----------|-----|
+| 1 | **Auth not integrated** — anyone with the URL can view portfolio and approve trades | BLOCKER | Supabase Auth in frontend (login/signup, session, `useAuth`), JWT to backend, extract `user_id` for RLS |
+| 2 | **Override window not implemented** — Autonomous mode has no emergency brake | BLOCKER | Wire `POST /v1/trades/{id}/override` to `broker.cancel_order()`, write to Supabase `override_log` |
+| 3 | **Trade history not synced** — nothing writes to Supabase when trades execute | BLOCKER | On `approve_and_execute`, write to `supabase.trades` and update `supabase.positions` |
+| 4 | **Execution mode not persisted** — selection lost on refresh | UX issue | Write to `profiles.boundary_mode` in Supabase, read on mount |
+| 5 | **Signal rejection silent** — reject endpoint returns placeholder, doesn't persist | Minor | Log to MongoDB trace (`execution.rejected = true`) |
+
+For the **interim report**, gaps are fine — frame as "Phase 3–5 scope."  
+For **product launch**, gaps 1–3 must close first.
+
+### Readiness assessment
+
+| Dimension | Status | Detail |
+|-----------|--------|--------|
+| Interim report (12 Apr) | ✅ Strong | Core system works end-to-end. Needs evaluation framework, paper trading results, business impact framing. |
+| Real user usage | ❌ Not ready | Gaps 1–3 are dealbreakers: no auth = liability, no trade history = no audit trail, no override = no emergency brake. |
+| Product launch | ❌ Not ready | Needs auth, persistent trades, override, subscription/payments, onboarding, error hardening. |
+
+### What's ahead of schedule
+
+Broker integration (Phase 4, planned May) is already done in Phase 2. The pipeline runs end-to-end with Alpaca paper trading connected. Most capstone teams don't have this until weeks 10–13.
+
+---
+
+## 5. Competitive Positioning
+
+### The gap Atlas fills
+
+The retail AI trading market is split between:
+- **"Here's a signal, figure it out"** — Trade Ideas Holly ($178–254/mo), TrendSpider, Tickeron. Black box signals.
+- **"Give us your money, trust the black box"** — 3Commas, Cryptohopper, Pionex, WunderTrading. Zero transparency.
+- **"Describe what you want in English"** — Composer ($32/mo). AI translates strategy, doesn't reason about markets.
+- **"Give an LLM $2,000 to trade on vibes"** — OpenClaw ecosystem (250K+ stars). Execution wrappers with no intelligence.
+
+No retail platform offers **configurable execution authority + full reasoning transparency**.
 
 Atlas is the first retail AI trading assistant that:
 1. **Shows its thinking** — structured multi-agent reasoning traces at every step
-2. **Lets you control how much authority it has** — three configurable execution modes
-3. **Operates on US equities** — almost all OpenClaw/bot competitors are crypto-native
-4. **Targets swing trading** — days-to-weeks timeframe, underserved vs. HFT and day trading tools
+2. **Lets you control authority** — three configurable execution modes
+3. **Targets US equities** — nearly all bot competitors are crypto-native
+4. **Focuses on swing trading** — days-to-weeks, underserved vs HFT and day trading
+5. **Exposes a developer API** — OpenAPI docs, designed for AI agent integration
 
-### Industry Trends Supporting Atlas
+### Detailed competitive landscape
+
+| Platform | Model | Strength | Critical Weakness |
+|----------|-------|----------|-------------------|
+| **Trade Ideas / Holly AI** | $178–254/mo | 70+ strategies, backtested nightly | Total black box. No reasoning, no user control. |
+| **Composer** | $32/mo | Natural language → strategy, $200M+ daily volume | AI translates, doesn't reason. No execution boundary. |
+| **StockHero** | $29.99–99.99/mo | Alpaca-integrated, 100K+ users, marketplace | No multi-agent reasoning, no configurable authority. |
+| **3Commas** | $20–200/mo | Multi-exchange, DCA/Grid, SmartTrade | Rule-based only, no AI reasoning. |
+| **Cryptohopper** | $29–129/mo | Cloud-native, AI Strategy Designer | Black box, no transparency. |
+| **NexusTrade (Aurora)** | Subscription | LLM as strategy engineer (correct framing) | Still binary execution, no EBC. |
+| **OpenClaw skills** | Various | Massive ecosystem (250K+ stars) | Execution wrappers, no intelligence. Security risk (ClawHavoc). |
+| **Institutional (LOXM, D.E. Shaw)** | N/A | Full explainability, audit trails | Inaccessible to retail. |
+
+### Industry trends supporting Atlas
 
 - EU pushing Explainable AI (XAI) requirements for financial systems
-- Growing regulatory demands for auditable AI decision-making
-- The "black box problem" is explicitly cited as the #1 unsolved challenge in retail AI trading (see Skywork AI guide, March 2026)
-- Multi-agent "meshes" where Research → Risk → Execution agents hand off sequentially are identified as the future of trading AI — Atlas builds this today
-- 89% of global trading volume is AI-driven, but retail tools lag far behind institutional in transparency
-- Crypto trading bot market valued at $54B in 2026, projected to reach $200B by 2035 (14% CAGR)
-
-### What the "Smart Advice" Articles Actually Say (Researched March 2026)
-
-Four major articles were reviewed and critically analysed. Summary for Claude Code context:
-
-- **NexusTrade (Austin Starks)**: Directionally correct — LLMs should engineer strategies, not make discretionary trades. But it's founder content marketing. Aurora's 36.94% vs SPY 15.97% is a single cherry-picked backtest window, no out-of-sample validation shown.
-- **Skywork AI Guide**: Technically sound step-by-step framework (define → backtest → risk management → paper trade → live). AI-generated SEO content. Statistics cited without sources.
-- **West Africa Trade Hub bot comparison**: Affiliate review. Product specs are real (scraped from platforms). Performance claims are fabricated.
-- **AurPay OpenClaw guide**: Ironically the most empirically honest — Polymarket 92.4% loss rate is real on-chain data, CVEs are verifiable, security warnings are real. Agenda is to sell payment infrastructure, not to help traders.
-
-**The one legitimate, universal advice** across all sources: paper trade before live capital; backtest with fees and slippage included; never give API withdrawal permissions to any bot; LLMs are better at strategy engineering than discretionary decision-making.
-
----
-
-## 5. Technical Decisions
-
-### Market & Trading
-
-- **Target market**: US Equities (primary). Crypto as V2 expansion.
-- **Trading style**: Swing trading, multi-timeframe (days to weeks). Not day trading.
-- **Broker (dev/paper)**: Alpaca — clean REST API, free paper trading, good historical data, news API included
-- **Broker (production/real money)**: Interactive Brokers (IBKR) — deepest market access, lowest commissions, available in Singapore
-- **Broker abstraction**: `BrokerAdapter` protocol with swappable implementations. System never touches broker directly.
-
-### Architecture Principle: API-First, GUI-Second
-
-Every feature is an API endpoint first, then wrapped in a UI. The product has three consumption layers:
-1. **REST API** with OpenAPI 3.1 docs (auto-generated via FastAPI) — for developers and AI agents
-2. **Webhooks** for push notifications (trade signals, executions, risk alerts)
-3. **Next.js dashboard** as the reference frontend for retail users
-
-### Tech Stack
-
-| Layer | Technology | Rationale |
-|-------|-----------|-----------|
-| Frontend | Next.js + TypeScript | App router, deployed to Vercel |
-| Backend/API | FastAPI (Python, async) | Auto-generates OpenAPI docs, Pydantic models for type-safe contracts, async-native for concurrent broker/LLM calls |
-| Agent pipeline | Python + LangGraph | Agent orchestration, multi-agent coordination |
-| Relational DB | PostgreSQL via Supabase | Users, trades, positions, portfolios, subscriptions, override logs. Row Level Security for multi-tenancy. Real-time subscriptions. Auth (JWT). |
-| Document DB | MongoDB Atlas | Agent reasoning traces — deeply nested, variable-structure documents. Flexible schema for evolving agent outputs. |
-| LLM Providers | Multi-provider (Claude, GPT, Gemini) | Factory pattern, provider-agnostic. Quick-think models for data retrieval, deep-think for analysis. |
-| Market Data | Alpaca Data API (primary), Alpha Vantage / Finnhub (supplementary) | OHLCV, real-time quotes, news feeds, social sentiment |
-
-### Database Design Principles
-
-- Supabase schema has `user_id` column from day one (multi-tenancy ready)
-- MongoDB reasoning traces tagged with user context
-- Row Level Security enabled in Supabase for subscriber isolation
-- Migrations managed in shared `database/` folder (both frontend and backend depend on same schema)
+- Growing regulatory demands for auditable AI decision-making (Colorado AI Act 2026)
+- "Black box problem" cited as #1 unsolved challenge in retail AI trading
+- Multi-agent pipelines (Research → Risk → Execution) identified as future of trading AI
+- 89% of global trading volume is AI-driven; retail tools lag institutional in transparency
+- IOSCO 2025 report: 69% of financial firms believe AI deployment will introduce new compliance issues within 12 months
 
 ---
 
 ## 6. Agent Pipeline Architecture
 
-Inspired by **TradingAgents** (Tauric Research, arxiv 2412.20138) but with Atlas's unique Execution Boundary Controller that no existing framework provides.
+Inspired by **TradingAgents** (arxiv 2412.20138) with Atlas's unique EBC. Memory design from **FinMem** (arxiv 2311.13743).
 
-### Pipeline Flow:
+### Current Pipeline (v2 — Sequential LangGraph)
 
 ```
-Market Data (OHLCV + News + Sentiment feeds via Alpaca API)
+Market Data (yfinance: OHLCV, fundamentals, news)
     ↓
-Analysis Team (runs concurrently via LangGraph parallel nodes)
-  ├── Technical Analyst Agent    — RSI, MACD, moving averages, support/resistance
-  ├── Fundamental Analyst Agent  — P/E, revenue trends, earnings surprises
-  └── Sentiment Analyst Agent    — News headlines, LLM sentiment scoring
+Analysis Team [parallel via LangGraph fan-out]
+  ├── Technical Analyst — RSI, SMA, price action, volume
+  ├── Fundamental Analyst — P/E, EPS growth, debt/equity, analyst targets
+  └── Sentiment Analyst — news headlines, LLM sentiment scoring
+    ↓ fan-in
+Synthesis Agent — bull/bear debate, unified trade thesis, confidence weighting
     ↓
-    Each agent outputs: { ticker, direction, confidence, rationale }
+Risk Management Agent — 2% portfolio risk, stop-loss, take-profit (2:1 R/R)
     ↓
-Synthesis Agent — bull/bear debate pattern, aggregates 3 analyst outputs,
-                  produces unified trade thesis with confidence weighting
+Portfolio Decision Agent — final BUY/SELL/HOLD + confidence score
     ↓
-Risk Management Agent — position sizing, max drawdown guard,
-                        portfolio concentration check, stop-loss levels
+Execution Boundary Controller — routes by mode (Advisory/Conditional/Autonomous)
     ↓
-Portfolio Decision Agent — final BUY/SELL/HOLD with full structured reasoning trace
-    ↓
-Execution Boundary Controller (EBC) — routes based on configured mode:
-  ├── Advisory:    surface recommendation + reasoning, no execution
-  ├── Conditional: execute only if confidence ≥ threshold AND no override flag
-  └── Autonomous:  execute directly, log everything, override window open
-    ↓
-Broker Adapter — Alpaca (paper/dev) | IBKR (production)
+Broker Adapter — Alpaca (paper) | IBKR (production, future)
 ```
 
-### Reasoning Trace Structure (MongoDB document per decision):
+Each agent outputs structured JSON. Every pipeline run writes a full reasoning trace to MongoDB.
+
+### Planned: v3 — Adaptive Conductor (Post-Interim)
+
+Professor suggested a dynamic conductor/meta-agent that decides which pipeline steps to skip, repeat, or emphasise based on market conditions and confidence levels.
+
+Plan: abstract into `agents/graphs/sequential.py` (v2) and `agents/graphs/adaptive.py` (v3), with `conductor.py` as meta-agent. `orchestrator.py` becomes a factory. Build v2 fully first.
+
+### Planned: Philosophy Skills (AlphaClaw-Inspired)
+
+Inspired by 熵简科技 (Entropy Simplified Technology) AlphaClaw methodology. Three enhancements:
+
+**1. Named Investment Philosophies for Analysts**
+
+Instead of generic "technical/fundamental/sentiment" agents, each analyst embodies a named investment framework:
+- Value Analyst (Buffett-style: intrinsic value, margin of safety, moat)
+- Momentum Analyst (trend-following: RSI breakouts, volume surges, relative strength)
+- Macro Analyst (top-down: sector rotation, interest rates, geopolitical risk)
+
+The synthesis agent reconciles *philosophical disagreement* — a value analyst might say SELL (overvalued P/E) while momentum says BUY (strong uptrend). The debate becomes richer and reasoning traces more transparent.
+
+**2. SEC EDGAR Integration**
+
+Fundamental analyst reasons over actual 10-Q/10-K filing text via the free public EDGAR API, not just yfinance summary numbers. Gives agents real source documents to cite in reasoning traces — critical for the transparency claim.
+
+**3. Skill Persistence (Strategy Configurations)**
+
+Users save named strategy configurations in Supabase with custom risk weights:
+- "Conservative Growth" = 60% fundamental, 20% technical, 20% sentiment
+- "Momentum Swing" = 20% fundamental, 50% technical, 30% sentiment
+
+Adds a **third experimental axis** for academic research:
+- Axis 1: EBC modes (Advisory / Conditional / Autonomous)
+- Axis 2: Orchestration version (v2 sequential / v3 adaptive conductor)
+- Axis 3: Philosophy Skills (strategy configurations with different analyst weightings)
+
+---
+
+## 7. Reasoning Trace Structure
+
+MongoDB document per pipeline run:
 
 ```json
 {
   "trace_id": "uuid",
   "user_id": "uuid",
   "ticker": "AAPL",
-  "timestamp": "ISO8601",
-  "mode": "advisory|conditional|autonomous",
-  "analyst_outputs": {
-    "technical": { "direction": "BUY", "confidence": 0.72, "rationale": "..." },
-    "fundamental": { "direction": "HOLD", "confidence": 0.55, "rationale": "..." },
-    "sentiment": { "direction": "BUY", "confidence": 0.68, "rationale": "..." }
-  },
-  "synthesis": {
-    "bull_case": "...",
-    "bear_case": "...",
-    "final_thesis": "...",
-    "aggregate_confidence": 0.65
-  },
-  "risk_assessment": {
-    "position_size": 0.05,
-    "stop_loss": 0.03,
-    "risk_flags": []
-  },
-  "decision": {
-    "action": "BUY",
-    "rationale": "...",
-    "confidence": 0.65
+  "boundary_mode": "conditional",
+  "created_at": "ISO8601",
+  "pipeline_run": {
+    "analysts": {
+      "technical": {
+        "signal": "BUY",
+        "confidence": 0.72,
+        "indicators": { "rsi": 45.2, "sma_20": 182.5, "sma_50": 178.3 },
+        "reasoning": "...",
+        "model": "gemini-2.5-flash",
+        "latency_ms": 1200
+      },
+      "fundamental": { "..." },
+      "sentiment": { "..." }
+    },
+    "synthesis": {
+      "bull_case": "...",
+      "bear_case": "...",
+      "verdict": "BUY",
+      "confidence": 0.65
+    },
+    "risk": {
+      "stop_loss": 175.00,
+      "take_profit": 195.00,
+      "position_size_pct": 0.05,
+      "risk_reward_ratio": 2.0
+    },
+    "final_decision": {
+      "action": "BUY",
+      "confidence": 0.65,
+      "reasoning": "..."
+    }
   },
   "execution": {
     "executed": true,
@@ -225,226 +288,223 @@ Broker Adapter — Alpaca (paper/dev) | IBKR (production)
 }
 ```
 
-### Memory Architecture (inspired by FinMem, arxiv 2311.13743):
+---
 
-Layered memory system stored in MongoDB Atlas:
-- **Short-term memory**: Intraday signals, recent price movements, current positions
-- **Medium-term memory**: Weekly patterns, sector rotation, recent trade outcomes
-- **Long-term memory**: Market regime knowledge, historical strategy performance, learned preferences
+## 8. Technical Architecture
 
-### LLM Strategy:
+### Principle: API-First, GUI-Second
 
-- **Quick-think models** (Claude Haiku, Gemini Flash Lite): Data retrieval, initial scanning, simple classification — analyst agents
-- **Deep-think models** (Claude Sonnet/Opus, Gemini Flash/Pro): Complex analysis, debate synthesis, final trade decisions — synthesis and risk agents
-- Provider-agnostic via factory pattern — never locked to one vendor
+Every feature is an API endpoint first, then wrapped in UI. Three consumption layers:
+1. **REST API** with OpenAPI 3.1 docs (auto-generated at `/docs`)
+2. **Webhooks** for push notifications (future: signals, executions, risk alerts)
+3. **Next.js dashboard** as reference frontend for retail users
+
+### Tech Stack
+
+| Layer | Technology | Status |
+|-------|-----------|--------|
+| Frontend | Next.js 16, TypeScript, Tailwind v4 | ✅ Deployed (Vercel) |
+| Backend | FastAPI, Python 3.11+, uv, Docker | ✅ Deployed (Render) |
+| Agents | LangGraph StateGraph, Gemini 2.5 Flash | ✅ Live |
+| Relational DB | PostgreSQL via Supabase (RLS) | ⚠️ Schema deployed, not used by app |
+| Document DB | MongoDB Atlas | ✅ Active |
+| Broker (dev) | Alpaca paper trading | ✅ Connected |
+| Broker (prod) | IBKR | ❌ Not started |
+
+### LLM Strategy
+
+- **Quick-think** (Gemini 2.5 Flash): All analyst agents, synthesis
+- **Deep-think** (Gemini 2.5 Flash — upgrade to Pro for synthesis/portfolio)
+- Factory pattern in `agents/llm/factory.py` — never call Gemini directly
+- Provider-agnostic: swap to Claude, GPT, or local models via env vars
+
+### Broker Abstraction
+
+`backend/broker/base.py` defines `BrokerAdapter` protocol. `AlpacaAdapter` is live. `IBKRAdapter` is future. System never touches broker APIs outside this module.
+
+### Database Architecture
+
+**Supabase (PostgreSQL)** — Structured, RLS-enforced, `user_id` on every table:
+
+| Table | Purpose | Used? |
+|-------|---------|-------|
+| `profiles` | User prefs, `boundary_mode` | ❌ |
+| `portfolios` | Cash balance tracking | ❌ |
+| `positions` | Open positions | ❌ |
+| `trades` | Trade history, execution status | ❌ |
+| `override_log` | Autonomous mode audit trail | ❌ |
+
+**MongoDB Atlas**:
+
+| Collection | Purpose | Used? |
+|------------|---------|-------|
+| `reasoning_traces` | Full pipeline run per ticker | ✅ Active |
+
+### Memory Architecture (FinMem-inspired, not yet implemented)
+
+Layered memory in MongoDB:
+- **Short-term**: Intraday signals, recent price movements, current positions
+- **Medium-term**: Weekly patterns, sector rotation, recent trade outcomes
+- **Long-term**: Market regime knowledge, historical strategy performance
 
 ---
 
-## 7. Repository Structure
+## 9. Repository Structure
 
-Monorepo partitioned by deployment target:
+Monorepo at `github.com/Atlas-Broker/main`:
 
 ```
-atlas/                          # Atlas-Broker/atlas
-├── frontend/                   # → Deploys to Vercel
-│   ├── app/                    # Next.js app router
-│   ├── components/
-│   ├── lib/
-│   ├── public/
-│   ├── package.json
-│   ├── next.config.ts
-│   └── tsconfig.json
-│
-├── backend/                    # → Deploys to Render (or Railway, Fly.io)
-│   ├── api/
-│   │   ├── routes/             # /v1/signals, /v1/trades, /v1/portfolio
-│   │   ├── middleware/         # Auth, rate limit, CORS
-│   │   └── dependencies/
-│   ├── services/               # Business logic the API calls
-│   ├── broker/
-│   │   ├── base.py             # BrokerAdapter protocol
-│   │   ├── alpaca.py
-│   │   ├── ibkr.py
-│   │   └── factory.py
-│   ├── boundary/               # Execution Boundary Controller
-│   │   ├── controller.py
-│   │   └── modes.py
-│   ├── main.py                 # FastAPI entrypoint
-│   ├── pyproject.toml
-│   └── Dockerfile
-│
-├── agents/                     # → Separate worker / imported by backend
-│   ├── analysts/
-│   │   ├── technical.py        # RSI, MACD, moving averages, support/resistance
-│   │   ├── fundamental.py      # P/E, revenue, earnings (Financial Modeling Prep / Alpha Vantage)
-│   │   └── sentiment.py        # News via Alpaca News API, LLM sentiment scoring
-│   ├── synthesis/              # Bull/bear debate, aggregation
-│   ├── risk/                   # Risk management agent
-│   ├── portfolio/              # Portfolio decision agent
-│   ├── memory/                 # Layered memory (FinMem-inspired)
-│   │   ├── short_term.py
-│   │   ├── medium_term.py
-│   │   └── long_term.py
-│   ├── llm/                    # LLM provider abstraction
-│   │   ├── base.py
-│   │   ├── anthropic.py
-│   │   ├── openai.py
-│   │   ├── gemini.py
-│   │   └── factory.py
-│   ├── orchestrator.py         # LangGraph pipeline coordinator
-│   └── pyproject.toml
-│
-├── database/                   # Shared across frontend & backend
-│   ├── supabase/
-│   │   ├── migrations/
-│   │   ├── schema.sql
-│   │   └── seed.sql
-│   └── mongo/
-│       ├── schemas/            # JSON schemas for trace documents
-│       └── indexes.js
-│
-├── docs/                       # Architecture, API docs, guides
-│   └── ATLAS_CONTEXT.md        # THIS FILE — source of truth
-├── scripts/                    # Dev tooling, setup
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   └── backtest/
-├── .env.example
+atlas/
+├── frontend/              → Vercel
+│   ├── app/               Next.js 16 app router
+│   ├── components/        ThemeProvider, dashboard tabs
+│   └── lib/
+├── backend/               → Render (Docker)
+│   ├── api/routes/        /v1/* endpoints
+│   ├── broker/            BrokerAdapter protocol + AlpacaAdapter
+│   ├── boundary/          EBC (controller.py, modes.py)
+│   ├── services/          Pipeline + signals business logic
+│   └── main.py            FastAPI entrypoint
+├── agents/                → Imported by backend as local package
+│   ├── analysts/          Technical, Fundamental, Sentiment
+│   ├── synthesis/         Bull/bear debate
+│   ├── risk/              Deterministic risk rules
+│   ├── portfolio/         Final decision agent
+│   ├── memory/            Layered memory (short/medium/long)
+│   ├── llm/               Factory pattern (Gemini, extensible)
+│   ├── data/market.py     yfinance wrapper
+│   ├── state.py           AgentState TypedDict
+│   ├── graph.py           StateGraph definition
+│   └── orchestrator.py    Entry points
+├── database/              Shared schemas
+│   ├── supabase/          SQL migrations + schema
+│   └── mongo/             JSON schemas for traces
+├── docs/                  This file, architecture docs
+├── CLAUDE.md              Claude Code context
 └── README.md
 ```
 
-### Why this structure:
+---
 
-- **`frontend/`** and **`backend/`** are separate deployment targets with separate dependency trees
-- **`agents/`** is separate from backend because agents make slow LLM calls (5–30s each) vs API handling fast HTTP requests. In production, agents run as background workers. For capstone, backend imports agents as a local Python package.
-- **`broker/`** and **`boundary/`** stay inside backend because they're part of the synchronous execution path
-- **`database/`** is top-level because both frontend (Supabase JS client) and backend write to the databases
+## 10. Capstone Timeline
+
+| Phase | Period | Status |
+|-------|--------|--------|
+| Phase 1: System Design | 2–15 Mar | ✅ DONE |
+| Phase 2: Core Agent Dev | 16 Mar – 12 Apr | 🔄 CURRENT |
+| Phase 3: Backtesting & Strategy Refinement | 13 Apr – 3 May | Not started |
+| Phase 4: Broker Paper Trading | 4–31 May | ✅ Done early (Alpaca in Phase 2) |
+| Phase 5: UAT | 1–21 Jun | Not started |
+| Phase 6: Refinement | 22 Jun – 5 Jul | Not started |
+| Phase 7: Final Evaluation & Reporting | 6–19 Jul | Not started |
 
 ---
 
-## 8. Capstone Timeline & Deliverables
+## 11. Interim Report Strategy (Due 12 April)
 
-| Phase | Weeks | Period | Key Activities | Deliverables |
-|-------|-------|--------|---------------|-------------|
-| Phase 1: System Design | 1–2 | 2 Mar – 15 Mar | Architecture, agent specs, DB schemas, evaluation framework | Architecture diagram, technical design docs, evaluation framework |
-| Phase 2: Core Agent Dev | 3–6 | 16 Mar – 12 Apr | Implement agents, historical data integration, reasoning traces, basic dashboard, initial backtesting | Functional multi-agent system, initial backtest results, **INTERIM REPORT (12 April)** |
-| Phase 3: Backtesting | 7–9 | 13 Apr – 3 May | Signal logic improvements, position sizing, stop-loss, performance analytics | Performance evaluation module, equity curves, baseline comparison |
-| Phase 4: Broker Integration | 10–13 | 4 May – 31 May | Alpaca paper trading, EBC, approval/override interface | Fully integrated pipeline, execution logging |
-| Phase 5: UAT | 14–16 | 1 Jun – 21 Jun | Structured testing across boundary modes, quantitative metrics, qualitative feedback | UAT report, behavioral analysis |
-| Phase 6: Refinement | 17–18 | 22 Jun – 5 Jul | Bug fixes, performance optimization, reasoning clarity | Stable V1 system |
-| Phase 7: Final Evaluation | 19–20 | 6 Jul – 19 Jul | Final benchmarking, analysis, write final report | **FINAL REPORT (19 July)**, demo-ready system |
+### The narrative
 
-### Phase 1 Status (as of 13 March 2026):
+"We built a working multi-agent AI trading system that uniquely lets users configure execution authority. Here's the system, here's the evaluation framework for testing that different authority levels produce different performance and trust outcomes, and here's early evidence from paper trading."
 
-- Architecture diagram: ✅ DONE (HTML visual created)
-- Technical design documentation: 🔄 IN PROGRESS
-- Evaluation framework: ❌ NOT STARTED
+### Sections to write
 
----
+1. **Introduction & Problem Statement**: Retail AI tools are signal-only or fully autonomous black boxes. No configurable authority with reasoning transparency. Frame via SG retail market (moomoo, Tiger, Syfe) + MAS AI governance.
+2. **Literature Review**: TradingAgents (multi-agent), FinMem (layered memory), AI-Trader (benchmarking), AlphaClaw (philosophy skills), competitive analysis.
+3. **System Design**: Architecture diagram, agent pipeline, EBC design, database schema, broker abstraction. Strongest section — system is built.
+4. **Implementation Progress**: Screenshots. Pipeline run, reasoning trace, signal approval, Alpaca order. Per-node latency data.
+5. **Evaluation Framework**: Quantitative + qualitative metrics. Composite "optimal boundary" score. UAT protocol design.
+6. **Early Results**: 5–10 paper trading runs across tickers and all three modes. Show reasoning traces.
+7. **Remaining Work**: Gaps as "Phase 3–5 scope." Backtesting, UAT, final evaluation.
 
-## 9. Phase 2 Build Plan (16 Mar – 12 Apr 2026)
+### What NOT to do
 
-**Goal by 12 April**: A working agent pipeline that can ingest market data, reason through a trade, and execute it in paper trading — with all 3 EBC modes demonstrably functional.
-
-### Week 3 — Mar 16–22: Data Pipeline + Agent Scaffolding
-
-**Priority: Feed the brain before building it.**
-
-- Set up market data ingestion via Alpaca Data API (OHLCV, price, volume)
-- MongoDB: define memory schemas (short-term trade context, long-term asset memory)
-- Scaffold all 5 agent nodes in LangGraph: `TechnicalAnalyst`, `FundamentalAnalyst`, `SentimentAnalyst`, `Synthesis`, `RiskAgent` — even as stubs
-- LLM factory pattern wired up: quick-think models for analysts, deep-think for synthesis and risk
-- **End state**: Data flows in. Agents exist. Graph runs end-to-end. Nothing smart yet.
-
-### Week 4 — Mar 23–29: Analyst Agents (The Signal Layer)
-
-**Priority: Make each analyst genuinely useful.**
-
-- `TechnicalAnalyst`: RSI, MACD, moving averages, support/resistance levels
-- `FundamentalAnalyst`: P/E, revenue trends, earnings surprises (Financial Modeling Prep or Alpha Vantage)
-- `SentimentAnalyst`: News via Alpaca News API, basic LLM sentiment scoring
-- Each agent outputs structured signal: `{ ticker, direction, confidence, rationale }`
-- Reasoning trace logging baked in from day one — academic requirement AND product differentiator
-- **End state**: Three analysts running in parallel, producing traceable signals.
-
-### Week 5 — Mar 30–Apr 5: Synthesis → Risk → EBC → Broker
-
-**Priority: Full pipeline fires.**
-
-- `Synthesis`: Bull/bear debate — takes 3 analyst outputs, produces structured thesis with confidence weighting
-- `RiskAgent`: Position sizing, max drawdown guard, portfolio concentration check
-- `PortfolioDecision`: Final trade recommendation with rationale
-- **EBC**: The product's crown jewel
-  - `Advisory`: surfaces recommendation + reasoning, no execution
-  - `Conditional`: executes only if confidence ≥ threshold AND no override flag
-  - `Autonomous`: executes directly, logs everything
-- Alpaca paper trading integration: `place_order()`, `get_portfolio()`, `get_positions()`
-- **End state**: Full pipeline fires. A trade gets recommended, gated, and placed (on paper). EBC modes switchable.
-
-### Week 6 — Apr 6–12: Integration + Interim Report
-
-**Priority: Stabilise + articulate.**
-
-- Wire up Next.js dashboard: live trade feed, reasoning trace view, mode switcher
-- Run a 3–5 day paper trading session to have real data for the report
-- Interim report framing: evaluation framework, what's being measured, why it matters, early results
-- Academic angle for Prof Xu: configurable human-agent boundary as novel contribution with real-world risk management implications; MAS regulatory context; Singapore retail investor transparency gap
-- **End state**: Demo-ready system with real paper trades and logged reasoning traces.
-
-### Phase 2 Risk Register
-
-| Risk | Mitigation |
-|------|-----------|
-| Time: 40h/week Prudential + building Atlas | EBC cannot slip — it is both the academic novelty and product moat. Build it Week 5 no matter what. |
-| Scope creep | No crypto, no multi-asset, no UI polish until Phase 5+. Depth over breadth. |
-| Free API rate limits | Alpaca Data API first. Alpha Vantage / FMP as fallback. Cache everything in MongoDB early. |
-| LLM latency | Parallel analyst execution via LangGraph. Async throughout. Deep-think models only for synthesis/risk. |
+- Don't apologise for gaps — they're on the timeline
+- Don't oversell returns — show the system works, not that it makes money
+- Don't bury the EBC — it's the academic contribution, lead with it
 
 ---
 
-## 10. Evaluation Framework
+## 12. Evaluation Framework
 
-### Quantitative Metrics (across all three boundary modes):
+### Quantitative Metrics (across all three modes)
 
-- Return on capital
-- Sharpe ratio
-- Maximum drawdown
-- Trade execution latency
-- Override frequency (Conditional and Autonomous modes)
-- Reasoning trace completeness score
+| Metric | Measures | Data Source |
+|--------|----------|-------------|
+| Cumulative return | Raw performance | Alpaca + Supabase trades |
+| Sharpe ratio | Risk-adjusted return | Daily returns calculation |
+| Maximum drawdown | Worst peak-to-trough | Equity curve from trade history |
+| Trade execution latency | Signal-to-order time | MongoDB trace timestamps |
+| Override frequency | Human intervention rate | Supabase override_log |
+| Signal-to-execution rate | % signals becoming trades | MongoDB vs Alpaca orders |
 
-### Qualitative Metrics (UAT):
+### Qualitative Metrics (UAT, Phase 5)
 
-- User confidence level in AI recommendations
-- Decision regret after trades
-- Perceived clarity of AI reasoning
-- Trust calibration across modes
+| Metric | Measures | Method |
+|--------|----------|--------|
+| User confidence | Trust in AI recommendations | Post-trade Likert survey |
+| Decision regret | Hindsight satisfaction | Follow-up after trade outcome |
+| Reasoning clarity | Perceived transparency | Rating of trace quality |
+| Mode preference | Where users gravitate | Usage analytics + exit survey |
 
-### Key Academic Question:
+### Composite "Optimal Boundary" Score
 
-"What is the optimal human-agent execution boundary for retail AI-assisted trading?"
+Academic question: **"What is the optimal human-agent execution boundary for retail AI-assisted trading?"**
 
-"Optimal" must be defined as a composite scoring framework — not just max Sharpe or min regret, but a weighted combination. This shapes UAT survey design and metric instrumentation.
+"Optimal" = weighted combination of:
+- Performance (Sharpe ratio, normalised)
+- Risk control (max drawdown, inverse normalised)
+- User trust (qualitative score, normalised)
+- Execution efficiency (latency + signal-to-execution rate)
 
-### Prof Xu's Feedback to Address:
+### Three Experimental Axes
 
-Frame the problem around concrete business/finance domain impact. Recommended angle: the rise of retail trading platforms (moomoo, Tiger Brokers, Syfe Trade) in Singapore and the transparency gap in AI-powered tools available to retail investors. Reference MAS AI governance principles and SGX investor protection framework.
+| Axis | Variable | Levels |
+|------|----------|--------|
+| EBC Mode | Execution authority | Advisory, Conditional, Autonomous |
+| Orchestration | Pipeline intelligence | v2 sequential, v3 adaptive conductor |
+| Philosophy Skills | Analyst frameworks | Value/Momentum/Macro weightings |
 
 ---
 
-## 11. Key Academic References
+## 13. Product Roadmap
 
-| Paper | Relevance to Atlas |
-|-------|-------------------|
-| **TradingAgents** (arxiv 2412.20138, Tauric Research) | Multi-agent architecture with specialised roles. Atlas borrows the analyst-researcher-trader pipeline but adds the EBC. |
-| **FinMem** (arxiv 2311.13743) | Layered memory architecture (short/medium/long-term). Atlas implements this for swing trading across multiple timeframes. |
-| **AI-Trader** (HKUDS, arxiv 2512.10971) | Benchmark framework comparing LLM trading performance. Template for Atlas's cross-mode evaluation. |
-| **TradeTrap** (GitHub: Yanlewen/TradeTrap) | Security considerations for AI trading systems. Important for risk discussion in reports. |
-| **TwinMarket** (FreedomIntelligence) | Market simulation framework. Potential for synthetic stress-testing scenarios. |
-| Multimodal Foundation (arxiv 2402.18485) | Future enhancement — visual chart reading by multimodal LLMs. |
+### Phase A: Close the 5 gaps (April–May 2026)
 
-### Open Source References:
+| Gap | Priority | Effort |
+|-----|----------|--------|
+| Auth integration | P0 | 1 week |
+| Trade history sync to Supabase | P0 | 3 days |
+| Override window | P0 | 3 days |
+| Mode persistence | P1 | 1 day |
+| Signal rejection logging | P2 | 1 day |
+
+### Phase B: Product hardening (June 2026)
+
+Error handling, rate limiting, loading/error states, mobile-responsive, onboarding flow.
+
+### Phase C: Go to market (July–August 2026)
+
+Stripe subscriptions (Free/Pro/Premium), landing page + demo video, developer API docs portal, IBKR adapter for real money.
+
+### Phase D: Expansion (post-graduation)
+
+V2: Crypto (Binance/Bybit). V3: NLP strategy creation. V4: Multi-broker. V5: Social features (share traces, copy signals).
+
+---
+
+## 14. Key Academic References
+
+| Paper | Relevance |
+|-------|-----------|
+| **TradingAgents** (arxiv 2412.20138, Tauric Research) | Multi-agent pipeline. Atlas borrows analyst-researcher-trader structure, adds EBC. |
+| **FinMem** (arxiv 2311.13743) | Layered memory (short/medium/long-term) for trading agents. |
+| **AI-Trader** (HKUDS, arxiv 2512.10971) | Benchmark comparing LLM trading performance. Template for cross-mode evaluation. |
+| **AlphaClaw** (熵简科技) | Philosophy Skills — named investment frameworks for analyst agents. |
+| **TradeTrap** (Yanlewen/TradeTrap) | Security in AI trading. Risk/ethics discussion. |
+| **TwinMarket** (FreedomIntelligence) | Market simulation for stress testing. |
+| Multimodal Foundation (arxiv 2402.18485) | Future: visual chart reading by multimodal LLMs. |
+
+### Open Source References
 
 - https://github.com/TauricResearch/TradingAgents
 - https://github.com/HKUDS/AI-Trader
@@ -455,73 +515,45 @@ Frame the problem around concrete business/finance domain impact. Recommended an
 
 ---
 
-## 12. Product Vision (Post-Capstone)
-
-### Positioning Statement
-
-Atlas is not "an AI trading bot." Atlas is **a configurable AI trading system with full reasoning transparency.** That framing matters — it puts Atlas in a category of one, not in a race against 10,000 bots.
-
-### Subscription Model
-
-| Tier | Mode | Price Point | Hook |
-|------|------|-------------|------|
-| **Free** | Advisory only | $0 | Signals + full reasoning traces. Viral growth mechanism. |
-| **Pro** | Conditional | ~$30–50/month | AI proposes, you approve. Training wheels with intelligence. |
-| **Premium** | Autonomous | ~$80–120/month | AI executes, you override. Full trust, full transparency. |
-
-### API for Developers
-
-- Full REST API with OpenAPI 3.1 documentation
-- Webhook support for real-time event delivery
-- Designed for AI agents to discover and integrate via API docs
-
-### Expansion Roadmap
-
-- **V1**: US Equities via Alpaca (paper) → IBKR (real money, Singapore users)
-- **V2**: Crypto markets (Binance/Bybit adapter)
-- **V3**: Natural language strategy creation (Composer-style NLP layer on top of existing pipeline)
-- **V4**: Multi-broker support — subscribers bring their own broker
-
----
-
-## 13. Scope Boundaries
-
-### In Scope (Capstone):
-
-- Multi-agent trading decision pipeline (5 agents via LangGraph)
-- Configurable Execution Boundary Controller (Advisory / Conditional / Autonomous)
-- Historical backtesting engine
-- Paper trading integration with Alpaca
-- Reasoning trace logging and auditability layer (MongoDB)
-- Structured User Acceptance Testing (UAT)
-- Comparative evaluation across boundary modes
-- Next.js dashboard (live trade feed, reasoning trace view, mode switcher)
-
-### Out of Scope (Capstone, but designed for in architecture):
-
-- Multi-broker benchmarking
-- Public SaaS deployment
-- Payment or subscription systems
-- Multi-user infrastructure (but `user_id` exists from day one)
-- Real capital deployment
-- Crypto markets
-- UI polish beyond functional demonstration
-
----
-
-## 14. Key Decisions Log
+## 15. Decisions Log
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| Mar 2026 | Alpaca as primary data + paper trading broker | Free tier, clean API, news data included, resets anytime |
-| Mar 2026 | MongoDB for reasoning traces, Supabase for structured data | Traces are deeply nested + variable structure; relational data needs ACID guarantees |
-| Mar 2026 | LangGraph for agent orchestration | Native support for parallel node execution (analyst team runs concurrently) |
-| Mar 2026 | EBC as Week 5 Phase 2 priority — cannot slip | Academic novelty + product moat in one. Everything else can be simplified if time is short. |
-| Mar 2026 | "Product Atlas" not "Project Atlas" | A project ends. A product compounds. All decisions reflect commercial intent from day one. |
-| Mar 2026 | US Equities only for V1, not crypto | Entire OpenClaw/bot ecosystem is crypto-native. US equities + swing trading = uncontested lane. |
+| Mar 2026 | "Product Atlas" not "Project Atlas" | A project ends. A product compounds. |
+| Mar 2026 | Alpaca as primary broker (paper) | Free tier, clean API, news data, resets anytime |
+| Mar 2026 | IBKR for production | Deepest market access, lowest commissions, available in Singapore |
+| Mar 2026 | MongoDB for traces, Supabase for structured data | Traces are nested/variable; relational data needs ACID + RLS |
+| Mar 2026 | LangGraph for orchestration | Native parallel execution for analyst team |
+| Mar 2026 | Gemini 2.5 Flash as initial LLM | Cost-effective, fast, structured JSON output |
+| Mar 2026 | US Equities only for V1 | Bot ecosystem is crypto-native; US equities + swing trading = uncontested |
+| Mar 2026 | API-first architecture | Dashboard is one client; developer API and AI agents are others |
+| Mar 2026 | EBC cannot slip | Academic novelty + product moat in one component |
+| Mar 2026 | Philosophy Skills as third experimental axis | Inspired by AlphaClaw (熵简科技); adds depth to evaluation |
 
 ---
 
-*Last updated: 13 March 2026*
-*Maintained by: Lin Zhenming (Edmund)*
-*Next update: After Phase 2 Week 3 completion (22 March 2026)*
+## 16. Scope Boundaries
+
+### In Scope (Capstone)
+
+| Item | Status |
+|------|--------|
+| Multi-agent pipeline (5 agents via LangGraph) | ✅ Done |
+| Configurable Execution Boundary Controller | ✅ Done |
+| Paper trading with Alpaca | ✅ Done |
+| Reasoning trace logging (MongoDB) | ✅ Done |
+| Next.js dashboard | ✅ Done (functional, no auth) |
+| Historical backtesting engine | ❌ Not started |
+| Structured UAT | ❌ Not started |
+| Comparative evaluation across modes | ❌ Not started |
+| Interim report | ❌ Not started (due 12 April) |
+
+### Out of Scope (Capstone, but designed for)
+
+Multi-broker benchmarking, public SaaS/payments, multi-user infrastructure (but `user_id` exists), real capital, crypto, UI polish beyond functional.
+
+---
+
+*Last updated: 16 March 2026*  
+*Maintained by: Lin Zhenming (Edmund)*  
+*Next update: After interim report submission (12 April 2026)*
