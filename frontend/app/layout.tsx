@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Syne, JetBrains_Mono, Nunito_Sans } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { ClerkProvider } from "@clerk/nextjs";
 
 const syne = Syne({
   subsets: ["latin"],
@@ -33,13 +34,15 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html
-      lang="en"
-      className={`${syne.variable} ${jetBrainsMono.variable} ${nunitoSans.variable}`}
-    >
-      <body className="antialiased">
-        <ThemeProvider>{children}</ThemeProvider>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html
+        lang="en"
+        className={`${syne.variable} ${jetBrainsMono.variable} ${nunitoSans.variable}`}
+      >
+        <body className="antialiased">
+          <ThemeProvider>{children}</ThemeProvider>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }
