@@ -44,7 +44,7 @@ def get_profile(user_id: str) -> dict:
         sb.table("profiles")
         .select("*")
         .eq("id", user_id)
-        .single()
+        .maybe_single()
         .execute()
     )
     if result.data:
