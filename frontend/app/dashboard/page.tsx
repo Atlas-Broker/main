@@ -397,7 +397,7 @@ function PositionsTab({ portfolio }: { portfolio: Portfolio | null }) {
 
 // ─── Tab: Settings ────────────────────────────────────────────────────────────
 
-function SettingsTab() {
+export function SettingsTab() {
   const { dark, toggle } = useTheme();
   const [mode, setMode] = useState<"advisory" | "conditional" | "autonomous">("conditional");
 
@@ -406,6 +406,32 @@ function SettingsTab() {
     { id: "conditional", label: "Conditional", color: "var(--hold)", desc: "Approve each trade." },
     { id: "autonomous",  label: "Autonomous",  color: "var(--bull)", desc: "AI executes. Override window." },
   ] as const;
+
+  useEffect(() => {
+    fetchWithAuth(`${API_URL}/v1/profile`)
+      .then((res) => res?.json())
+      .then((data) => {
+        if (data?.boundary_mode) {
+          setMode(data.boundary_mode);
+        }
+      })
+      .catch(() => {
+        // keep default "conditional" on error
+      });
+  }, []);
+
+  async function handleModeChange(newMode: "advisory" | "conditional" | "autonomous") {
+    setMode(newMode);
+    try {
+      await fetchWithAuth(`${API_URL}/v1/profile`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ boundary_mode: newMode }),
+      });
+    } catch {
+      // non-fatal — local state already updated
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4 pb-6">
@@ -459,7 +485,8 @@ function SettingsTab() {
         {modes.map((m) => (
           <button
             key={m.id}
-            onClick={() => setMode(m.id)}
+            onClick={() => handleModeChange(m.id)}
+            data-selected={mode === m.id ? "true" : "false"}
             className="text-left w-full mb-2"
             style={{
               background: mode === m.id ? "var(--elevated)" : "var(--surface)",
