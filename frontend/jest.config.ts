@@ -9,6 +9,7 @@ const config: Config = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/$1",
     "^@clerk/nextjs/server$": "<rootDir>/__mocks__/@clerk/nextjs/server.ts",
+    "^@clerk/themes$": "<rootDir>/__mocks__/@clerk/themes.ts",
   },
   testMatch: ["**/__tests__/**/*.test.(ts|tsx)"],
 };
