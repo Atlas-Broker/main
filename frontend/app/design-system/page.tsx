@@ -3,824 +3,770 @@
 import { useState } from "react";
 import Link from "next/link";
 
-// ─── Token Data ───────────────────────────────────────────────────────────────
+// ─── Token data ───────────────────────────────────────────────────────────────
 
 const BRAND_COLORS = [
-  { name: "Brand",   var: "--brand",   light: "#C8102E", dark: "#C8102E", role: "Primary CTA, logo, key accents" },
-  { name: "Signal",  var: "--signal",  light: "#E8001D", dark: "#E8001D", role: "High-urgency alerts" },
+  { name: "Brand",   hex: "#C8102E", role: "Primary CTA, logo, key accents. Used sparingly." },
+  { name: "Signal",  hex: "#E8001D", role: "High-urgency alerts. Almost never for decoration."  },
 ];
 
-const SEMANTIC_COLORS = [
-  { name: "Bull",    var: "--bull",    light: "#00A876", dark: "#00C896",  bg: "--bull-bg",  role: "BUY signals, positive P&L" },
-  { name: "Bear",    var: "--bear",    light: "#D92040", dark: "#FF2D55",  bg: "--bear-bg",  role: "SELL signals, losses" },
-  { name: "Hold",    var: "--hold",    light: "#D97B00", dark: "#F5A623",  bg: "--hold-bg",  role: "HOLD signals, neutral" },
+const SEMANTIC = [
+  { name: "Bull (light)",  hex: "#00A876", role: "BUY, positive P&L (light mode)"  },
+  { name: "Bull (dark)",   hex: "#00C896", role: "BUY, positive P&L (dark mode)"   },
+  { name: "Bear (light)",  hex: "#D92040", role: "SELL, losses (light mode)"        },
+  { name: "Bear (dark)",   hex: "#FF2D55", role: "SELL, losses (dark mode)"         },
+  { name: "Hold (light)",  hex: "#D97B00", role: "HOLD, neutral (light mode)"       },
+  { name: "Hold (dark)",   hex: "#F5A623", role: "HOLD, neutral (dark mode)"        },
 ];
 
 const NEUTRAL_LIGHT = [
-  { name: "--bg",       hex: "#F4F6F9", label: "Page background"    },
-  { name: "--deep",     hex: "#EDF0F4", label: "Section alternates" },
-  { name: "--surface",  hex: "#FFFFFF", label: "Cards, inputs"       },
-  { name: "--elevated", hex: "#F0F2F6", label: "Raised UI elements"  },
-  { name: "--line",     hex: "#E0E6ED", label: "Borders, dividers"   },
-  { name: "--line2",    hex: "#C8D4DF", label: "Hover borders"       },
-  { name: "--ink",      hex: "#0D1117", label: "Primary text"        },
-  { name: "--dim",      hex: "#46606E", label: "Secondary text"      },
-  { name: "--ghost",    hex: "#8DA4B2", label: "Placeholder, labels" },
+  { token: "--bg",       hex: "#F4F6F9", label: "Page background"     },
+  { token: "--deep",     hex: "#EDF0F4", label: "Section alternates"  },
+  { token: "--surface",  hex: "#FFFFFF", label: "Cards, inputs"        },
+  { token: "--elevated", hex: "#F0F2F6", label: "Raised elements"     },
+  { token: "--line",     hex: "#E0E6ED", label: "Borders / dividers"  },
+  { token: "--line2",    hex: "#C8D4DF", label: "Hover borders"       },
+  { token: "--ink",      hex: "#0D1117", label: "Primary text"        },
+  { token: "--dim",      hex: "#46606E", label: "Secondary text"      },
+  { token: "--ghost",    hex: "#8DA4B2", label: "Placeholder text"    },
 ];
 
 const NEUTRAL_DARK = [
-  { name: "--bg",       hex: "#07080B", label: "Page background"     },
-  { name: "--deep",     hex: "#0C1016", label: "Section alternates"  },
-  { name: "--surface",  hex: "#111820", label: "Cards, inputs"        },
-  { name: "--elevated", hex: "#182030", label: "Raised UI elements"   },
-  { name: "--line",     hex: "#1C2B3A", label: "Borders, dividers"    },
-  { name: "--line2",    hex: "#263D52", label: "Hover borders"        },
-  { name: "--ink",      hex: "#E8EDF3", label: "Primary text"         },
-  { name: "--dim",      hex: "#7A8FA0", label: "Secondary text"       },
-  { name: "--ghost",    hex: "#3D5060", label: "Placeholder, labels"  },
+  { token: "--bg",       hex: "#07080B", label: "Page background"     },
+  { token: "--deep",     hex: "#0C1016", label: "Section alternates"  },
+  { token: "--surface",  hex: "#111820", label: "Cards, inputs"        },
+  { token: "--elevated", hex: "#182030", label: "Raised elements"     },
+  { token: "--line",     hex: "#1C2B3A", label: "Borders / dividers"  },
+  { token: "--line2",    hex: "#263D52", label: "Hover borders"       },
+  { token: "--ink",      hex: "#E8EDF3", label: "Primary text"        },
+  { token: "--dim",      hex: "#7A8FA0", label: "Secondary text"      },
+  { token: "--ghost",    hex: "#3D5060", label: "Placeholder text"    },
 ];
 
-const TYPE_SCALE = [
-  { size: "4.8rem", weight: "800", font: "Syne",        role: "Hero headline",    sample: "ATLAS"            },
-  { size: "2.8rem", weight: "800", font: "Syne",        role: "Section heading",  sample: "Your edge."       },
-  { size: "1.5rem", weight: "700", font: "Syne",        role: "Card title",       sample: "Advisory Mode"    },
-  { size: "1rem",   weight: "600", font: "Syne",        role: "Label / subhead",  sample: "Execution Boundary"},
-  { size: "1.0625rem", weight: "400", font: "Nunito Sans", role: "Body copy",     sample: "Multi-agent AI analysis with full reasoning transparency." },
-  { size: "0.875rem", weight: "400", font: "Nunito Sans", role: "Small body",    sample: "Every signal includes the full chain of thought."           },
-  { size: "0.8125rem", weight: "500", font: "JetBrains Mono", role: "Data / label", sample: "NVDA · BUY · 94% · +2.31%" },
-  { size: "0.6875rem", weight: "400", font: "JetBrains Mono", role: "Micro label",  sample: "LIVE · US EQUITIES · 47ms" },
+const SPACING_TOKENS = [
+  { value: "4px",  use: "Icon-to-label gap"             },
+  { value: "8px",  use: "Tight intra-component gap"     },
+  { value: "12px", use: "Standard intra-card gap"       },
+  { value: "16px", use: "Component internal padding"    },
+  { value: "20px", use: "Card padding (horizontal)"     },
+  { value: "24px", use: "Card padding (vertical)"       },
+  { value: "28px", use: "Section sub-block gap"         },
+  { value: "40px", use: "Hero inner spacing"            },
+  { value: "64px", use: "Section vertical padding"      },
 ];
 
-const SPACING = [
-  { token: "4px",  use: "Gap within component (icon + label)"  },
-  { token: "8px",  use: "Tight intra-card gaps"                },
-  { token: "12px", use: "Standard intra-card padding"          },
-  { token: "16px", use: "Component internal padding"           },
-  { token: "20px", use: "Card padding (horizontal)"            },
-  { token: "24px", use: "Card padding (vertical)"              },
-  { token: "32px", use: "Section horizontal gutter"            },
-  { token: "48px", use: "Inter-section spacing (small)"        },
-  { token: "72px", use: "Section padding (vertical)"           },
-];
-
-const RADIUS = [
-  { value: "2px",  use: "Terminal / mono UI elements (login page)" },
-  { value: "4px",  use: "Buttons, badges, chips"                   },
-  { value: "10px", use: "Cards"                                     },
-  { value: "12px", use: "Hero panel cards"                         },
-  { value: "100px", use: "Status pills / live indicators"          },
+const DIMENSIONS = [
+  { label: "Nav height",              value: "56px"        },
+  { label: "Max page width",          value: "1160px"      },
+  { label: "Section gutter",          value: "20px mobile, 32px desktop" },
+  { label: "Button height (default)", value: "48px"        },
+  { label: "Button height (sm)",      value: "36px"        },
+  { label: "Button height (nav)",     value: "38px"        },
+  { label: "Card border radius",      value: "12px"        },
+  { label: "Pill border radius",      value: "100px"       },
+  { label: "Badge border radius",     value: "4px"         },
+  { label: "Mobile breakpoint",       value: "< 640px"     },
+  { label: "Desktop breakpoint",      value: "≥ 960px"     },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function Swatch({ hex, label, name, dark = false }: {
-  hex: string; label?: string; name?: string; dark?: boolean;
+function ColorSwatch({ hex, label, role, dark = false }: {
+  hex: string; label?: string; role?: string; dark?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
-  function copy() {
-    navigator.clipboard.writeText(hex);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
-  }
-  const isLight = (c: string) => {
-    const r = parseInt(c.slice(1,3),16);
-    const g = parseInt(c.slice(3,5),16);
-    const b = parseInt(c.slice(5,7),16);
+  function isLight(h: string) {
+    const r = parseInt(h.slice(1,3),16), g = parseInt(h.slice(3,5),16), b = parseInt(h.slice(5,7),16);
     return (r*299 + g*587 + b*114) / 1000 > 128;
-  };
-  const textColor = isLight(hex) ? "#0D1117" : "#E8EDF3";
+  }
   return (
-    <div
-      onClick={copy}
-      style={{
-        width: "100%", height: 72,
-        background: hex, borderRadius: 6,
-        display: "flex", flexDirection: "column",
-        justifyContent: "flex-end", padding: "8px 10px",
-        cursor: "pointer", position: "relative",
-        border: dark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.06)",
-        transition: "transform 0.15s ease, box-shadow 0.15s ease",
-      }}
-      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1.03)"; (e.currentTarget as HTMLDivElement).style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)"; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = "scale(1)"; (e.currentTarget as HTMLDivElement).style.boxShadow = "none"; }}
-    >
-      <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: textColor, letterSpacing: "0.06em", opacity: 0.9 }}>
-        {copied ? "COPIED!" : hex.toUpperCase()}
-      </div>
-      {name && <div style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: textColor, opacity: 0.6, marginTop: 1 }}>{name}</div>}
+    <div>
+      <button
+        onClick={() => { navigator.clipboard.writeText(hex); setCopied(true); setTimeout(() => setCopied(false), 1200); }}
+        style={{
+          width:"100%", height:64, background:hex, borderRadius:8,
+          border: dark ? "1px solid rgba(255,255,255,.1)" : "1px solid rgba(0,0,0,.07)",
+          display:"flex", alignItems:"flex-end", padding:"8px 10px",
+          cursor:"pointer", transition:"transform .15s, box-shadow .15s",
+        }}
+        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.04)"; (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 6px 16px rgba(0,0,0,.18)"; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; (e.currentTarget as HTMLButtonElement).style.boxShadow = "none"; }}
+      >
+        <span style={{
+          fontFamily:"var(--font-mono)", fontSize:10,
+          color: isLight(hex) ? "#0D1117" : "#E8EDF3",
+          opacity:.85, letterSpacing:"0.04em",
+        }}>{copied ? "Copied!" : hex.toUpperCase()}</span>
+      </button>
+      {label && <p style={{ fontFamily:"var(--font-body)", fontSize:13, fontWeight:600, color:"var(--ink)", marginTop:6 }}>{label}</p>}
+      {role  && <p style={{ fontFamily:"var(--font-body)", fontSize:12, color:"var(--dim)", marginTop:2, lineHeight:1.5 }}>{role}</p>}
     </div>
   );
 }
 
-function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+function Heading({ id, text }: { id: string; text: string }) {
   return (
-    <section id={id} style={{ paddingBottom: 64, borderBottom: "1px solid var(--line)", marginBottom: 64 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 16, marginBottom: 32 }}>
-        <h2 style={{
-          fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 22,
-          color: "var(--ink)", letterSpacing: "-0.02em",
-        }}>{title}</h2>
-        <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function SubSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 36 }}>
-      <h3 style={{
-        fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ghost)",
-        letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 16,
-      }}>{title}</h3>
-      {children}
+    <div id={id} style={{ display:"flex", alignItems:"center", gap:16, marginBottom:28 }}>
+      <h2 style={{
+        fontFamily:"var(--font-display)", fontWeight:800, fontSize:22,
+        color:"var(--ink)", letterSpacing:"-0.02em", whiteSpace:"nowrap",
+      }}>{text}</h2>
+      <div style={{ flex:1, height:1, background:"var(--line)" }} />
     </div>
   );
 }
+
+function SubLabel({ text }: { text: string }) {
+  return (
+    <p style={{
+      fontFamily:"var(--font-body)", fontSize:13, fontWeight:700,
+      color:"var(--ghost)", textTransform:"uppercase", letterSpacing:"0.08em",
+      marginBottom:14,
+    }}>{text}</p>
+  );
+}
+
+// ─── Nav items ────────────────────────────────────────────────────────────────
+
+const NAV = [
+  { id:"colors",      label:"Colors"      },
+  { id:"typography",  label:"Typography"  },
+  { id:"spacing",     label:"Spacing"     },
+  { id:"buttons",     label:"Buttons"     },
+  { id:"badges",      label:"Badges"      },
+  { id:"cards",       label:"Cards"       },
+  { id:"signals",     label:"Signals"     },
+  { id:"motion",      label:"Motion"      },
+  { id:"responsive",  label:"Responsive"  },
+];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-const NAV_ITEMS = [
-  { id: "colors",      label: "Colors"      },
-  { id: "typography",  label: "Typography"  },
-  { id: "spacing",     label: "Spacing"     },
-  { id: "buttons",     label: "Buttons"     },
-  { id: "badges",      label: "Badges"      },
-  { id: "cards",       label: "Cards"       },
-  { id: "signals",     label: "Signals"     },
-  { id: "motion",      label: "Motion"      },
-  { id: "responsive",  label: "Responsive"  },
-];
-
 export default function DesignSystemPage() {
-  const [activeSection, setActiveSection] = useState("colors");
+  const [active, setActive] = useState("colors");
 
   return (
     <>
       <style>{`
-        /* ── DS States ── */
-        .ds-btn { cursor: pointer; transition: all 0.18s ease; }
-        .ds-btn:active { transform: scale(0.97); }
+        /* ── Buttons ── */
+        .ds-btn { cursor:pointer; border:none; transition:all .18s ease; }
+        .ds-btn:active { transform:scale(.97); }
 
-        /* Primary */
-        .ds-btn-primary {
-          background: var(--brand); color: #fff;
-          border: none; border-radius: 4px;
-          padding: 10px 20px;
-          font-family: var(--font-nunito); font-weight: 700; font-size: 14px;
+        .ds-primary {
+          background:var(--brand); color:#fff;
+          font-family:var(--font-body); font-weight:700; font-size:15px;
+          padding:12px 24px; border-radius:6px; min-height:44px;
         }
-        .ds-btn-primary:hover { opacity: 0.86; transform: translateY(-1px); box-shadow: 0 4px 14px rgba(200,16,46,0.3); }
+        .ds-primary:hover { opacity:.86; transform:translateY(-1px); box-shadow:0 4px 16px rgba(200,16,46,.28); }
 
-        /* Secondary */
-        .ds-btn-secondary {
-          background: var(--surface); color: var(--ink);
-          border: 1px solid var(--line2); border-radius: 4px;
-          padding: 10px 20px;
-          font-family: var(--font-nunito); font-weight: 600; font-size: 14px;
+        .ds-secondary {
+          background:var(--surface); color:var(--ink);
+          font-family:var(--font-body); font-weight:600; font-size:15px;
+          padding:12px 24px; border-radius:6px; min-height:44px;
+          border:1.5px solid var(--line2);
         }
-        .ds-btn-secondary:hover { border-color: var(--brand); color: var(--brand); transform: translateY(-1px); }
+        .ds-secondary:hover { border-color:var(--brand); color:var(--brand); transform:translateY(-1px); }
 
-        /* Ghost */
-        .ds-btn-ghost {
-          background: transparent; color: var(--dim);
-          border: 1px solid var(--line); border-radius: 4px;
-          padding: 10px 20px;
-          font-family: var(--font-nunito); font-weight: 600; font-size: 14px;
+        .ds-ghost {
+          background:transparent; color:var(--dim);
+          font-family:var(--font-body); font-weight:600; font-size:15px;
+          padding:12px 24px; border-radius:6px; min-height:44px;
+          border:1.5px solid var(--line);
         }
-        .ds-btn-ghost:hover { border-color: var(--line2); color: var(--ink); background: var(--elevated); }
+        .ds-ghost:hover { border-color:var(--line2); color:var(--ink); background:var(--elevated); }
 
-        /* Danger */
-        .ds-btn-danger {
-          background: transparent; color: var(--bear);
-          border: 1px solid var(--bear); border-radius: 4px;
-          padding: 10px 20px;
-          font-family: var(--font-nunito); font-weight: 700; font-size: 14px;
+        .ds-danger {
+          background:transparent; color:var(--bear);
+          font-family:var(--font-body); font-weight:700; font-size:15px;
+          padding:12px 24px; border-radius:6px; min-height:44px;
+          border:1.5px solid var(--bear);
         }
-        .ds-btn-danger:hover { background: var(--bear-bg); transform: translateY(-1px); }
+        .ds-danger:hover { background:var(--bear-bg); transform:translateY(-1px); }
 
-        /* Disabled */
-        .ds-btn-disabled {
-          background: var(--elevated); color: var(--ghost);
-          border: 1px solid var(--line); border-radius: 4px;
-          padding: 10px 20px;
-          font-family: var(--font-nunito); font-weight: 600; font-size: 14px;
-          opacity: 0.5; cursor: not-allowed;
+        .ds-disabled {
+          background:var(--elevated); color:var(--ghost);
+          font-family:var(--font-body); font-weight:600; font-size:15px;
+          padding:12px 24px; border-radius:6px; min-height:44px;
+          border:1px solid var(--line);
+          opacity:.5; cursor:not-allowed;
         }
 
-        /* Small variant */
-        .ds-btn-sm { padding: 6px 14px !important; font-size: 12px !important; }
-        /* Large variant */
-        .ds-btn-lg { padding: 14px 32px !important; font-size: 16px !important; }
+        /* ── Cards ── */
+        .ds-card {
+          background:var(--surface); border:1px solid var(--line);
+          border-radius:12px;
+          transition: border-color .2s, box-shadow .2s, transform .2s;
+        }
+        .ds-card:hover {
+          border-color:var(--line2);
+          box-shadow:0 4px 20px rgba(0,0,0,.07);
+          transform:translateY(-2px);
+        }
+        .ds-card-featured {
+          background:var(--surface);
+          border:1.5px solid var(--brand);
+          border-radius:12px;
+          box-shadow:0 0 0 1px var(--brand), 0 4px 20px rgba(200,16,46,.08);
+          transition: box-shadow .2s, transform .2s;
+        }
+        .ds-card-featured:hover {
+          box-shadow:0 0 0 1px var(--brand), 0 8px 32px rgba(200,16,46,.14);
+          transform:translateY(-2px);
+        }
 
-        /* Nav sidebar links */
+        /* ── Nav ── */
         .ds-nav-link {
-          display: block;
-          padding: 6px 12px;
-          border-radius: 4px;
-          font-family: var(--font-mono); font-size: 11px; font-weight: 500;
-          color: var(--dim); text-decoration: none; letter-spacing: 0.06em;
-          transition: background 0.15s, color 0.15s;
-          border-left: 2px solid transparent;
+          display:block; padding:8px 12px; border-radius:6px;
+          font-family:var(--font-body); font-size:14px; font-weight:500;
+          color:var(--dim); text-decoration:none;
+          border-left:2px solid transparent;
+          transition:background .15s, color .15s;
         }
-        .ds-nav-link:hover  { background: var(--elevated); color: var(--ink); }
-        .ds-nav-link.active { border-left-color: var(--brand); color: var(--brand); background: rgba(200,16,46,0.04); }
+        .ds-nav-link:hover { background:var(--elevated); color:var(--ink); }
+        .ds-nav-link.active { border-left-color:var(--brand); color:var(--brand); background:rgba(200,16,46,.04); }
 
-        /* Card hover */
-        .ds-card-demo {
-          background: var(--surface);
-          border: 1px solid var(--line);
-          border-radius: 10px;
-          transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
-        }
-        .ds-card-demo:hover {
-          border-color: var(--line2);
-          box-shadow: 0 4px 20px rgba(0,0,0,0.07);
-          transform: translateY(-2px);
+        /* ── Motion demos ── */
+        @keyframes ds-fade-up  { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes ds-slide-in { from{opacity:0;transform:translateX(-14px)} to{opacity:1;transform:translateX(0)} }
+        @keyframes ds-pulse    { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.78)} }
+        @keyframes ds-glow-brand { 0%,100%{box-shadow:0 0 14px rgba(200,16,46,.18)} 50%{box-shadow:0 0 36px rgba(200,16,46,.48)} }
+        @keyframes ds-glow-bull  { 0%,100%{box-shadow:0 0 14px rgba(0,168,118,.14)} 50%{box-shadow:0 0 36px rgba(0,168,118,.38)} }
+
+        .ds-motion-fade  { animation:ds-fade-up  .6s ease both; }
+        .ds-motion-slide { animation:ds-slide-in .5s ease both; }
+        .ds-motion-pulse { animation:ds-pulse    1.8s ease-in-out infinite; }
+
+        /* ── Responsive ── */
+        .ds-layout { display:flex; }
+        .ds-sidebar-nav { width:180px; flex-shrink:0; }
+
+        @media (max-width:767px) {
+          .ds-sidebar-nav { display:none; }
+          .ds-layout { display:block; }
+          .ds-main   { padding:24px 16px 80px !important; }
         }
 
-        /* Motion demos */
-        @keyframes ds-fade-up {
-          from { opacity: 0; transform: translateY(20px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes ds-slide-in {
-          from { opacity: 0; transform: translateX(-16px); }
-          to   { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes ds-pulse {
-          0%, 100% { opacity: 1;   transform: scale(1);    }
-          50%       { opacity: 0.4; transform: scale(0.75); }
-        }
-        @keyframes ds-glow-brand {
-          0%, 100% { box-shadow: 0 0 12px rgba(200,16,46,0.2); }
-          50%       { box-shadow: 0 0 32px rgba(200,16,46,0.5); }
-        }
-        @keyframes ds-glow-bull {
-          0%, 100% { box-shadow: 0 0 12px rgba(0,168,118,0.15); }
-          50%       { box-shadow: 0 0 32px rgba(0,168,118,0.4); }
-        }
-        .ds-motion-fade   { animation: ds-fade-up  0.6s ease both; }
-        .ds-motion-slide  { animation: ds-slide-in 0.5s ease both; }
-        .ds-motion-pulse  { animation: ds-pulse    1.6s ease-in-out infinite; }
-        .ds-motion-glow-brand { animation: ds-glow-brand 3s ease-in-out infinite; }
-        .ds-motion-glow-bull  { animation: ds-glow-bull  3s ease-in-out infinite; }
+        .ds-color-grid  { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:16px; }
+        .ds-3col-grid   { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; }
+        .ds-2col-grid   { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; }
+        .ds-btn-row     { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
 
-        @media (max-width: 768px) {
-          .ds-sidebar { display: none !important; }
-          .ds-main    { margin-left: 0 !important; }
-        }
+        .ds-section { padding-bottom:56px; border-bottom:1px solid var(--line); margin-bottom:56px; }
+        .ds-section:last-child { border-bottom:none; }
+        .ds-subsection { margin-bottom:32px; }
       `}</style>
 
-      <div style={{ background: "var(--bg)", minHeight: "100vh", color: "var(--ink)" }}>
+      <div style={{ background:"var(--bg)", minHeight:"100vh", color:"var(--ink)" }}>
 
         {/* ── Top bar ── */}
         <div style={{
-          position: "sticky", top: 0, zIndex: 50,
-          background: "var(--nav-bg)", backdropFilter: "blur(12px)",
-          borderBottom: "1px solid var(--line)",
-          padding: "0 32px", height: 52,
-          display: "flex", alignItems: "center", justifyContent: "space-between",
+          position:"sticky", top:0, zIndex:50,
+          background:"var(--nav-bg)", backdropFilter:"blur(12px)",
+          borderBottom:"1px solid var(--line)",
+          height:52, padding:"0 20px",
+          display:"flex", alignItems:"center", justifyContent:"space-between",
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
             <Link href="/" style={{
-              fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15,
-              color: "var(--ink)", textDecoration: "none", letterSpacing: "-0.02em",
-              display: "flex", alignItems: "center", gap: 8,
+              fontFamily:"var(--font-display)", fontWeight:800, fontSize:15,
+              color:"var(--ink)", textDecoration:"none", letterSpacing:"-0.02em",
+              display:"flex", alignItems:"center", gap:8,
             }}>
-              <div style={{ width: 2, height: 14, background: "var(--brand)", transform: "skewX(-14deg)", borderRadius: 1 }} />
+              <div style={{ width:2, height:14, background:"var(--brand)", transform:"skewX(-14deg)", borderRadius:1 }} />
               ATLAS
             </Link>
-            <span style={{ color: "var(--line2)" }}>/</span>
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--dim)", letterSpacing: "0.1em" }}>
-              DESIGN SYSTEM
+            <span style={{ color:"var(--line2)", fontSize:18 }}>/</span>
+            <span style={{ fontFamily:"var(--font-body)", fontSize:13, color:"var(--dim)", fontWeight:600 }}>
+              Design System
             </span>
           </div>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ghost)", letterSpacing: "0.14em" }}>
-            v0.1.0 · LIVING STYLEGUIDE
+          <span style={{ fontFamily:"var(--font-mono)", fontSize:11, color:"var(--ghost)" }}>
+            v0.1.0 · Living styleguide
           </span>
         </div>
 
-        <div style={{ display: "flex" }}>
+        <div className="ds-layout">
 
           {/* ── Sidebar ── */}
-          <aside className="ds-sidebar" style={{
-            position: "sticky", top: 52, height: "calc(100vh - 52px)",
-            width: 200, flexShrink: 0, borderRight: "1px solid var(--line)",
-            padding: "24px 12px",
-            overflowY: "auto",
-            background: "var(--bg)",
+          <aside className="ds-sidebar-nav" style={{
+            position:"sticky", top:52, height:"calc(100vh - 52px)",
+            borderRight:"1px solid var(--line)",
+            padding:"20px 8px", overflowY:"auto",
+            background:"var(--bg)",
           }}>
             <p style={{
-              fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ghost)",
-              letterSpacing: "0.18em", textTransform: "uppercase",
-              padding: "0 12px 12px",
-            }}>SECTIONS</p>
-            {NAV_ITEMS.map(item => (
+              fontFamily:"var(--font-body)", fontSize:11, fontWeight:700,
+              color:"var(--ghost)", textTransform:"uppercase", letterSpacing:"0.1em",
+              padding:"0 12px 12px",
+            }}>Sections</p>
+            {NAV.map(item => (
               <a
                 key={item.id}
                 href={`#${item.id}`}
-                className={`ds-nav-link${activeSection === item.id ? " active" : ""}`}
-                onClick={() => setActiveSection(item.id)}
-              >
-                {item.label}
-              </a>
+                className={`ds-nav-link${active === item.id ? " active" : ""}`}
+                onClick={() => setActive(item.id)}
+              >{item.label}</a>
             ))}
           </aside>
 
-          {/* ── Main content ── */}
-          <main className="ds-main" style={{ flex: 1, padding: "48px 48px 96px", maxWidth: 960 }}>
+          {/* ── Main ── */}
+          <main className="ds-main" style={{ flex:1, padding:"40px 40px 96px", maxWidth:900 }}>
 
             {/* Intro */}
-            <div style={{ marginBottom: 64 }}>
+            <div style={{ marginBottom:56 }}>
               <h1 style={{
-                fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 32,
-                letterSpacing: "-0.03em", color: "var(--ink)", marginBottom: 12,
+                fontFamily:"var(--font-display)", fontWeight:800, fontSize:28,
+                letterSpacing:"-0.03em", color:"var(--ink)", marginBottom:10,
               }}>Atlas Design System</h1>
               <p style={{
-                fontFamily: "var(--font-body)", fontSize: 16, lineHeight: 1.7,
-                color: "var(--dim)", maxWidth: 560,
+                fontFamily:"var(--font-body)", fontSize:16, lineHeight:1.7,
+                color:"var(--dim)", maxWidth:520,
               }}>
-                Every token, component, and pattern used across Atlas. This page is the
-                single source of truth for brand, layout, and interaction design.
-                Light mode is the default; the theme toggle applies globally.
+                Every token, component, and pattern used across Atlas. Click any
+                color swatch to copy its hex value. The theme you select globally
+                applies here too — switch between light and dark to preview all states.
               </p>
             </div>
 
             {/* ─── 1. Colors ─────────────────────────────────────────── */}
-            <Section id="colors" title="Colors">
-              <SubSection title="Brand">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px,1fr))", gap: 12, marginBottom: 8 }}>
-                  {BRAND_COLORS.map(c => (
-                    <div key={c.name}>
-                      <Swatch hex={c.light} name={c.var} />
-                      <div style={{ marginTop: 8 }}>
-                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, color: "var(--ink)" }}>{c.name}</div>
-                        <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--dim)", marginTop: 2 }}>{c.role}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </SubSection>
+            <section className="ds-section">
+              <Heading id="colors" text="Colors" />
 
-              <SubSection title="Semantic — Financial">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px,1fr))", gap: 12 }}>
-                  {SEMANTIC_COLORS.map(c => (
-                    <div key={c.name}>
-                      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                        <Swatch hex={c.light} name="light" />
-                        <Swatch hex={c.dark}  name="dark"  dark />
-                      </div>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, color: "var(--ink)" }}>{c.name}</div>
-                      <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--dim)", marginTop: 2 }}>{c.role}</div>
-                    </div>
-                  ))}
+              <div className="ds-subsection">
+                <SubLabel text="Brand" />
+                <div className="ds-color-grid">
+                  {BRAND_COLORS.map(c => <ColorSwatch key={c.name} hex={c.hex} label={c.name} role={c.role} />)}
                 </div>
-              </SubSection>
+              </div>
 
-              <SubSection title="Neutral Palette — Light Mode">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px,1fr))", gap: 10 }}>
-                  {NEUTRAL_LIGHT.map(c => (
-                    <div key={c.name}>
-                      <Swatch hex={c.hex} name={c.name} />
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ghost)", marginTop: 6, letterSpacing: "0.08em" }}>{c.name}</div>
-                      <div style={{ fontFamily: "var(--font-body)", fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{c.label}</div>
-                    </div>
-                  ))}
+              <div className="ds-subsection">
+                <SubLabel text="Semantic — Financial" />
+                <div className="ds-color-grid">
+                  {SEMANTIC.map(c => <ColorSwatch key={c.name} hex={c.hex} label={c.name} role={c.role} dark={c.name.includes("dark")} />)}
                 </div>
-              </SubSection>
+              </div>
 
-              <SubSection title="Neutral Palette — Dark Mode">
+              <div className="ds-subsection">
+                <SubLabel text="Neutral — Light mode" />
+                <div className="ds-color-grid">
+                  {NEUTRAL_LIGHT.map(c => <ColorSwatch key={c.token} hex={c.hex} label={c.token} role={c.label} />)}
+                </div>
+              </div>
+
+              <div className="ds-subsection">
+                <SubLabel text="Neutral — Dark mode" />
                 <div style={{
-                  background: "#07080B", borderRadius: 10,
-                  padding: 20, border: "1px solid #1C2B3A",
+                  background:"#07080B", borderRadius:12, padding:20,
+                  border:"1px solid #1C2B3A",
                 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px,1fr))", gap: 10 }}>
+                  <div className="ds-color-grid">
                     {NEUTRAL_DARK.map(c => (
-                      <div key={c.name}>
-                        <Swatch hex={c.hex} name={c.name} dark />
-                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "#3D5060", marginTop: 6, letterSpacing: "0.08em" }}>{c.name}</div>
-                        <div style={{ fontFamily: "var(--font-body)", fontSize: 11, color: "#7A8FA0", marginTop: 2 }}>{c.label}</div>
-                      </div>
+                      <ColorSwatch key={c.token} hex={c.hex} label={c.token} role={c.label} dark />
                     ))}
                   </div>
                 </div>
-              </SubSection>
-            </Section>
+              </div>
+            </section>
 
             {/* ─── 2. Typography ─────────────────────────────────────── */}
-            <Section id="typography" title="Typography">
-              <SubSection title="Font Families">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+            <section className="ds-section">
+              <Heading id="typography" text="Typography" />
+
+              <div className="ds-subsection">
+                <SubLabel text="Font families" />
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:16 }}>
                   {[
-                    { name: "Syne",         var: "--font-display", class: "font-display", weight: "100–800", use: "Headlines, display text, logos" },
-                    { name: "Nunito Sans",  var: "--font-body",    class: "font-body",    weight: "300–800", use: "Body copy, descriptions, UI prose" },
-                    { name: "JetBrains Mono", var: "--font-mono",  class: "font-mono",    weight: "400–600", use: "Numbers, labels, data, terminal UI" },
+                    { name:"Syne",           varName:"--font-display", weight:"100–800", use:"Headlines, display, logo" },
+                    { name:"Nunito Sans",    varName:"--font-body",    weight:"300–800", use:"Body copy, UI text, CTAs" },
+                    { name:"JetBrains Mono", varName:"--font-mono",    weight:"400–600", use:"Numbers, tickers, data labels only" },
                   ].map(f => (
-                    <div key={f.name} className="ds-card-demo" style={{ padding: "20px" }}>
+                    <div key={f.name} className="ds-card" style={{ padding:20 }}>
                       <div style={{
-                        fontFamily: `var(${f.var})`, fontSize: 28, fontWeight: 700,
-                        color: "var(--ink)", marginBottom: 8, letterSpacing: "-0.02em",
+                        fontFamily: f.name === "Syne" ? "var(--font-display)" : f.name === "JetBrains Mono" ? "var(--font-mono)" : "var(--font-body)",
+                        fontSize:36, fontWeight:700, color:"var(--ink)",
+                        letterSpacing:"-0.02em", marginBottom:10,
                       }}>Aa</div>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>{f.name}</div>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ghost)", letterSpacing: "0.08em", marginBottom: 4 }}>{f.var}</div>
-                      <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--dim)" }}>Weight: {f.weight}</div>
-                      <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--dim)", marginTop: 2 }}>{f.use}</div>
+                      <p style={{ fontFamily:"var(--font-body)", fontSize:14, fontWeight:700, color:"var(--ink)", marginBottom:2 }}>{f.name}</p>
+                      <p style={{ fontFamily:"var(--font-mono)", fontSize:11, color:"var(--ghost)", marginBottom:4 }}>{f.varName}</p>
+                      <p style={{ fontFamily:"var(--font-body)", fontSize:13, color:"var(--dim)" }}>Weight: {f.weight}</p>
+                      <p style={{ fontFamily:"var(--font-body)", fontSize:13, color:"var(--dim)", marginTop:2 }}>{f.use}</p>
                     </div>
                   ))}
                 </div>
-              </SubSection>
+              </div>
 
-              <SubSection title="Type Scale">
-                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                  {TYPE_SCALE.map((t, i) => (
+              <div className="ds-subsection">
+                <SubLabel text="Type scale" />
+                <div style={{ borderRadius:12, overflow:"hidden", border:"1px solid var(--line)" }}>
+                  {[
+                    { size:"4rem",  w:800, font:"var(--font-display)",  label:"Hero (clamp ~4rem)",       sample:"ATLAS"              },
+                    { size:"2.4rem", w:800, font:"var(--font-display)", label:"Section heading",           sample:"Your edge."         },
+                    { size:"1.5rem", w:800, font:"var(--font-display)", label:"Card title",               sample:"Advisory Mode"      },
+                    { size:"1.0625rem", w:400, font:"var(--font-body)", label:"Body (17px)",              sample:"Atlas analyzes the market with 8 AI agents." },
+                    { size:".9375rem",  w:400, font:"var(--font-body)", label:"Body small (15px)",        sample:"Every signal includes the full chain of thought." },
+                    { size:".875rem",   w:400, font:"var(--font-body)", label:"Caption / label (14px)",   sample:"Live trading active · Gemini 2.5 Flash"   },
+                    { size:".8125rem",  w:500, font:"var(--font-mono)", label:"Mono data (13px)",         sample:"NVDA · BUY · 94% · +2.31%"               },
+                    { size:".6875rem",  w:400, font:"var(--font-mono)", label:"Mono micro (11px)",        sample:"v0.1.0 · US EQUITIES"                    },
+                  ].map((t, i) => (
                     <div key={i} style={{
-                      display: "grid", gridTemplateColumns: "200px 1fr",
-                      alignItems: "center", gap: 24,
-                      padding: "14px 0",
-                      borderBottom: "1px solid var(--line)",
+                      display:"grid", gridTemplateColumns:"200px 1fr", gap:20, alignItems:"center",
+                      padding:"14px 20px",
+                      background: i%2===0 ? "var(--surface)" : "var(--elevated)",
                     }}>
                       <div>
-                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ghost)", letterSpacing: "0.08em" }}>
-                          {t.size} / {t.weight}
-                        </div>
-                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ghost)", marginTop: 2, letterSpacing: "0.06em" }}>
-                          {t.font} · {t.role}
-                        </div>
+                        <p style={{ fontFamily:"var(--font-mono)", fontSize:11, fontWeight:600, color:"var(--dim)" }}>{t.size} / {t.w}</p>
+                        <p style={{ fontFamily:"var(--font-body)", fontSize:12, color:"var(--ghost)", marginTop:2 }}>{t.label}</p>
                       </div>
                       <div style={{
-                        fontFamily: t.font === "Syne" ? "var(--font-display)" : t.font === "JetBrains Mono" ? "var(--font-mono)" : "var(--font-body)",
-                        fontSize: t.size, fontWeight: parseInt(t.weight),
-                        color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                        lineHeight: 1.2,
+                        fontFamily:t.font, fontSize:t.size, fontWeight:t.w,
+                        color:"var(--ink)", overflow:"hidden", textOverflow:"ellipsis",
+                        whiteSpace:"nowrap", lineHeight:1.2,
                       }}>{t.sample}</div>
                     </div>
                   ))}
                 </div>
-              </SubSection>
-            </Section>
+              </div>
+            </section>
 
             {/* ─── 3. Spacing ────────────────────────────────────────── */}
-            <Section id="spacing" title="Spacing & Radius">
-              <SubSection title="Spacing Scale">
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {SPACING.map(s => (
-                    <div key={s.token} style={{
-                      display: "grid", gridTemplateColumns: "80px 1fr auto",
-                      alignItems: "center", gap: 16,
-                      padding: "10px 0", borderBottom: "1px solid var(--line)",
+            <section className="ds-section">
+              <Heading id="spacing" text="Spacing & Dimensions" />
+
+              <div className="ds-subsection">
+                <SubLabel text="Spacing scale" />
+                <div style={{ display:"flex", flexDirection:"column", gap:0, border:"1px solid var(--line)", borderRadius:12, overflow:"hidden" }}>
+                  {SPACING_TOKENS.map((s, i) => (
+                    <div key={s.value} style={{
+                      display:"grid", gridTemplateColumns:"80px 1fr auto",
+                      alignItems:"center", gap:16, padding:"12px 20px",
+                      background: i%2===0 ? "var(--surface)" : "var(--elevated)",
                     }}>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>{s.token}</div>
-                      <div style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--dim)" }}>{s.use}</div>
-                      <div style={{
-                        width: s.token, height: 16,
-                        background: "var(--brand)", borderRadius: 2, opacity: 0.5, flexShrink: 0,
-                        minWidth: 2,
-                      }} />
+                      <p style={{ fontFamily:"var(--font-mono)", fontSize:13, fontWeight:700, color:"var(--ink)" }}>{s.value}</p>
+                      <p style={{ fontFamily:"var(--font-body)", fontSize:14, color:"var(--dim)" }}>{s.use}</p>
+                      <div style={{ width:s.value, height:18, background:"var(--brand)", borderRadius:2, opacity:.4, minWidth:2, flexShrink:0 }} />
                     </div>
                   ))}
                 </div>
-              </SubSection>
+              </div>
 
-              <SubSection title="Border Radius">
-                <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-                  {RADIUS.map(r => (
-                    <div key={r.value} style={{ textAlign: "center" }}>
-                      <div style={{
-                        width: 64, height: 64,
-                        background: "var(--elevated)", border: "2px solid var(--line2)",
-                        borderRadius: r.value,
-                        margin: "0 auto 8px",
-                      }} />
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, color: "var(--ink)" }}>{r.value}</div>
-                      <div style={{ fontFamily: "var(--font-body)", fontSize: 11, color: "var(--dim)", maxWidth: 100, lineHeight: 1.4 }}>{r.use}</div>
-                    </div>
-                  ))}
-                </div>
-              </SubSection>
-
-              <SubSection title="Key Dimensions">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px,1fr))", gap: 12 }}>
+              <div className="ds-subsection">
+                <SubLabel text="Border radius" />
+                <div style={{ display:"flex", gap:24, flexWrap:"wrap" }}>
                   {[
-                    { label: "Nav height",         value: "56px"  },
-                    { label: "Nav height (DS)",     value: "52px"  },
-                    { label: "Max page width",      value: "1200px" },
-                    { label: "Max content width",   value: "960px"  },
-                    { label: "Section gutter",      value: "32px"  },
-                    { label: "Hero gap (columns)",  value: "64px"  },
-                    { label: "Button height (md)",  value: "40px"  },
-                    { label: "Button height (sm)",  value: "30px"  },
-                    { label: "Button height (lg)",  value: "48px"  },
-                    { label: "Input height",        value: "40px"  },
-                    { label: "Card padding",        value: "24px / 20px" },
-                    { label: "Sidebar width",       value: "200px" },
-                  ].map(d => (
-                    <div key={d.label} style={{
-                      background: "var(--surface)", border: "1px solid var(--line)",
-                      borderRadius: 8, padding: "14px 16px",
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                    }}>
-                      <span style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--dim)" }}>{d.label}</span>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>{d.value}</span>
+                    { r:"2px",   label:"Terminal elements" },
+                    { r:"4px",   label:"Badges, chips"      },
+                    { r:"6px",   label:"Buttons"            },
+                    { r:"8px",   label:"Small cards"        },
+                    { r:"12px",  label:"Cards"              },
+                    { r:"100px", label:"Pills"              },
+                  ].map(b => (
+                    <div key={b.r} style={{ textAlign:"center" }}>
+                      <div style={{
+                        width:56, height:56, borderRadius:b.r,
+                        background:"var(--elevated)", border:"2px solid var(--line2)",
+                        margin:"0 auto 8px",
+                      }} />
+                      <p style={{ fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, color:"var(--ink)" }}>{b.r}</p>
+                      <p style={{ fontFamily:"var(--font-body)", fontSize:11, color:"var(--dim)", maxWidth:72, lineHeight:1.4 }}>{b.label}</p>
                     </div>
                   ))}
                 </div>
-              </SubSection>
-            </Section>
+              </div>
+
+              <div className="ds-subsection">
+                <SubLabel text="Key dimensions" />
+                <div className="ds-2col-grid">
+                  {DIMENSIONS.map(d => (
+                    <div key={d.label} style={{
+                      background:"var(--surface)", border:"1px solid var(--line)",
+                      borderRadius:8, padding:"12px 16px",
+                      display:"flex", justifyContent:"space-between", alignItems:"center", gap:12,
+                    }}>
+                      <span style={{ fontFamily:"var(--font-body)", fontSize:13, color:"var(--dim)" }}>{d.label}</span>
+                      <span style={{ fontFamily:"var(--font-mono)", fontSize:13, fontWeight:700, color:"var(--ink)", flexShrink:0 }}>{d.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
 
             {/* ─── 4. Buttons ────────────────────────────────────────── */}
-            <Section id="buttons" title="Buttons">
-              <SubSection title="Variants (hover me)">
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                  <button className="ds-btn ds-btn-primary">Primary</button>
-                  <button className="ds-btn ds-btn-secondary">Secondary</button>
-                  <button className="ds-btn ds-btn-ghost">Ghost</button>
-                  <button className="ds-btn ds-btn-danger">Danger</button>
-                  <button className="ds-btn ds-btn-disabled" disabled>Disabled</button>
-                </div>
-              </SubSection>
+            <section className="ds-section">
+              <Heading id="buttons" text="Buttons" />
+              <p style={{ fontFamily:"var(--font-body)", fontSize:15, color:"var(--dim)", marginBottom:24 }}>
+                Hover over each button to see its interactive state. All buttons have <code style={{ fontFamily:"var(--font-mono)", fontSize:13 }}>min-height: 44px</code> for touch accessibility.
+              </p>
 
-              <SubSection title="Sizes">
-                <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                  <button className="ds-btn ds-btn-primary ds-btn-sm">Small</button>
-                  <button className="ds-btn ds-btn-primary">Default</button>
-                  <button className="ds-btn ds-btn-primary ds-btn-lg">Large</button>
+              <div className="ds-subsection">
+                <SubLabel text="Variants" />
+                <div className="ds-btn-row">
+                  <button className="ds-btn ds-primary">Primary</button>
+                  <button className="ds-btn ds-secondary">Secondary</button>
+                  <button className="ds-btn ds-ghost">Ghost</button>
+                  <button className="ds-btn ds-danger">Danger</button>
+                  <button className="ds-disabled" disabled>Disabled</button>
                 </div>
-              </SubSection>
+              </div>
 
-              <SubSection title="With icon">
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <button className="ds-btn ds-btn-primary" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#fff", display: "inline-block" }} />
-                    Go Live
+              <div className="ds-subsection">
+                <SubLabel text="With icon / arrow" />
+                <div className="ds-btn-row">
+                  <button className="ds-btn ds-primary" style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    Join waitlist →
                   </button>
-                  <button className="ds-btn ds-btn-ghost" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    Sign in →
+                  <button className="ds-btn ds-ghost" style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    Sign in
                   </button>
-                  <button className="ds-btn ds-btn-danger" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    ✕ Override
+                  <button className="ds-btn ds-danger" style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    ✕ Override trade
                   </button>
                 </div>
-              </SubSection>
+              </div>
 
-              <SubSection title="States spec">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 8 }}>
+              <div className="ds-subsection">
+                <SubLabel text="States at a glance" />
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:8 }}>
                   {[
-                    { label: "Default",  bg: "var(--brand)", color: "#fff", border: "none", opacity: 1 },
-                    { label: "Hover",    bg: "var(--brand)", color: "#fff", border: "none", opacity: 0.86 },
-                    { label: "Active",   bg: "var(--brand)", color: "#fff", border: "none", opacity: 1 },
-                    { label: "Focus",    bg: "var(--brand)", color: "#fff", border: "2px solid var(--ink)", opacity: 1 },
-                    { label: "Disabled", bg: "var(--elevated)", color: "var(--ghost)", border: "1px solid var(--line)", opacity: 0.5 },
+                    { label:"Default",  style:{ background:"var(--brand)", color:"#fff", opacity:1 } },
+                    { label:"Hover",    style:{ background:"var(--brand)", color:"#fff", opacity:.86 } },
+                    { label:"Active",   style:{ background:"var(--brand)", color:"#fff", opacity:1, transform:"scale(.97)" } },
+                    { label:"Focus",    style:{ background:"var(--brand)", color:"#fff", outline:"2px solid var(--ink)", outlineOffset:2 } },
+                    { label:"Disabled", style:{ background:"var(--elevated)", color:"var(--ghost)", border:"1px solid var(--line)", opacity:.5 } },
                   ].map(s => (
-                    <div key={s.label} style={{ textAlign: "center" }}>
+                    <div key={s.label} style={{ textAlign:"center" }}>
                       <div style={{
-                        background: s.bg, color: s.color,
-                        border: s.border || "none",
-                        borderRadius: 4, padding: "8px 0",
-                        fontFamily: "var(--font-nunito)", fontSize: 12, fontWeight: 700,
-                        opacity: s.opacity, marginBottom: 6,
+                        ...s.style, borderRadius:6, padding:"10px 0",
+                        fontFamily:"var(--font-body)", fontSize:12, fontWeight:700, marginBottom:6,
                       }}>{s.label}</div>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ghost)", letterSpacing: "0.06em" }}>
-                        {s.label.toUpperCase()}
-                      </div>
+                      <p style={{ fontFamily:"var(--font-body)", fontSize:11, color:"var(--ghost)" }}>{s.label}</p>
                     </div>
                   ))}
                 </div>
-              </SubSection>
-            </Section>
+              </div>
+            </section>
 
             {/* ─── 5. Badges ─────────────────────────────────────────── */}
-            <Section id="badges" title="Badges & Pills">
-              <SubSection title="Signal badges">
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <section className="ds-section">
+              <Heading id="badges" text="Badges & Status Pills" />
+
+              <div className="ds-subsection">
+                <SubLabel text="Signal action badges" />
+                <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
                   {[
-                    { label: "BUY",  bg: "var(--bull-bg)", color: "var(--bull)" },
-                    { label: "SELL", bg: "var(--bear-bg)", color: "var(--bear)" },
-                    { label: "HOLD", bg: "var(--hold-bg)", color: "var(--hold)" },
+                    { label:"BUY",  bg:"var(--bull-bg)", color:"var(--bull)" },
+                    { label:"SELL", bg:"var(--bear-bg)", color:"var(--bear)" },
+                    { label:"HOLD", bg:"var(--hold-bg)", color:"var(--hold)" },
                   ].map(b => (
                     <span key={b.label} style={{
-                      background: b.bg, color: b.color,
-                      fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 700,
-                      padding: "4px 10px", borderRadius: 4, letterSpacing: "0.1em",
+                      background:b.bg, color:b.color,
+                      fontFamily:"var(--font-mono)", fontSize:12, fontWeight:700,
+                      padding:"5px 12px", borderRadius:4, letterSpacing:"0.06em",
                     }}>{b.label}</span>
                   ))}
                 </div>
-              </SubSection>
+              </div>
 
-              <SubSection title="Status pills">
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div className="ds-subsection">
+                <SubLabel text="Status / tier pills" />
+                <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
                   <span style={{
-                    display: "inline-flex", alignItems: "center", gap: 6,
-                    background: "var(--surface)", border: "1px solid var(--line)",
-                    borderRadius: 100, padding: "5px 12px",
-                    fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--dim)", letterSpacing: "0.1em",
+                    display:"inline-flex", alignItems:"center", gap:7,
+                    background:"var(--surface)", border:"1px solid var(--line)",
+                    borderRadius:100, padding:"6px 14px",
+                    fontFamily:"var(--font-body)", fontSize:13, fontWeight:600, color:"var(--dim)",
                   }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--bull)", animation: "ds-pulse 2s ease-in-out infinite", display: "inline-block" }} />
-                    LIVE
+                    <span style={{ width:7, height:7, borderRadius:"50%", background:"var(--bull)", display:"inline-block", animation:"ds-pulse 2s ease-in-out infinite" }} />
+                    Live
                   </span>
                   <span style={{
-                    display: "inline-flex", alignItems: "center", gap: 6,
-                    background: "rgba(200,16,46,0.08)", border: "1px solid rgba(200,16,46,0.2)",
-                    borderRadius: 100, padding: "5px 12px",
-                    fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--brand)", letterSpacing: "0.1em",
+                    display:"inline-flex", alignItems:"center", gap:7,
+                    background:"rgba(200,16,46,.07)", border:"1px solid rgba(200,16,46,.2)",
+                    borderRadius:100, padding:"6px 14px",
+                    fontFamily:"var(--font-body)", fontSize:13, fontWeight:600, color:"var(--brand)",
                   }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--brand)", animation: "ds-pulse 1.4s ease-in-out infinite", display: "inline-block" }} />
-                    SIGNAL
+                    <span style={{ width:7, height:7, borderRadius:"50%", background:"var(--brand)", display:"inline-block", animation:"ds-pulse 1.4s ease-in-out infinite" }} />
+                    Signal
                   </span>
-                  {["Free", "Pro", "Premium"].map(tier => (
+                  {["Free","Pro","Premium"].map(tier => (
                     <span key={tier} style={{
-                      fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ghost)",
-                      border: "1px solid var(--line)",
-                      padding: "4px 10px", borderRadius: 4, letterSpacing: "0.1em",
+                      fontFamily:"var(--font-body)", fontSize:13, fontWeight:600, color:"var(--ghost)",
+                      border:"1px solid var(--line)", padding:"5px 12px", borderRadius:4,
                     }}>{tier}</span>
                   ))}
                 </div>
-              </SubSection>
-            </Section>
+              </div>
+            </section>
 
             {/* ─── 6. Cards ──────────────────────────────────────────── */}
-            <Section id="cards" title="Cards">
-              <SubSection title="Base card (hover me)">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
-                  <div className="ds-card-demo" style={{ padding: "20px" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ghost)", letterSpacing: "0.14em", marginBottom: 10 }}>DEFAULT CARD</div>
-                    <div style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}>Title here</div>
-                    <p style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--dim)", lineHeight: 1.6 }}>Body copy that explains the content within this card component.</p>
-                  </div>
-                  <div className="ds-card-demo" style={{ padding: "20px", borderColor: "var(--brand)", boxShadow: "0 0 0 1px var(--brand), 0 4px 20px rgba(200,16,46,0.08)" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--brand)", letterSpacing: "0.14em", marginBottom: 10 }}>FEATURED CARD</div>
-                    <div style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}>Highlighted</div>
-                    <p style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--dim)", lineHeight: 1.6 }}>Used for the recommended tier or primary call-to-action card.</p>
-                  </div>
-                  <div className="ds-card-demo ds-motion-glow-bull" style={{ padding: "20px", borderColor: "rgba(0,168,118,0.3)" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--bull)", letterSpacing: "0.14em", marginBottom: 10 }}>SIGNAL CARD · BULL</div>
-                    <div style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}>Glowing</div>
-                    <p style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--dim)", lineHeight: 1.6 }}>Signal cards pulse with a glow matching their action color.</p>
-                  </div>
-                </div>
-              </SubSection>
-            </Section>
+            <section className="ds-section">
+              <Heading id="cards" text="Cards" />
+              <p style={{ fontFamily:"var(--font-body)", fontSize:15, color:"var(--dim)", marginBottom:24 }}>
+                Hover cards to see the lift and border-color transition.
+              </p>
 
-            {/* ─── 7. Signal Cards ───────────────────────────────────── */}
-            <Section id="signals" title="Signal Components">
-              <SubSection title="Signal row">
-                <div className="ds-card-demo" style={{ padding: "0 20px" }}>
-                  {[
-                    { ticker: "NVDA", name: "NVIDIA Corp.", action: "BUY",  conf: 94, delta: "+2.31%" },
-                    { ticker: "AAPL", name: "Apple Inc.",   action: "SELL", conf: 82, delta: "−1.24%" },
-                    { ticker: "META", name: "Meta Platforms", action: "HOLD", conf: 66, delta: "+0.41%" },
-                  ].map((s, i) => (
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:16 }}>
+                <div className="ds-card" style={{ padding:24 }}>
+                  <p style={{ fontFamily:"var(--font-body)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", color:"var(--ghost)", marginBottom:10 }}>Default card</p>
+                  <h3 style={{ fontFamily:"var(--font-display)", fontSize:18, fontWeight:800, color:"var(--ink)", marginBottom:8 }}>Card title</h3>
+                  <p style={{ fontFamily:"var(--font-body)", fontSize:14, lineHeight:1.7, color:"var(--dim)" }}>Standard card with border-color hover and 2px lift.</p>
+                </div>
+                <div className="ds-card-featured" style={{ padding:24 }}>
+                  <p style={{ fontFamily:"var(--font-body)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", color:"var(--brand)", marginBottom:10 }}>Featured card</p>
+                  <h3 style={{ fontFamily:"var(--font-display)", fontSize:18, fontWeight:800, color:"var(--ink)", marginBottom:8 }}>Highlighted</h3>
+                  <p style={{ fontFamily:"var(--font-body)", fontSize:14, lineHeight:1.7, color:"var(--dim)" }}>Used for recommended tier, primary call-to-action card.</p>
+                </div>
+                <div className="ds-card" style={{
+                  padding:24,
+                  borderColor:"rgba(0,168,118,.3)",
+                  animation:"ds-glow-bull 3s ease-in-out infinite",
+                }}>
+                  <p style={{ fontFamily:"var(--font-body)", fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", color:"var(--bull)", marginBottom:10 }}>Signal card · Bull</p>
+                  <h3 style={{ fontFamily:"var(--font-display)", fontSize:18, fontWeight:800, color:"var(--ink)", marginBottom:8 }}>Glowing</h3>
+                  <p style={{ fontFamily:"var(--font-body)", fontSize:14, lineHeight:1.7, color:"var(--dim)" }}>BUY signal cards pulse with a green glow animation.</p>
+                </div>
+              </div>
+            </section>
+
+            {/* ─── 7. Signals ────────────────────────────────────────── */}
+            <section className="ds-section">
+              <Heading id="signals" text="Signal Components" />
+              <p style={{ fontFamily:"var(--font-body)", fontSize:15, color:"var(--dim)", marginBottom:24 }}>
+                The core data display unit. Used in the dashboard signal feed and the homepage preview.
+              </p>
+              <div className="ds-card" style={{ padding:"0 20px" }}>
+                {[
+                  { ticker:"NVDA", name:"NVIDIA Corp.",    action:"BUY",  conf:94, delta:"+2.31%", reason:"Breakout pattern · earnings catalyst" },
+                  { ticker:"AAPL", name:"Apple Inc.",      action:"BUY",  conf:78, delta:"+1.24%", reason:"RSI divergence · volume confirms"     },
+                  { ticker:"META", name:"Meta Platforms",  action:"SELL", conf:83, delta:"−0.87%", reason:"Overbought RSI · insider distribution" },
+                ].map((s, i, arr) => {
+                  const c = s.action==="BUY" ? "var(--bull)" : s.action==="SELL" ? "var(--bear)" : "var(--hold)";
+                  const bg = s.action==="BUY" ? "var(--bull-bg)" : s.action==="SELL" ? "var(--bear-bg)" : "var(--hold-bg)";
+                  return (
                     <div key={s.ticker} style={{
-                      display: "grid",
-                      gridTemplateColumns: "52px 44px 1fr 52px",
-                      gap: "0 12px", alignItems: "center",
-                      padding: "13px 0",
-                      borderBottom: i < 2 ? "1px solid var(--line)" : "none",
+                      display:"grid",
+                      gridTemplateColumns:"1fr auto auto",
+                      gap:12, alignItems:"center",
+                      padding:"14px 0",
+                      borderBottom: i < arr.length-1 ? "1px solid var(--line)" : "none",
                     }}>
                       <div>
-                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{s.ticker}</div>
-                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ghost)", marginTop: 2 }}>{s.name}</div>
+                        <p style={{ fontFamily:"var(--font-mono)", fontSize:14, fontWeight:700, color:"var(--ink)" }}>{s.ticker}</p>
+                        <p style={{ fontFamily:"var(--font-body)", fontSize:12, color:"var(--ghost)", marginTop:2 }}>{s.reason}</p>
+                      </div>
+                      <div>
+                        <div style={{ height:3, width:80, background:"var(--line)", borderRadius:2, overflow:"hidden", marginBottom:4 }}>
+                          <div style={{ height:"100%", width:`${s.conf}%`, background:c, borderRadius:2 }} />
+                        </div>
+                        <p style={{ fontFamily:"var(--font-mono)", fontSize:11, color:"var(--ghost)" }}>{s.conf}%</p>
                       </div>
                       <span style={{
-                        background: s.action === "BUY" ? "var(--bull-bg)" : s.action === "SELL" ? "var(--bear-bg)" : "var(--hold-bg)",
-                        color: s.action === "BUY" ? "var(--bull)" : s.action === "SELL" ? "var(--bear)" : "var(--hold)",
-                        fontFamily: "var(--font-mono)", fontSize: 9, fontWeight: 700,
-                        padding: "3px 6px", borderRadius: 3, letterSpacing: "0.08em",
-                        display: "inline-block", textAlign: "center",
+                        fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700,
+                        color:c, background:bg, padding:"4px 10px", borderRadius:4,
+                        letterSpacing:"0.06em",
                       }}>{s.action}</span>
-                      <div>
-                        <div style={{ height: 3, background: "var(--line)", borderRadius: 2, overflow: "hidden", marginBottom: 4 }}>
-                          <div style={{
-                            height: "100%", width: `${s.conf}%`,
-                            background: s.action === "BUY" ? "var(--bull)" : s.action === "SELL" ? "var(--bear)" : "var(--hold)",
-                            borderRadius: 2,
-                          }} />
-                        </div>
-                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ghost)" }}>{s.conf}% confidence</div>
-                      </div>
-                      <div style={{
-                        fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600,
-                        color: s.delta.startsWith("+") ? "var(--bull)" : "var(--bear)",
-                        textAlign: "right",
-                      }}>{s.delta}</div>
                     </div>
-                  ))}
-                </div>
-              </SubSection>
-            </Section>
+                  );
+                })}
+              </div>
+            </section>
 
             {/* ─── 8. Motion ─────────────────────────────────────────── */}
-            <Section id="motion" title="Motion & Animation">
-              <SubSection title="Entrance animations (reload to replay)">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-                  <div className="ds-card-demo ds-motion-fade" style={{ padding: 20, textAlign: "center", animationDelay: "0s" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--dim)", letterSpacing: "0.12em", marginBottom: 8 }}>FADE UP</div>
-                    <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--ghost)" }}>
-                      0.6s ease · page load, hero
-                    </div>
-                  </div>
-                  <div className="ds-card-demo ds-motion-slide" style={{ padding: 20, textAlign: "center", animationDelay: "0.1s" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--dim)", letterSpacing: "0.12em", marginBottom: 8 }}>SLIDE IN</div>
-                    <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--ghost)" }}>
-                      0.5s ease · list items, rows
-                    </div>
-                  </div>
-                  <div className="ds-card-demo" style={{ padding: 20, textAlign: "center" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--dim)", letterSpacing: "0.12em", marginBottom: 12 }}>PULSE LIVE</div>
-                    <span className="ds-motion-pulse" style={{
-                      display: "inline-block", width: 10, height: 10,
-                      borderRadius: "50%", background: "var(--bull)",
-                    }} />
-                  </div>
-                </div>
-              </SubSection>
+            <section className="ds-section">
+              <Heading id="motion" text="Motion & Animation" />
 
-              <SubSection title="Glow effects">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-                  <div className="ds-card-demo ds-motion-glow-brand" style={{ padding: 20, textAlign: "center", borderColor: "rgba(200,16,46,0.3)" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--brand)", letterSpacing: "0.14em" }}>GLOW BRAND</div>
-                    <div style={{ fontFamily: "var(--font-body)", fontSize: 11, color: "var(--dim)", marginTop: 6 }}>Active states, CTAs</div>
-                  </div>
-                  <div className="ds-card-demo ds-motion-glow-bull" style={{ padding: 20, textAlign: "center", borderColor: "rgba(0,168,118,0.3)" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--bull)", letterSpacing: "0.14em" }}>GLOW BULL</div>
-                    <div style={{ fontFamily: "var(--font-body)", fontSize: 11, color: "var(--dim)", marginTop: 6 }}>BUY signals, gains</div>
-                  </div>
-                  <div className="ds-card-demo" style={{ padding: 20, textAlign: "center", animation: "ds-glow-bear 3s ease-in-out infinite", borderColor: "rgba(217,32,64,0.3)" }}>
-                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--bear)", letterSpacing: "0.14em" }}>GLOW BEAR</div>
-                    <div style={{ fontFamily: "var(--font-body)", fontSize: 11, color: "var(--dim)", marginTop: 6 }}>SELL signals, losses</div>
-                  </div>
-                </div>
-              </SubSection>
-
-              <SubSection title="Transition spec">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px,1fr))", gap: 8 }}>
+              <div className="ds-subsection">
+                <SubLabel text="Entrance animations (refresh to replay)" />
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:12 }}>
                   {[
-                    { prop: "background-color", duration: "0.18s ease", use: "Theme switches" },
-                    { prop: "border-color",      duration: "0.18s ease", use: "Card hover" },
-                    { prop: "color",             duration: "0.18s ease", use: "Link/button hover" },
-                    { prop: "opacity",           duration: "0.18s ease", use: "Button hover" },
-                    { prop: "transform",         duration: "0.18s ease", use: "Card lift on hover" },
-                    { prop: "box-shadow",        duration: "0.2s ease",  use: "Card depth on hover" },
+                    { cls:"ds-motion-fade",  label:"Fade up",  spec:"0.6s ease · hero, page load" },
+                    { cls:"ds-motion-slide", label:"Slide in", spec:"0.5s ease · list rows, items", delay:.1 },
+                  ].map(a => (
+                    <div key={a.label} className={`ds-card ${a.cls}`} style={{ padding:20, animationDelay:`${a.delay||0}s` }}>
+                      <p style={{ fontFamily:"var(--font-body)", fontSize:14, fontWeight:700, color:"var(--ink)", marginBottom:4 }}>{a.label}</p>
+                      <p style={{ fontFamily:"var(--font-body)", fontSize:13, color:"var(--dim)" }}>{a.spec}</p>
+                    </div>
+                  ))}
+                  <div className="ds-card" style={{ padding:20, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:12 }}>
+                    <span className="ds-motion-pulse" style={{ width:12, height:12, borderRadius:"50%", background:"var(--bull)", display:"inline-block" }} />
+                    <p style={{ fontFamily:"var(--font-body)", fontSize:14, fontWeight:700, color:"var(--ink)" }}>Pulse live</p>
+                    <p style={{ fontFamily:"var(--font-body)", fontSize:13, color:"var(--dim)", textAlign:"center" }}>1.8s ease · live status dots</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="ds-subsection">
+                <SubLabel text="Standard transition values" />
+                <div className="ds-2col-grid">
+                  {[
+                    { prop:"background-color, border-color, color", value:"0.18s ease", use:"Theme switch — global on all elements" },
+                    { prop:"opacity, transform",  value:"0.18s ease", use:"Button hover / active" },
+                    { prop:"border-color, box-shadow, transform", value:"0.2s ease", use:"Card hover" },
                   ].map(t => (
-                    <div key={t.prop} style={{
-                      background: "var(--surface)", border: "1px solid var(--line)",
-                      borderRadius: 8, padding: "12px 14px",
-                    }}>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, color: "var(--ink)" }}>{t.prop}</div>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--brand)", marginTop: 3 }}>{t.duration}</div>
-                      <div style={{ fontFamily: "var(--font-body)", fontSize: 11, color: "var(--dim)", marginTop: 4 }}>{t.use}</div>
+                    <div key={t.prop} style={{ background:"var(--surface)", border:"1px solid var(--line)", borderRadius:8, padding:"14px 16px" }}>
+                      <p style={{ fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, color:"var(--ink)", marginBottom:4 }}>{t.value}</p>
+                      <p style={{ fontFamily:"var(--font-mono)", fontSize:11, color:"var(--ghost)", marginBottom:6 }}>{t.prop}</p>
+                      <p style={{ fontFamily:"var(--font-body)", fontSize:13, color:"var(--dim)" }}>{t.use}</p>
                     </div>
                   ))}
                 </div>
-              </SubSection>
-            </Section>
+              </div>
+            </section>
 
             {/* ─── 9. Responsive ─────────────────────────────────────── */}
-            <Section id="responsive" title="Responsive Breakpoints">
-              <SubSection title="Breakpoints">
-                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+            <section className="ds-section">
+              <Heading id="responsive" text="Responsive Behavior" />
+              <p style={{ fontFamily:"var(--font-body)", fontSize:15, color:"var(--dim)", marginBottom:28 }}>
+                Atlas is mobile-first. Default CSS targets phones. Media queries expand the layout for larger screens.
+              </p>
+
+              <div className="ds-subsection">
+                <SubLabel text="Breakpoints" />
+                <div style={{ border:"1px solid var(--line)", borderRadius:12, overflow:"hidden" }}>
                   {[
-                    { bp: "< 640px",   label: "Mobile",        changes: "Single column, hidden nav links, stacked buttons" },
-                    { bp: "640–900px", label: "Tablet",         changes: "3-col grids collapse to 2-col, reduced padding" },
-                    { bp: "900px+",    label: "Desktop",        changes: "Full layout, sidebar visible, hero two-column" },
-                    { bp: "1200px",    label: "Max content",    changes: "Content capped, centered within viewport" },
-                  ].map(b => (
+                    { bp:"< 640px",    label:"Mobile (default)",  notes:"Single column. Stacked buttons. No right panels."          },
+                    { bp:"≥ 640px",    label:"Tablet",            notes:"2-column grids for mode and feature cards."                },
+                    { bp:"≥ 960px",    label:"Desktop",           notes:"Full hero two-column. 3-column grids. Sidebar visible."    },
+                    { bp:"≥ 1160px",   label:"Wide",              notes:"Content capped at 1160px, centered in viewport."           },
+                  ].map((b, i) => (
                     <div key={b.bp} style={{
-                      display: "grid", gridTemplateColumns: "120px 100px 1fr",
-                      gap: 24, alignItems: "center",
-                      padding: "13px 0", borderBottom: "1px solid var(--line)",
+                      display:"grid", gridTemplateColumns:"120px 140px 1fr", gap:16,
+                      alignItems:"center", padding:"14px 20px",
+                      background: i%2===0 ? "var(--surface)" : "var(--elevated)",
                     }}>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>{b.bp}</div>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ghost)", letterSpacing: "0.08em" }}>{b.label}</div>
-                      <div style={{ fontFamily: "var(--font-body)", fontSize: 13, color: "var(--dim)" }}>{b.changes}</div>
+                      <p style={{ fontFamily:"var(--font-mono)", fontSize:13, fontWeight:700, color:"var(--brand)" }}>{b.bp}</p>
+                      <p style={{ fontFamily:"var(--font-body)", fontSize:13, fontWeight:600, color:"var(--ink)" }}>{b.label}</p>
+                      <p style={{ fontFamily:"var(--font-body)", fontSize:13, color:"var(--dim)" }}>{b.notes}</p>
                     </div>
                   ))}
                 </div>
-              </SubSection>
+              </div>
 
-              <SubSection title="Mobile-specific rules">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px,1fr))", gap: 12 }}>
+              <div className="ds-subsection">
+                <SubLabel text="Component behavior on mobile" />
+                <div className="ds-2col-grid">
                   {[
-                    { component: "Homepage left panel",   rule: "Visible, full width"       },
-                    { component: "Homepage right panel",  rule: "Hidden (display: none)"    },
-                    { component: "Nav links",             rule: "Hidden (display: none)"    },
-                    { component: "Login left panel",      rule: "Hidden below 900px"        },
-                    { component: "Mode cards",            rule: "Single column stack"       },
-                    { component: "Feature grid",          rule: "Single column stack"       },
-                    { component: "Design system sidebar", rule: "Hidden (display: none)"    },
-                    { component: "Proof strip",           rule: "2×2 grid preserved"        },
+                    { component:"Nav links",           behavior:"Hidden" },
+                    { component:"Sign in (nav)",       behavior:"Always visible — primary action" },
+                    { component:"Hero right panel",    behavior:"Hidden (signal feed preview)" },
+                    { component:"Login left panel",    behavior:"Hidden below 900px" },
+                    { component:"Mode cards (3)",      behavior:"Single column → 2-col → 3-col" },
+                    { component:"Feature grid (3)",    behavior:"Single column → 2-col → 3-col" },
+                    { component:"Design system sidebar", behavior:"Hidden, content full-width" },
+                    { component:"Proof stat grid",     behavior:"2×2 preserved on all sizes" },
+                    { component:"Touch targets",       behavior:"Min 44px height on all tappables" },
+                    { component:"Section gutter",      behavior:"20px mobile, 32px desktop" },
                   ].map(r => (
                     <div key={r.component} style={{
-                      background: "var(--surface)", border: "1px solid var(--line)",
-                      borderRadius: 8, padding: "14px 16px",
+                      background:"var(--surface)", border:"1px solid var(--line)",
+                      borderRadius:8, padding:"12px 16px",
                     }}>
-                      <div style={{ fontFamily: "var(--font-body)", fontSize: 13, fontWeight: 600, color: "var(--ink)", marginBottom: 4 }}>{r.component}</div>
-                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--dim)", letterSpacing: "0.08em" }}>{r.rule}</div>
+                      <p style={{ fontFamily:"var(--font-body)", fontSize:13, fontWeight:700, color:"var(--ink)", marginBottom:4 }}>{r.component}</p>
+                      <p style={{ fontFamily:"var(--font-body)", fontSize:13, color:"var(--dim)" }}>{r.behavior}</p>
                     </div>
                   ))}
                 </div>
-              </SubSection>
-            </Section>
+              </div>
+            </section>
 
           </main>
         </div>
