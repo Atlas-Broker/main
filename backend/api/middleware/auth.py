@@ -61,6 +61,10 @@ class ClerkAuthMiddleware(BaseHTTPMiddleware):
         if is_public_path(request.url.path, environment=environment):
             return await call_next(request)
 
+        # Pass CORS preflight requests through — they carry no auth header by design.
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Missing Authorization header")
