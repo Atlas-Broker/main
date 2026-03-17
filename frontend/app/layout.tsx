@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Syne, JetBrains_Mono, Nunito_Sans } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { AuthSync } from "./components/AuthSync";
 import { ClerkProvider } from "@clerk/nextjs";
 
 const syne = Syne({
@@ -40,7 +41,7 @@ export default function RootLayout({
         className={`${syne.variable} ${jetBrainsMono.variable} ${nunitoSans.variable}`}
       >
         <body className="antialiased">
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider><AuthSync />{children}</ThemeProvider>
         </body>
       </html>
     </ClerkProvider>
