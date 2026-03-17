@@ -1,27 +1,75 @@
-# Environment files
+# ─── Secrets & environment ────────────────────────────────────────────────────
 .env
 .env.local
-.env*.local
+.env.*.local
+.env.*
+# Allow example files (committed as templates — no real values)
+!.env.example
 
-# Python
+
+# ─── Claude Code / AI tooling ─────────────────────────────────────────────────
+# Personal MCP server config — each developer has their own setup
+.mcp.json
+# Claude project memory and session files
+.claude/
+
+
+# ─── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.pyo
+*.pyd
 .venv/
+.Python
 dist/
+build/
 *.egg-info/
+*.egg
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+# Type checking
+.mypy_cache/
+.ruff_cache/
 
-# Node
+
+# ─── Node / Next.js ───────────────────────────────────────────────────────────
 node_modules/
 .next/
 out/
 build/
+# Testing
+coverage/
+# TypeScript incremental build info
+*.tsbuildinfo
 
-# IDEs
+
+# ─── Supabase local dev ───────────────────────────────────────────────────────
+# Local Supabase instance data (docker volumes, auth config, etc.)
+# The supabase/ project folder itself IS committed (migrations, config)
+.supabase/
+
+
+# ─── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
+.DS_Store?
+Thumbs.db
+
+
+# ─── IDEs ─────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# Logs
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
+logs/
+npm-debug.log*
+
+
+# ─── Misc ─────────────────────────────────────────────────────────────────────
 .superpowers/
