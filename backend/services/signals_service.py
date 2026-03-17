@@ -1,9 +1,9 @@
+# backend/services/signals_service.py
 """
 Signals service — queries MongoDB for real pipeline traces and executes approvals.
 """
 import logging
 import os
-
 from bson import ObjectId
 from bson.errors import InvalidId
 from dotenv import load_dotenv
@@ -13,6 +13,10 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 _client: MongoClient | None = None
+
+
+class AlreadyExecutedError(Exception):
+    """Raised when a signal has already been executed."""
 
 
 def _get_collection():
@@ -44,14 +48,23 @@ def _trace_to_signal(trace: dict) -> dict:
     }
 
 
-def get_recent_signals(limit: int = 20) -> list[dict]:
+def get_recent_signals(user_id: str, limit: int = 20) -> list[dict]:
+    """Return recent signals for the given user only."""
     col = _get_collection()
-    traces = list(col.find({}, sort=[("created_at", DESCENDING)]).limit(limit))
+    traces = list(
+        col.find({"user_id": user_id}, sort=[("created_at", DESCENDING)]).limit(limit)
+    )
     return [_trace_to_signal(t) for t in traces]
 
 
-def approve_and_execute(signal_id: str) -> dict:
-    """Look up trace by ID and place the order via Alpaca."""
+def approve_and_execute(signal_id: str, user_id: str) -> dict:
+    """
+    Look up trace by ID, verify ownership, place the order, then persist to Supabase.
+    Raises:
+        ValueError           — invalid signal_id or not found
+        PermissionError      — signal belongs to a different user (presented as 404)
+        AlreadyExecutedError — signal was already executed
+    """
     try:
         oid = ObjectId(signal_id)
     except InvalidId:
@@ -59,20 +72,22 @@ def approve_and_execute(signal_id: str) -> dict:
 
     col = _get_collection()
     trace = col.find_one({"_id": oid})
+
     if not trace:
         raise ValueError(f"Signal {signal_id} not found")
 
-    # Prevent double execution
+    # Ownership check — 404 to caller (don't reveal existence to wrong user)
+    if trace.get("user_id") != user_id:
+        raise ValueError(f"Signal {signal_id} not found")
+
+    # Idempotency guard
     if trace.get("execution", {}).get("executed"):
-        return {
-            "status": "already_executed",
-            "order_id": trace["execution"].get("order_id"),
-            "message": "Signal was already executed.",
-        }
+        raise AlreadyExecutedError("Signal has already been executed.")
 
     decision = trace.get("pipeline_run", {}).get("final_decision", {})
     ticker = trace.get("ticker", "")
     action = decision.get("action", "HOLD")
+    boundary_mode = trace.get("boundary_mode", "advisory")
 
     if action == "HOLD":
         return {"status": "skipped", "message": "HOLD signal — no order placed."}
@@ -80,6 +95,30 @@ def approve_and_execute(signal_id: str) -> dict:
     from broker.factory import get_broker
     broker = get_broker()
     order = broker.place_order(ticker, action, notional=1000.0)
+
+    # Persist to Supabase — failure must not fail the HTTP response
+    supabase_sync = True
+    try:
+        from services.portfolio_service import get_or_create_portfolio
+        from services.trade_service import record_trade, sync_positions
+
+        portfolio_id = get_or_create_portfolio(user_id)
+        record_trade(
+            user_id=user_id,
+            portfolio_id=portfolio_id,
+            ticker=ticker,
+            action=action,
+            boundary_mode=boundary_mode,
+            signal_id=signal_id,
+            order=order,
+        )
+        sync_positions(user_id, portfolio_id, ticker, action, order)
+    except Exception as exc:
+        logger.error(
+            "Supabase write failed after order placement — user=%r ticker=%r order_id=%r error=%r",
+            user_id, ticker, order.get("order_id"), exc,
+        )
+        supabase_sync = False
 
     col.update_one(
         {"_id": oid},
@@ -93,4 +132,5 @@ def approve_and_execute(signal_id: str) -> dict:
         "ticker": ticker,
         "action": action,
         "message": f"Order placed: {action} $1000 of {ticker}.",
+        "supabase_sync": supabase_sync,
     }
