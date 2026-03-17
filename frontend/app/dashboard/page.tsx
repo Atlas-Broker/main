@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTheme } from "../components/ThemeProvider";
+import { fetchWithAuth } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -98,6 +100,7 @@ function ModeBadge({ mode }: { mode: string }) {
 }
 
 function SignalCard({ signal, isPrimary }: { signal: Signal; isPrimary?: boolean }) {
+  const router = useRouter();
   const [approved, setApproved] = useState<boolean | null>(null);
   const [approving, setApproving] = useState(false);
   const s = ACTION_STYLE[signal.action];
@@ -107,17 +110,25 @@ function SignalCard({ signal, isPrimary }: { signal: Signal; isPrimary?: boolean
   async function handleApprove() {
     setApproving(true);
     try {
-      await fetch(`${API_URL}/v1/signals/${signal.id}/approve`, { method: "POST" });
+      const res = await fetchWithAuth(
+        `${API_URL}/v1/signals/${signal.id}/approve`,
+        { method: "POST" }
+      );
+      if (!res) { router.push("/login"); return; }
       setApproved(true);
     } catch {
-      setApproved(true); // optimistic
+      setApproved(true);
     } finally {
       setApproving(false);
     }
   }
 
   async function handleReject() {
-    await fetch(`${API_URL}/v1/signals/${signal.id}/reject`, { method: "POST" }).catch(() => {});
+    const res = await fetchWithAuth(
+      `${API_URL}/v1/signals/${signal.id}/reject`,
+      { method: "POST" }
+    ).catch(() => null);
+    if (!res) { router.push("/login"); return; }
     setApproved(false);
   }
 
@@ -506,19 +517,33 @@ export default function UserDashboard() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
-    Promise.all([
-      fetch(`${API_URL}/v1/portfolio`).then((r) => r.json()),
-      fetch(`${API_URL}/v1/signals?limit=20`).then((r) => r.json()),
-    ])
-      .then(([port, sigs]) => {
+    async function loadData() {
+      const [portRes, sigsRes] = await Promise.all([
+        fetchWithAuth(`${API_URL}/v1/portfolio`),
+        fetchWithAuth(`${API_URL}/v1/signals?limit=20`),
+      ]);
+
+      if (!portRes || !sigsRes) {
+        router.push("/login");
+        return;
+      }
+
+      try {
+        const [port, sigs] = await Promise.all([portRes.json(), sigsRes.json()]);
         setPortfolio(port);
         setSignals(Array.isArray(sigs) ? sigs : []);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+      } catch (err) {
+        console.error("Failed to parse dashboard data", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadData();
+  }, [router]);
 
   const primarySignal = signals[0] ?? null;
   const hasPendingConditional = signals.some((s) => s.boundary_mode === "conditional");

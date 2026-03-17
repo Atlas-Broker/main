@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { fetchWithAuth } from "@/lib/api";
 
 // ─── Mock admin data ──────────────────────────────────────────────────────────
 
@@ -111,6 +113,14 @@ const NAV_ITEMS: { id: AdminTab; label: string }[] = [
 export default function AdminDashboard() {
   const [tab, setTab] = useState<AdminTab>("overview");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    fetchWithAuth(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/health`)
+      .then((res) => {
+        if (!res) router.push("/login");
+      });
+  }, [router]);
 
   return (
     <div className="min-h-screen flex" style={{ background: "#07080B", fontFamily: "var(--font-nunito)" }}>
