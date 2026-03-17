@@ -4,6 +4,7 @@ Signals service — queries MongoDB for real pipeline traces and executes approv
 """
 import logging
 import os
+from datetime import datetime, timezone
 from bson import ObjectId
 from bson.errors import InvalidId
 from dotenv import load_dotenv
@@ -133,4 +134,61 @@ def approve_and_execute(signal_id: str, user_id: str) -> dict:
         "action": action,
         "message": f"Order placed: {action} $1000 of {ticker}.",
         "supabase_sync": supabase_sync,
+    }
+
+
+def reject_signal(signal_id: str, user_id: str) -> dict:
+    """Reject a signal and persist the decision to MongoDB.
+
+    Raises:
+        HTTPException 400 — invalid ObjectId format
+        HTTPException 404 — signal not found or not owned by user
+        HTTPException 409 — signal has already been executed
+    """
+    from fastapi import HTTPException
+
+    try:
+        oid = ObjectId(signal_id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="Invalid signal ID format")
+
+    col = _get_collection()
+
+    # user_id filter in find_one enforces ownership (returns None for wrong user)
+    trace = col.find_one({"_id": oid, "user_id": user_id})
+    if not trace:
+        raise HTTPException(status_code=404, detail="Signal not found")
+
+    execution = trace.get("execution", {})
+
+    # Guard: cannot reject an already-executed signal
+    if execution.get("executed"):
+        raise HTTPException(status_code=409, detail="Signal has already been executed")
+
+    # Idempotency: already rejected — return success without overwriting rejected_at
+    if execution.get("rejected"):
+        return {
+            "signal_id": signal_id,
+            "status": "rejected",
+            "message": "Signal already rejected",
+        }
+
+    # Persist rejection using dot-notation $set to merge into execution subdoc.
+    # Dot-notation preserves existing keys like execution.order_id.
+    col.update_one(
+        {"_id": oid},
+        {
+            "$set": {
+                "execution.rejected": True,
+                "execution.rejected_at": datetime.now(timezone.utc).isoformat(),
+                "execution.status": "rejected",
+            }
+        },
+    )
+
+    logger.info("Signal rejected: %s by user %s", signal_id, user_id)
+    return {
+        "signal_id": signal_id,
+        "status": "rejected",
+        "message": "Signal rejected and logged",
     }
