@@ -15,9 +15,11 @@ FastAPI REST API for the Atlas AI trading assistant. Deployed on Render (UAT) vi
 
 ```
 backend/
-├── main.py                        # App entry point — mounts routers, CORS middleware, keep-alive task
+├── main.py                        # App entry point — mounts routers, middleware, keep-alive task
 ├── api/
-│   ├── middleware/cors.py          # CORS config
+│   ├── middleware/
+│   │   ├── auth.py                # ClerkAuthMiddleware — JWT verification via JWKS
+│   │   └── cors.py                # CORS config
 │   └── routes/
 │       ├── pipeline.py            # POST /v1/pipeline/run — full live pipeline
 │       ├── signals.py             # GET /v1/signals, POST approve/reject
@@ -30,6 +32,8 @@ backend/
 ├── boundary/
 │   ├── modes.py                   # BoundaryMode enum + per-mode confidence thresholds
 │   └── controller.py              # ExecutionBoundaryController.execute()
+├── db/
+│   └── supabase.py                # Supabase client — trades, positions, profiles, override_log
 └── services/
     ├── pipeline_service.py        # run_pipeline_with_ebc — agents → EBC → response
     └── signals_service.py         # MongoDB queries; approve-and-execute with idempotency guard
@@ -37,28 +41,42 @@ backend/
 
 `atlas-agents` (the `agents/` package) is installed as a local editable dependency.
 
+## Authentication
+
+All routes except `/health` and `/webhooks/clerk` require a valid Clerk JWT.
+
+`ClerkAuthMiddleware` (`api/middleware/auth.py`):
+- Extracts `Authorization: Bearer <token>` from every request
+- Verifies the JWT against the instance-specific Clerk JWKS endpoint
+- Sets `request.state.user_id` to the `sub` claim on success
+- Returns `401` on missing or invalid tokens; `503` if JWKS is unreachable
+- Passes `OPTIONS` requests through for CORS preflight
+
+The JWKS URL is derived automatically from `CLERK_PUBLISHABLE_KEY` (decodes the base64 instance domain). Set `CLERK_JWKS_URL` explicitly to override.
+
 ## API Routes
 
 | Method | Path | Status | Description |
 |--------|------|--------|-------------|
-| `GET` | `/health` | Live | Health check — returns status, version, env |
-| `POST` | `/v1/pipeline/run` | Live | Runs the full agent pipeline for a ticker |
-| `GET` | `/v1/signals` | Live | Fetches recent signals from MongoDB reasoning traces |
-| `POST` | `/v1/signals/{id}/approve` | Live | Places Alpaca order; marks trace as executed (idempotent) |
-| `POST` | `/v1/signals/{id}/reject` | Stub | Returns placeholder response — not yet persisted |
-| `GET` | `/v1/portfolio` | Live | Returns live account equity, cash, and open positions from Alpaca |
-| `GET` | `/v1/trades` | Stub | Returns hardcoded mock trades |
-| `POST` | `/v1/trades/{id}/override` | Stub | Returns placeholder — Alpaca cancel not yet wired |
+| `GET` | `/health` | ✅ Live | Health check — returns status, version, env |
+| `POST` | `/v1/pipeline/run` | ✅ Live | Runs the full agent pipeline for a ticker |
+| `GET` | `/v1/signals` | ✅ Live | Fetches recent signals from MongoDB reasoning traces |
+| `POST` | `/v1/signals/{id}/approve` | ✅ Live | Places Alpaca order; marks trace as executed (idempotent) |
+| `POST` | `/v1/signals/{id}/reject` | ✅ Live | Persists rejection to MongoDB trace (`execution.rejected = true`) |
+| `GET` | `/v1/portfolio` | ✅ Live | Returns live equity, cash, and positions from Alpaca |
+| `GET` | `/v1/trades` | ✅ Live | Returns trade history from Supabase |
+| `POST` | `/v1/trades/{id}/override` | ✅ Live | Cancels Alpaca order; writes to Supabase `override_log` |
 
 ### Run the Pipeline
 
 ```bash
 curl -X POST http://localhost:8000/v1/pipeline/run \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <clerk-jwt>" \
   -d '{"ticker": "AAPL", "boundary_mode": "conditional"}'
 ```
 
-Returns an AI-generated signal with action, confidence, reasoning, full risk parameters (stop-loss, take-profit, position size, R/R ratio), and a MongoDB trace ID.
+Returns action, confidence, reasoning, risk parameters (stop-loss, take-profit, position size, R/R ratio), and a MongoDB trace ID.
 
 ## Environment Variables
 
@@ -67,6 +85,10 @@ Returns an AI-generated signal with action, confidence, reasoning, full risk par
 | `PORT` | No | Server port (default: `8000`) |
 | `ENVIRONMENT` | No | `development` or `production` |
 | `CORS_ORIGINS` | No | Comma-separated allowed origins |
+| `CLERK_PUBLISHABLE_KEY` | Yes* | Used to auto-derive JWKS URL |
+| `CLERK_JWKS_URL` | Yes* | Instance JWKS endpoint — overrides auto-derivation |
+| `CLERK_SECRET_KEY` | No | Clerk secret (used for webhook verification) |
+| `CLERK_WEBHOOK_SECRET` | No | Webhook signing secret |
 | `SUPABASE_URL` | Yes | Supabase project URL |
 | `SUPABASE_ANON_KEY` | Yes | Supabase anon key |
 | `SUPABASE_SERVICE_KEY` | Yes | Supabase service role key — never expose to frontend |
@@ -81,6 +103,8 @@ Returns an AI-generated signal with action, confidence, reasoning, full risk par
 | `BROKER_TYPE` | No | `alpaca` (default) — future: `ibkr` |
 | `RENDER_EXTERNAL_URL` | Auto | Set by Render — used by the keep-alive ping task |
 
+*Either `CLERK_PUBLISHABLE_KEY` or `CLERK_JWKS_URL` must be set for auth to work.
+
 ## Getting Started
 
 ```bash
@@ -89,7 +113,7 @@ cp .env.example .env
 uv run uvicorn main:app --reload   # → http://localhost:8000
 ```
 
-Swagger UI at `http://localhost:8000/docs`.
+Swagger UI at `http://localhost:8000/docs` (available in development mode).
 
 ## Docker
 

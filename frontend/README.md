@@ -7,49 +7,62 @@ Next.js 16 dashboard for the Atlas AI trading assistant. Deployed on Vercel (UAT
 - **Framework** — Next.js 16 (App Router)
 - **Language** — TypeScript
 - **Styling** — Tailwind CSS v4 + CSS custom properties (semantic colour tokens)
-- **Fonts** — Syne (headings), JetBrains Mono (data/labels), Nunito Sans (body)
-- **Theme** — Dark by default via `ThemeProvider`; token-driven colours (`--bull`, `--bear`, `--hold`, `--dim`, etc.)
+- **Fonts** — Syne (headings), JetBrains Mono (financial data), Nunito Sans (body)
+- **Auth** — Clerk (`@clerk/nextjs`) — session management, JWT, sign-in UI
+- **Theme** — Light by default; manual dark mode toggle via `ThemeProvider`
 
 ## Pages
 
 ### `/` — Landing
-Fully styled marketing page. Ticker tape animation, execution mode explainer (advisory / conditional / autonomous), links to dashboard and admin.
+Mobile-first marketing page. Ticker tape animation, execution mode explainer (advisory / conditional / autonomous), CTA to sign in.
+
+### `/login` — Authentication
+Split-screen Clerk sign-in/sign-up. Left panel: live signal feed preview. Right panel: Clerk `<SignIn />` widget. Always dark by design.
 
 ### `/dashboard` — User Dashboard
-Four-tab layout. Calls live backend APIs on mount.
+Auth-gated. Four-tab layout. Calls live backend APIs on mount. All requests include a Clerk JWT via `Authorization: Bearer <token>`.
 
 | Tab | What it shows | API call |
 |-----|---------------|----------|
-| Overview | Portfolio summary card, latest signal, open positions snapshot | `/v1/portfolio` |
-| Signals | Full signal list with confidence bars, risk params, approve/reject buttons | `/v1/signals` |
+| Overview | Portfolio summary, latest signal, open positions snapshot | `/v1/portfolio` |
+| Signals | Signal list with confidence bars, risk params, approve/reject buttons | `/v1/signals` |
 | Positions | Open positions table with unrealised P&L | `/v1/portfolio` |
-| Settings | Theme toggle, execution mode selector (local state) | — |
+| Settings | Theme toggle, execution mode selector (persisted to Supabase `profiles`) | — |
 
-Signal approval calls `POST /v1/signals/{id}/approve` and re-fetches the signal list. Error states are handled with a fallback UI.
+Signal approval calls `POST /v1/signals/{id}/approve` and re-fetches. Signal rejection calls `POST /v1/signals/{id}/reject`.
 
 ### `/admin` — Admin Panel
-Desktop-first sidebar layout. Used to trigger pipeline runs manually.
+Desktop-first sidebar. Manual pipeline triggers, system status, env config display.
 
-- Run pipeline: `POST /v1/pipeline/run` with ticker + boundary mode
-- Pipeline run table (mock data — not yet wired to MongoDB)
-- System status panel showing API endpoint, Gemini model, broker
-- Env config display
+### `/design-system` — Component Library
+Living styleguide: colour tokens, typography scale, spacing, all button variants and states, badges, cards, signal rows, motion specs, and responsive breakpoints.
 
 ## Components
 
 | Component | Purpose |
 |-----------|---------|
-| `components/ThemeProvider.tsx` | Context provider that exposes `theme` + `toggleTheme`; applies `data-theme` attribute to `<html>` |
+| `components/ThemeProvider.tsx` | Context provider — exposes `theme` + `toggleTheme`; applies `data-theme` to `<html>` |
+
+## Auth Flow
+
+1. Unauthenticated users hitting `/dashboard` or `/admin` are redirected to `/login` by `proxy.ts` (Clerk middleware).
+2. After sign-in, Clerk redirects to `/dashboard`.
+3. `lib/auth.ts` exports `getClerkToken()` — retrieves the current Clerk session JWT.
+4. `lib/api.ts` exports `fetchWithAuth()` — wraps `fetch()` with `Authorization: Bearer <token>` and handles network errors gracefully.
 
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `NEXT_PUBLIC_API_URL` | Backend API base URL (e.g. `https://atlas-broker-backend-uat.onrender.com`) |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (safe for browser) |
+| `NEXT_PUBLIC_API_URL` | Backend API base URL |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key |
+| `CLERK_SECRET_KEY` | Clerk secret key (server-only) |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/login` |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | `/login` |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL` | `/dashboard` |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL` | `/dashboard` |
 
-> `SUPABASE_SERVICE_KEY` is backend-only. Never set it here.
+> Never set `SUPABASE_SERVICE_KEY` in the frontend — it is backend-only.
 
 ## Commands
 
@@ -59,10 +72,11 @@ cp .env.example .env.local
 npm run dev      # → http://localhost:3000
 npm run build    # production build
 npm run lint     # ESLint
+npm test         # Jest unit tests
 ```
 
 ## Deployment
 
-Connect to Vercel, set root directory to `frontend/`, add env vars in the Vercel dashboard. `NEXT_PUBLIC_API_URL` must point to the deployed backend before API calls will work.
+Connect to Vercel, set root directory to `frontend/`, add env vars in the Vercel dashboard. `NEXT_PUBLIC_API_URL` must point to the deployed backend.
 
 UAT: `https://atlas-broker-frontend-uat.vercel.app`

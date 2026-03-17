@@ -6,17 +6,17 @@ Schema definitions for both databases. Neither requires manual GUI steps — bot
 
 ### Supabase (PostgreSQL)
 
-Relational data with Row Level Security enforced on every table. Every table has a `user_id` column, so the schema is multi-tenancy ready.
+Relational data with Row Level Security enforced on every table. Every table has a `user_id` column — multi-tenancy ready, tied to Clerk user IDs.
 
-| Table | Description |
-|-------|-------------|
-| `profiles` | One row per user — stores `boundary_mode` preference (`advisory`, `conditional`, `autonomous`) |
-| `portfolios` | Paper portfolio record — tracks cash balance |
-| `positions` | Open positions — ticker, shares, average cost |
-| `trades` | Trade history — action, quantity, price, execution status, boundary mode used |
-| `override_log` | Audit trail of user overrides in Autonomous mode |
+| Table | Description | Status |
+|-------|-------------|--------|
+| `profiles` | One row per user — stores `boundary_mode` preference (`advisory`, `conditional`, `autonomous`) | ✅ Active |
+| `portfolios` | Paper portfolio record — tracks cash balance | ✅ Active |
+| `positions` | Open positions — ticker, shares, average cost. Synced from Alpaca on trade execution | ✅ Active |
+| `trades` | Trade history — action, quantity, price, execution status, boundary mode used | ✅ Active |
+| `override_log` | Audit trail of user overrides in Autonomous mode | ✅ Active |
 
-**Current usage:** Schema is deployed and RLS policies are active. The backend does not yet read from or write to these tables — state currently lives in Alpaca (positions/account) and MongoDB (signals/traces). Supabase integration is the next major development step.
+RLS policies are deployed and enforced. All writes from the backend use the service role key (`SUPABASE_SERVICE_KEY`). Frontend reads use the anon key with RLS filtering by `user_id`.
 
 **Deploy the schema:**
 
@@ -39,17 +39,16 @@ Each document captures the full pipeline run for a single ticker:
 | Field path | Contents |
 |-----------|----------|
 | `ticker`, `boundary_mode`, `created_at` | Run metadata |
+| `user_id` | Clerk user ID of the requesting user |
 | `pipeline_run.analysts.technical` | RSI, SMAs, signal, reasoning, latency |
 | `pipeline_run.analysts.fundamental` | P/E, growth, signal, reasoning, latency |
 | `pipeline_run.analysts.sentiment` | Headline themes, score, reasoning, latency |
 | `pipeline_run.synthesis` | Bull case, bear case, verdict |
 | `pipeline_run.risk` | Stop-loss, take-profit, position size, R/R ratio |
 | `pipeline_run.final_decision` | action, confidence, reasoning |
-| `execution` | `executed` bool, `order_id` (set when approved and placed) |
+| `execution` | `executed`, `order_id`, `rejected`, `override` flags |
 
-JSON Schema validation is active at `moderate` level — invalid documents are flagged but not rejected (safe for development).
-
-**Current usage:** Every `POST /v1/pipeline/run` writes a trace here. `GET /v1/signals` reads from this collection and converts traces into the Signal API schema.
+JSON Schema validation is active at `moderate` level — invalid documents are flagged but not rejected.
 
 **Indexes:**
 

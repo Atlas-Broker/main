@@ -81,6 +81,36 @@ print(signal.action, signal.confidence, signal.trace_id)
 
 No code changes are needed to swap models — update env vars only.
 
+## Reasoning Trace Structure
+
+Each MongoDB document captures the full pipeline run for a single ticker:
+
+```json
+{
+  "trace_id": "uuid",
+  "user_id": "clerk-user-id",
+  "ticker": "AAPL",
+  "boundary_mode": "conditional",
+  "created_at": "ISO8601",
+  "pipeline_run": {
+    "analysts": {
+      "technical": { "signal": "BUY", "confidence": 0.72, "reasoning": "...", "latency_ms": 1200 },
+      "fundamental": { "..." },
+      "sentiment": { "..." }
+    },
+    "synthesis": { "bull_case": "...", "bear_case": "...", "verdict": "BUY", "confidence": 0.65 },
+    "risk": { "stop_loss": 175.0, "take_profit": 195.0, "position_size_pct": 0.05, "risk_reward_ratio": 2.0 },
+    "final_decision": { "action": "BUY", "confidence": 0.65, "reasoning": "..." }
+  },
+  "execution": {
+    "executed": true,
+    "order_id": "alpaca-order-id",
+    "rejected": false,
+    "override": false
+  }
+}
+```
+
 ## Academic References
 
 - **TradingAgents** (arxiv 2412.20138) — parallel analyst pipeline architecture
