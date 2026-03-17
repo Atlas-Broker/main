@@ -33,14 +33,18 @@ Every trade and position write requires a `portfolio_id`. The strategy:
 ```python
 # backend/services/portfolio_service.py
 def get_or_create_portfolio(user_id: str) -> str:
-    """Returns portfolio UUID for user. Creates default if none exists."""
+    """Returns portfolio UUID for user. Creates default if none exists.
+    Uses upsert + select to be safe against concurrent calls.
+    Canonical implementation is in database-migration-design.md.
+    """
+    supabase.table("portfolios").upsert(
+        {"user_id": user_id, "name": "Paper Portfolio"},
+        on_conflict="user_id",
+        ignore_duplicates=True,
+    ).execute()
     result = supabase.table("portfolios") \
-        .select("id").eq("user_id", user_id).limit(1).execute()
-    if result.data:
-        return result.data[0]["id"]
-    new = supabase.table("portfolios") \
-        .insert({"user_id": user_id, "name": "Paper Portfolio"}).execute()
-    return new.data[0]["id"]
+        .select("id").eq("user_id", user_id).single().execute()
+    return result.data["id"]
 ```
 
 Called at the start of `record_trade()` and `sync_positions()`. Also called by the Clerk webhook on user creation so the portfolio exists before the user's first dashboard visit.
