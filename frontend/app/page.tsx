@@ -88,14 +88,7 @@ export default function LandingPage() {
 
         <div className="flex items-center gap-2">
           <Link
-            href="/admin"
-            className="text-sm px-3 py-1.5 transition-colors"
-            style={{ color: "#7A8FA0", fontFamily: "var(--font-nunito)" }}
-          >
-            Admin
-          </Link>
-          <Link
-            href="/dashboard"
+            href="/login"
             className="text-sm font-semibold px-4 py-1.5 rounded transition-all"
             style={{
               background: "#C8102E",
@@ -103,7 +96,7 @@ export default function LandingPage() {
               fontFamily: "var(--font-nunito)",
             }}
           >
-            Launch App
+            Sign in
           </Link>
         </div>
       </nav>
@@ -198,7 +191,7 @@ export default function LandingPage() {
         {/* CTAs */}
         <div className="flex flex-col sm:flex-row gap-3 w-full max-w-xs fade-up" style={{ animationDelay: "0.35s" }}>
           <Link
-            href="/dashboard"
+            href="/login"
             className="flex-1 text-center font-semibold py-3 px-6 rounded transition-all"
             style={{
               background: "#C8102E",
@@ -207,10 +200,10 @@ export default function LandingPage() {
               fontSize: 15,
             }}
           >
-            Start Trading
+            Join the waitlist
           </Link>
           <Link
-            href="/admin"
+            href="/login"
             className="flex-1 text-center font-semibold py-3 px-6 rounded transition-colors"
             style={{
               border: "1px solid #1C2B3A",
@@ -219,7 +212,7 @@ export default function LandingPage() {
               fontSize: 15,
             }}
           >
-            Admin Panel
+            Sign in
           </Link>
         </div>
       </main>

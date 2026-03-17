@@ -10,6 +10,7 @@ jest.mock("next/navigation", () => ({
 jest.mock("@clerk/nextjs", () => ({
   useAuth: () => ({ isSignedIn: false }),
   useUser: () => ({ user: null }),
+  useClerk: () => ({ signOut: jest.fn() }),
 }));
 
 import { render, waitFor } from "@testing-library/react";

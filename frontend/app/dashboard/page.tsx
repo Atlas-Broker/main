@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "../components/ThemeProvider";
 import { fetchWithAuth } from "@/lib/api";
+import { UserMenu } from "@/components/UserMenu";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -570,7 +571,7 @@ export default function UserDashboard() {
             <span className="live-dot" />
             <span style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)" }}>live</span>
           </div>
-          <Link href="/admin" style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)" }}>Admin →</Link>
+          <UserMenu />
         </div>
       </header>
 
