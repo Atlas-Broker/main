@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Depends
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from api.dependencies import get_current_user
+from services import trade_service
 
 router = APIRouter(prefix="/v1", tags=["trades"])
+logger = logging.getLogger(__name__)
 
 
 class Trade(BaseModel):
@@ -14,6 +18,10 @@ class Trade(BaseModel):
     price: float
     status: str
     executed_at: str
+
+
+class OverrideRequest(BaseModel):
+    reason: str | None = None
 
 
 @router.get("/trades", response_model=list[Trade])
@@ -27,5 +35,16 @@ def get_trades(user_id: str = Depends(get_current_user)):
 
 
 @router.post("/trades/{trade_id}/override")
-def override_trade(trade_id: str, user_id: str = Depends(get_current_user)):
-    return {"trade_id": trade_id, "status": "override_requested"}
+def override_trade(
+    trade_id: str,
+    body: OverrideRequest,
+    user_id: str = Depends(get_current_user),
+):
+    """Cancel a trade within its 5-minute override window."""
+    try:
+        return trade_service.cancel_and_log(trade_id, user_id, body.reason)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to override trade %s", trade_id)
+        raise HTTPException(status_code=500, detail=str(exc))
