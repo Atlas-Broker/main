@@ -9,13 +9,19 @@ export async function fetchWithAuth(
     return null;
   }
 
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      ...options?.headers,
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...options,
+      headers: {
+        ...options?.headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch (err) {
+    console.error("fetchWithAuth: network error fetching", url, err);
+    return null;
+  }
 
   if (res.status === 401) {
     return null;
