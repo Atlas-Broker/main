@@ -9,7 +9,7 @@ from fastapi import FastAPI
 
 from api.middleware.cors import add_cors
 from api.middleware.auth import ClerkAuthMiddleware
-from api.routes import signals, portfolio, trades, pipeline
+from api.routes import signals, portfolio, trades, pipeline, webhooks
 
 load_dotenv()
 
@@ -60,6 +60,7 @@ app.include_router(signals.router)
 app.include_router(portfolio.router)
 app.include_router(trades.router)
 app.include_router(pipeline.router)
+app.include_router(webhooks.router)
 
 
 @app.get("/health")
