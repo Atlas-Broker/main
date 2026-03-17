@@ -1,7 +1,9 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from api.dependencies import get_current_user
 
 router = APIRouter(prefix="/v1", tags=["signals"])
 logger = logging.getLogger(__name__)
@@ -26,7 +28,7 @@ class Signal(BaseModel):
 
 
 @router.get("/signals", response_model=list[Signal])
-def get_signals(limit: int = 20):
+def get_signals(limit: int = 20, user_id: str = Depends(get_current_user)):
     try:
         from services.signals_service import get_recent_signals
         return get_recent_signals(limit=limit)
@@ -36,7 +38,7 @@ def get_signals(limit: int = 20):
 
 
 @router.post("/signals/{signal_id}/approve")
-def approve_signal(signal_id: str):
+def approve_signal(signal_id: str, user_id: str = Depends(get_current_user)):
     try:
         from services.signals_service import approve_and_execute
         return approve_and_execute(signal_id)
@@ -48,5 +50,5 @@ def approve_signal(signal_id: str):
 
 
 @router.post("/signals/{signal_id}/reject")
-def reject_signal(signal_id: str):
+def reject_signal(signal_id: str, user_id: str = Depends(get_current_user)):
     return {"signal_id": signal_id, "status": "rejected"}

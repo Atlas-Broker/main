@@ -1,8 +1,9 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from api.dependencies import get_current_user
 from services.pipeline_service import run_pipeline_with_ebc
 
 router = APIRouter(prefix="/v1", tags=["pipeline"])
@@ -12,11 +13,10 @@ logger = logging.getLogger(__name__)
 class PipelineRequest(BaseModel):
     ticker: str = "AAPL"
     boundary_mode: str = "advisory"
-    user_id: str = "system"
 
 
 @router.post("/pipeline/run")
-def run_pipeline(req: PipelineRequest):
+def run_pipeline(req: PipelineRequest, user_id: str = Depends(get_current_user)):
     """
     Run the full agent pipeline for a ticker and apply the EBC.
 
@@ -28,7 +28,7 @@ def run_pipeline(req: PipelineRequest):
         return run_pipeline_with_ebc(
             ticker=req.ticker,
             boundary_mode=req.boundary_mode,
-            user_id=req.user_id,
+            user_id=user_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))

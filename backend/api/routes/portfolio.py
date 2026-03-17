@@ -1,7 +1,9 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from api.dependencies import get_current_user
 
 router = APIRouter(prefix="/v1", tags=["portfolio"])
 logger = logging.getLogger(__name__)
@@ -27,7 +29,7 @@ _BASE_CAPITAL = 100_000.0  # Alpaca paper starting capital
 
 
 @router.get("/portfolio", response_model=PortfolioSummary)
-def get_portfolio():
+def get_portfolio(user_id: str = Depends(get_current_user)):
     try:
         from broker.factory import get_broker
         broker = get_broker()

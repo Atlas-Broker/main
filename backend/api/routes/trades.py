@@ -1,5 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+
+from api.dependencies import get_current_user
 
 router = APIRouter(prefix="/v1", tags=["trades"])
 
@@ -15,7 +17,7 @@ class Trade(BaseModel):
 
 
 @router.get("/trades", response_model=list[Trade])
-def get_trades():
+def get_trades(user_id: str = Depends(get_current_user)):
     return [
         Trade(id="trd-001", ticker="TSLA", action="BUY", shares=10, price=248.50,
               status="filled", executed_at="2026-03-10T10:22:00Z"),
@@ -25,5 +27,5 @@ def get_trades():
 
 
 @router.post("/trades/{trade_id}/override")
-def override_trade(trade_id: str):
+def override_trade(trade_id: str, user_id: str = Depends(get_current_user)):
     return {"trade_id": trade_id, "status": "override_requested"}

@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from api.middleware.cors import add_cors
+from api.middleware.auth import ClerkAuthMiddleware
 from api.routes import signals, portfolio, trades, pipeline
 
 load_dotenv()
@@ -15,6 +16,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 KEEP_ALIVE_INTERVAL = 10 * 60
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
 
 async def _keep_alive_loop(base_url: str) -> None:
@@ -40,9 +42,19 @@ async def lifespan(app: FastAPI):
         task.cancel()
 
 
-app = FastAPI(title="Atlas API", version="0.1.0", docs_url="/docs", lifespan=lifespan)
+docs_url = None if ENVIRONMENT == "production" else "/docs"
+openapi_url = None if ENVIRONMENT == "production" else "/openapi.json"
+
+app = FastAPI(
+    title="Atlas API",
+    version="0.1.0",
+    docs_url=docs_url,
+    openapi_url=openapi_url,
+    lifespan=lifespan,
+)
 
 add_cors(app)
+app.add_middleware(ClerkAuthMiddleware)
 
 app.include_router(signals.router)
 app.include_router(portfolio.router)
@@ -55,5 +67,5 @@ def health():
     return {
         "status": "ok",
         "version": "0.1.0",
-        "environment": os.getenv("ENVIRONMENT", "development"),
+        "environment": ENVIRONMENT,
     }
