@@ -27,6 +27,7 @@ type Signal = {
   boundary_mode: string;
   risk: RiskParams;
   created_at: string;
+  status?: "awaiting_approval" | "rejected" | "executed";
 };
 
 type Position = {
@@ -73,6 +74,32 @@ type Tab = "overview" | "signals" | "positions" | "settings";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+type ToastSeverity = "error" | "info";
+
+function showToast(message: string, severity: ToastSeverity = "error") {
+  const el = document.createElement("div");
+  el.textContent = message;
+  el.style.cssText = [
+    "position:fixed",
+    "bottom:80px",
+    "left:50%",
+    "transform:translateX(-50%)",
+    "padding:10px 18px",
+    "border-radius:8px",
+    "font-size:13px",
+    "font-family:var(--font-nunito)",
+    "z-index:9999",
+    "pointer-events:none",
+    "max-width:90vw",
+    "text-align:center",
+    severity === "error"
+      ? "background:var(--bear-bg);color:var(--bear);border:1px solid var(--bear)30"
+      : "background:var(--hold-bg);color:var(--hold);border:1px solid var(--hold)30",
+  ].join(";");
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
 function ConfBar({ value, color }: { value: number; color: string }) {
   return (
     <div className="conf-bar-track" style={{ width: "100%" }}>
@@ -104,10 +131,19 @@ function ModeBadge({ mode }: { mode: string }) {
   );
 }
 
-function SignalCard({ signal, isPrimary }: { signal: Signal; isPrimary?: boolean }) {
+export function SignalCard({
+  signal,
+  isPrimary,
+  onReject,
+}: {
+  signal: Signal;
+  isPrimary?: boolean;
+  onReject?: (id: string) => void;
+}) {
   const router = useRouter();
   const [approved, setApproved] = useState<boolean | null>(null);
   const [approving, setApproving] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
   const s = ACTION_STYLE[signal.action];
   const isConditional = signal.boundary_mode === "conditional";
   const canApprove = isConditional && approved === null;
@@ -129,12 +165,28 @@ function SignalCard({ signal, isPrimary }: { signal: Signal; isPrimary?: boolean
   }
 
   async function handleReject() {
-    const res = await fetchWithAuth(
-      `${API_URL}/v1/signals/${signal.id}/reject`,
-      { method: "POST" }
-    ).catch(() => null);
-    if (!res) { router.push("/login"); return; }
-    setApproved(false);
+    setRejecting(true);
+    try {
+      const resp = await fetch(`${API_URL}/v1/signals/${signal.id}/reject`, {
+        method: "POST",
+      });
+      if (resp.ok) {
+        setApproved(false);
+        onReject?.(signal.id);
+      } else if (resp.status === 409) {
+        showToast("This signal was already executed");
+      } else if (resp.status === 404) {
+        showToast("Signal not found");
+      } else if (resp.status === 400) {
+        showToast("Invalid signal");
+      } else {
+        showToast("Something went wrong, please try again");
+      }
+    } catch {
+      showToast("Something went wrong, please try again");
+    } finally {
+      setRejecting(false);
+    }
   }
 
   return (
@@ -214,17 +266,20 @@ function SignalCard({ signal, isPrimary }: { signal: Signal; isPrimary?: boolean
             </button>
             <button
               onClick={handleReject}
+              disabled={rejecting || approved === false}
               className="font-semibold px-5 py-3 rounded transition-colors"
               style={{
-                background: "transparent",
-                border: "1px solid var(--bear-bg)",
+                background: approved === false ? "var(--bear-bg)" : "transparent",
+                border: `1px solid ${approved === false ? "var(--bear)" : "var(--bear-bg)"}`,
                 color: "var(--bear)",
                 fontSize: 14,
                 fontFamily: "var(--font-nunito)",
-                cursor: "pointer",
+                cursor: rejecting || approved === false ? "not-allowed" : "pointer",
+                opacity: approved === false ? 0.7 : 1,
+                minWidth: 44,
               }}
             >
-              ✗
+              {rejecting ? "…" : approved === false ? "Rejected ✓" : "✗"}
             </button>
           </div>
         )}
@@ -250,7 +305,15 @@ function SignalCard({ signal, isPrimary }: { signal: Signal; isPrimary?: boolean
 
 // ─── Tab: Overview ────────────────────────────────────────────────────────────
 
-function OverviewTab({ portfolio, signals }: { portfolio: Portfolio | null; signals: Signal[] }) {
+function OverviewTab({
+  portfolio,
+  signals,
+  onReject,
+}: {
+  portfolio: Portfolio | null;
+  signals: Signal[];
+  onReject?: (id: string) => void;
+}) {
   const primary = signals[0] ?? null;
   const pnlPos = portfolio ? portfolio.pnl_today >= 0 : true;
 
@@ -289,7 +352,7 @@ function OverviewTab({ portfolio, signals }: { portfolio: Portfolio | null; sign
           <div className="flex items-center gap-2 mb-3" style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)" }}>
             <span className="live-dot-red" /> LATEST SIGNAL
           </div>
-          <SignalCard signal={primary} isPrimary />
+          <SignalCard signal={primary} isPrimary onReject={onReject} />
         </div>
       )}
 
@@ -333,7 +396,15 @@ function OverviewTab({ portfolio, signals }: { portfolio: Portfolio | null; sign
 
 // ─── Tab: Signals ─────────────────────────────────────────────────────────────
 
-function SignalsTab({ signals, loading }: { signals: Signal[]; loading: boolean }) {
+function SignalsTab({
+  signals,
+  loading,
+  onReject,
+}: {
+  signals: Signal[];
+  loading: boolean;
+  onReject?: (id: string) => void;
+}) {
   if (loading) return <div style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)", padding: "32px 0", textAlign: "center" }}>Loading signals…</div>;
   if (!signals.length) return <div style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)", padding: "32px 0", textAlign: "center" }}>No signals yet — run the pipeline from admin.</div>;
 
@@ -342,7 +413,7 @@ function SignalsTab({ signals, loading }: { signals: Signal[]; loading: boolean 
       <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 4 }}>
         ALL SIGNALS — {signals.length} RUNS
       </div>
-      {signals.map((sig) => <SignalCard key={sig.id} signal={sig} />)}
+      {signals.map((sig) => <SignalCard key={sig.id} signal={sig} onReject={onReject} />)}
     </div>
   );
 }
@@ -678,6 +749,14 @@ export default function UserDashboard() {
       .catch(console.error);
   }
 
+  function handleRejectSignal(id: string) {
+    setSignals((prev) =>
+      prev.map((s) =>
+        s.id === id ? { ...s, status: "rejected" as const } : s
+      )
+    );
+  }
+
   useEffect(() => {
     async function loadData() {
       const [portRes, sigsRes] = await Promise.all([
@@ -762,8 +841,8 @@ export default function UserDashboard() {
           </div>
         ) : (
           <>
-            {tab === "overview"  && <OverviewTab portfolio={portfolio} signals={signals} />}
-            {tab === "signals"   && <SignalsTab signals={signals} loading={loading} />}
+            {tab === "overview"  && <OverviewTab portfolio={portfolio} signals={signals} onReject={handleRejectSignal} />}
+            {tab === "signals"   && <SignalsTab signals={signals} loading={loading} onReject={handleRejectSignal} />}
             {tab === "positions" && <PositionsTab portfolio={portfolio} refreshPortfolio={fetchPortfolio} />}
             {tab === "settings"  && <SettingsTab />}
           </>
