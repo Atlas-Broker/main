@@ -3,6 +3,7 @@ Clerk JWT verification middleware for FastAPI.
 """
 
 import asyncio
+import base64
 import logging
 import os
 import time
@@ -16,6 +17,43 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 logger = logging.getLogger(__name__)
+
+
+def _derive_jwks_url() -> str:
+    """
+    Derive the public JWKS URL from environment variables.
+
+    Priority:
+    1. CLERK_JWKS_URL (explicit override)
+    2. Derived from CLERK_PUBLISHABLE_KEY — decode the base64 instance domain
+       and build the standard /.well-known/jwks.json URL.
+
+    The publishable key format is:
+        pk_test_<base64url(instance_domain + "$")>
+    e.g. pk_test_ZWxlY3RyaWMtZm94aG91bmQtMjcuY2xlcmsuYWNjb3VudHMuZGV2JA
+    decodes to electric-foxhound-27.clerk.accounts.dev$
+    """
+    explicit = os.getenv("CLERK_JWKS_URL", "")
+    if explicit:
+        return explicit
+
+    pub_key = os.getenv("CLERK_PUBLISHABLE_KEY", "")
+    if pub_key:
+        try:
+            # Strip the pk_test_ / pk_live_ prefix
+            payload = pub_key.split("_", 2)[-1]
+            # Pad to a valid base64 length
+            padded = payload + "=" * (-len(payload) % 4)
+            domain = base64.b64decode(padded).decode().rstrip("$")
+            url = f"https://{domain}/.well-known/jwks.json"
+            logger.info("Derived CLERK_JWKS_URL from publishable key: %s", url)
+            return url
+        except Exception as exc:
+            logger.warning("Could not derive JWKS URL from publishable key: %s", exc)
+
+    # Last-resort fallback — requires CLERK_SECRET_KEY to be valid.
+    return "https://api.clerk.com/v1/jwks"
+
 
 _ALWAYS_PUBLIC = {"/health", "/webhooks/clerk"}
 _DEV_PUBLIC = {"/docs", "/openapi.json", "/redoc"}
@@ -50,9 +88,7 @@ class JWKSCache:
 class ClerkAuthMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, jwks_url: str | None = None) -> None:
         super().__init__(app)
-        self._jwks_url = jwks_url or os.getenv(
-            "CLERK_JWKS_URL", "https://api.clerk.com/v1/jwks"
-        )
+        self._jwks_url = jwks_url or _derive_jwks_url()
         self._jwks_cache = JWKSCache()
         self._refresh_lock = asyncio.Lock()
 
