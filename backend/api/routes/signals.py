@@ -51,5 +51,16 @@ def approve_signal(signal_id: str, user_id: str = Depends(get_current_user)):
 
 
 @router.post("/signals/{signal_id}/reject")
-def reject_signal(signal_id: str, user_id: str = Depends(get_current_user)):
-    return {"signal_id": signal_id, "status": "rejected"}
+def reject_signal_route(
+    signal_id: str,
+    user_id: str = Depends(get_current_user),
+):
+    """Reject a signal and persist the decision."""
+    try:
+        from services.signals_service import reject_signal
+        return reject_signal(signal_id, user_id)
+    except HTTPException:
+        raise  # re-raise 400/404/409 from service layer as-is
+    except Exception as exc:
+        logger.exception("Failed to reject signal %s for user %s", signal_id, user_id)
+        raise HTTPException(status_code=500, detail=str(exc))
