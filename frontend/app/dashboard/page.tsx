@@ -35,6 +35,10 @@ type Position = {
   avg_cost: number;
   current_price: number;
   pnl: number;
+  // Override window fields — present on autonomous trades
+  trade_id?: string;
+  executed_at?: string;
+  boundary_mode?: string;
 };
 
 type Portfolio = {
@@ -343,9 +347,122 @@ function SignalsTab({ signals, loading }: { signals: Signal[]; loading: boolean 
   );
 }
 
+// ─── OverrideButton ───────────────────────────────────────────────────────────
+
+type OverrideButtonProps = {
+  tradeId: string;
+  executedAt: string;
+  onSuccess: () => void;
+};
+
+export function OverrideButton({ tradeId, executedAt, onSuccess }: OverrideButtonProps) {
+  const WINDOW_MS = 300_000; // 5 minutes
+
+  function getSecondsRemaining(): number {
+    const elapsed = Date.now() - new Date(executedAt).getTime();
+    return Math.max(0, Math.floor((WINDOW_MS - elapsed) / 1000));
+  }
+
+  const [secondsLeft, setSecondsLeft] = useState<number>(getSecondsRemaining);
+  const [overriding, setOverriding] = useState(false);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (secondsLeft <= 0) return;
+    const id = setInterval(() => {
+      setSecondsLeft(getSecondsRemaining());
+    }, 1000);
+    return () => clearInterval(id);
+  }, [executedAt]);
+
+  const expired = secondsLeft <= 0;
+  const disabled = expired || overriding || done;
+
+  function formatCountdown(s: number): string {
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return `${m}:${String(rem).padStart(2, "0")}`;
+  }
+
+  async function handleClick() {
+    if (!window.confirm("Cancel this trade? This cannot be undone.")) return;
+    setOverriding(true);
+    try {
+      const res = await fetch(`${API_URL}/v1/trades/${tradeId}/override`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "user_initiated" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDone(true);
+        onSuccess();
+      } else {
+        window.alert(data.message ?? "Override logged; order may have already filled.");
+        setDone(true);
+        onSuccess();
+      }
+    } catch {
+      window.alert("Network error — could not reach the server.");
+    } finally {
+      setOverriding(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <div style={{
+        fontSize: 12,
+        color: "var(--ghost)",
+        fontFamily: "var(--font-jb)",
+        marginTop: 8,
+        padding: "6px 10px",
+        background: "var(--elevated)",
+        borderRadius: 6,
+        textAlign: "center",
+      }}>
+        Override submitted
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={disabled}
+      title={expired ? "Override window has closed" : `${formatCountdown(secondsLeft)} remaining`}
+      style={{
+        marginTop: 8,
+        width: "100%",
+        padding: "8px 0",
+        borderRadius: 6,
+        border: `1px solid ${expired ? "var(--line)" : "var(--bear)"}`,
+        background: expired ? "var(--elevated)" : "var(--bear-bg)",
+        color: expired ? "var(--ghost)" : "var(--bear)",
+        fontSize: 12,
+        fontFamily: "var(--font-jb)",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled && !expired ? 0.6 : 1,
+      }}
+    >
+      {overriding
+        ? "Cancelling…"
+        : expired
+          ? "Override window closed"
+          : `Override (${formatCountdown(secondsLeft)} remaining)`}
+    </button>
+  );
+}
+
 // ─── Tab: Positions ───────────────────────────────────────────────────────────
 
-function PositionsTab({ portfolio }: { portfolio: Portfolio | null }) {
+function PositionsTab({
+  portfolio,
+  refreshPortfolio,
+}: {
+  portfolio: Portfolio | null;
+  refreshPortfolio: () => void;
+}) {
   if (!portfolio) return <div style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)", padding: "32px 0", textAlign: "center" }}>Loading positions…</div>;
   if (!portfolio.positions.length) return (
     <div style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)", padding: "32px 0", textAlign: "center" }}>
@@ -388,6 +505,13 @@ function PositionsTab({ portfolio }: { portfolio: Portfolio | null }) {
               </div>
               <ConfBar value={Math.min(Math.abs(pnl_pct) / 20, 1)} color={positive ? "var(--bull)" : "var(--bear)"} />
             </div>
+            {pos.trade_id && pos.executed_at && pos.boundary_mode === "autonomous" && (
+              <OverrideButton
+                tradeId={pos.trade_id}
+                executedAt={pos.executed_at}
+                onSuccess={refreshPortfolio}
+              />
+            )}
           </div>
         );
       })}
@@ -547,6 +671,13 @@ export default function UserDashboard() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  function fetchPortfolio() {
+    fetchWithAuth(`${API_URL}/v1/portfolio`)
+      .then((r) => r?.json())
+      .then((data) => { if (data) setPortfolio(data); })
+      .catch(console.error);
+  }
+
   useEffect(() => {
     async function loadData() {
       const [portRes, sigsRes] = await Promise.all([
@@ -633,7 +764,7 @@ export default function UserDashboard() {
           <>
             {tab === "overview"  && <OverviewTab portfolio={portfolio} signals={signals} />}
             {tab === "signals"   && <SignalsTab signals={signals} loading={loading} />}
-            {tab === "positions" && <PositionsTab portfolio={portfolio} />}
+            {tab === "positions" && <PositionsTab portfolio={portfolio} refreshPortfolio={fetchPortfolio} />}
             {tab === "settings"  && <SettingsTab />}
           </>
         )}
