@@ -1,5 +1,6 @@
 # backend/api/routes/signals.py
 import logging
+from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from api.dependencies import get_current_user
@@ -22,8 +23,11 @@ class Signal(BaseModel):
     confidence: float
     reasoning: str
     boundary_mode: str
+    status: str = "signal"
     risk: RiskParams
     created_at: str
+    trace: dict[str, Any] | None = None
+    execution: dict[str, Any] | None = None
 
 
 @router.get("/signals", response_model=list[Signal])

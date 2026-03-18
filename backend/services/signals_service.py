@@ -29,16 +29,30 @@ def _get_collection():
 
 
 def _trace_to_signal(trace: dict) -> dict:
-    decision = trace.get("pipeline_run", {}).get("final_decision", {})
-    risk = trace.get("pipeline_run", {}).get("risk", {})
+    pipeline_run = trace.get("pipeline_run", {})
+    decision = pipeline_run.get("final_decision", {})
+    risk = pipeline_run.get("risk", {})
     created = trace.get("created_at", "")
+    execution = trace.get("execution", {})
+    boundary_mode = trace.get("boundary_mode", "advisory")
+
+    if execution.get("rejected") is True:
+        status = "rejected"
+    elif execution.get("executed") is True:
+        status = "executed"
+    elif boundary_mode == "conditional":
+        status = "awaiting_approval"
+    else:
+        status = "signal"
+
     return {
         "id": str(trace["_id"]),
         "ticker": trace.get("ticker", "UNKNOWN"),
         "action": decision.get("action", "HOLD"),
         "confidence": float(decision.get("confidence", 0.0)),
         "reasoning": decision.get("reasoning", ""),
-        "boundary_mode": trace.get("boundary_mode", "advisory"),
+        "boundary_mode": boundary_mode,
+        "status": status,
         "risk": {
             "stop_loss": float(risk.get("stop_loss", 0)),
             "take_profit": float(risk.get("take_profit", 0)),
@@ -46,6 +60,18 @@ def _trace_to_signal(trace: dict) -> dict:
             "risk_reward_ratio": float(risk.get("risk_reward_ratio", 0)),
         },
         "created_at": created.isoformat() if hasattr(created, "isoformat") else str(created),
+        "trace": {
+            "technical": pipeline_run.get("technical", {}),
+            "fundamental": pipeline_run.get("fundamental", {}),
+            "sentiment": pipeline_run.get("sentiment", {}),
+            "synthesis": pipeline_run.get("synthesis", {}),
+        },
+        "execution": {
+            "executed": execution.get("executed", False),
+            "rejected": execution.get("rejected", False),
+            "order_id": execution.get("order_id"),
+            "status": execution.get("status", "pending"),
+        },
     }
 
 

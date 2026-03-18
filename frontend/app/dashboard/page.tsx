@@ -18,6 +18,37 @@ type RiskParams = {
   risk_reward_ratio: number;
 };
 
+type TracePanel = {
+  technical?: {
+    signal?: string;
+    indicators?: Record<string, unknown>;
+    reasoning?: string;
+    model?: string;
+    latency_ms?: number;
+  };
+  fundamental?: {
+    signal?: string;
+    metrics?: Record<string, unknown>;
+    reasoning?: string;
+    model?: string;
+    latency_ms?: number;
+  };
+  sentiment?: {
+    signal?: string;
+    sentiment_score?: number;
+    sources?: string[];
+    reasoning?: string;
+    model?: string;
+    latency_ms?: number;
+  };
+  synthesis?: {
+    bull_case?: string;
+    bear_case?: string;
+    verdict?: string;
+    reasoning?: string;
+  };
+};
+
 type Signal = {
   id: string;
   ticker: string;
@@ -28,6 +59,7 @@ type Signal = {
   risk: RiskParams;
   created_at: string;
   status?: "awaiting_approval" | "rejected" | "executed";
+  trace?: TracePanel;
 };
 
 type Position = {
@@ -144,6 +176,7 @@ export function SignalCard({
   const [approved, setApproved] = useState<boolean | null>(null);
   const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
+  const [showTrace, setShowTrace] = useState(false);
   const s = ACTION_STYLE[signal.action];
   const isConditional = signal.boundary_mode === "conditional";
   const canApprove = isConditional && approved === null;
@@ -167,9 +200,10 @@ export function SignalCard({
   async function handleReject() {
     setRejecting(true);
     try {
-      const resp = await fetch(`${API_URL}/v1/signals/${signal.id}/reject`, {
+      const resp = await fetchWithAuth(`${API_URL}/v1/signals/${signal.id}/reject`, {
         method: "POST",
       });
+      if (!resp) return; // auth failed, user being redirected
       if (resp.ok) {
         setApproved(false);
         onReject?.(signal.id);
@@ -244,6 +278,198 @@ export function SignalCard({
                 <div className="num" style={{ color: "var(--ink)", fontSize: 13, fontWeight: 600 }}>{r.value}</div>
               </div>
             ))}
+          </div>
+        )}
+
+        {signal.trace && (
+          <div style={{ marginBottom: 12 }}>
+            <button
+              onClick={() => setShowTrace((v) => !v)}
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--ghost)",
+                fontSize: 11,
+                fontFamily: "var(--font-jb)",
+                padding: "4px 0",
+                letterSpacing: "0.04em",
+              }}
+            >
+              {showTrace ? "Hide reasoning ↑" : "View reasoning →"}
+            </button>
+
+            {showTrace && (
+              <div style={{
+                marginTop: 8,
+                border: "1px solid var(--line)",
+                borderRadius: 8,
+                overflow: "hidden",
+              }}>
+                {/* Technical panel */}
+                {signal.trace.technical && (
+                  <div style={{ padding: "12px 14px", borderBottom: signal.trace.fundamental || signal.trace.sentiment || signal.trace.synthesis ? "1px solid var(--line)" : undefined }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", letterSpacing: "0.06em" }}>TECHNICAL</span>
+                        {signal.trace.technical.signal && (
+                          <span style={{
+                            fontSize: 9,
+                            fontFamily: "var(--font-jb)",
+                            color: signal.trace.technical.signal === "BUY" ? "var(--bull)" : signal.trace.technical.signal === "SELL" ? "var(--bear)" : "var(--hold)",
+                            border: `1px solid ${signal.trace.technical.signal === "BUY" ? "var(--bull)" : signal.trace.technical.signal === "SELL" ? "var(--bear)" : "var(--hold)"}`,
+                            padding: "1px 6px",
+                            borderRadius: 3,
+                          }}>
+                            {signal.trace.technical.signal}
+                          </span>
+                        )}
+                      </div>
+                      {signal.trace.technical.latency_ms != null && (
+                        <span style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)" }}>{signal.trace.technical.latency_ms}ms</span>
+                      )}
+                    </div>
+                    {signal.trace.technical.reasoning && (
+                      <p style={{ color: "var(--dim)", fontSize: 12, fontFamily: "var(--font-nunito)", lineHeight: 1.55, margin: 0, marginBottom: signal.trace.technical.indicators ? 8 : 0 }}>
+                        {signal.trace.technical.reasoning}
+                      </p>
+                    )}
+                    {signal.trace.technical.indicators && Object.keys(signal.trace.technical.indicators).length > 0 && (
+                      <div className="flex flex-wrap gap-1.5" style={{ marginTop: 6 }}>
+                        {Object.entries(signal.trace.technical.indicators).slice(0, 4).map(([k, v]) => (
+                          <span key={k} style={{ fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)", background: "var(--elevated)", border: "1px solid var(--line)", padding: "2px 6px", borderRadius: 4 }}>
+                            {k}: {String(v)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Fundamental panel */}
+                {signal.trace.fundamental && (
+                  <div style={{ padding: "12px 14px", borderBottom: signal.trace.sentiment || signal.trace.synthesis ? "1px solid var(--line)" : undefined }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", letterSpacing: "0.06em" }}>FUNDAMENTAL</span>
+                        {signal.trace.fundamental.signal && (
+                          <span style={{
+                            fontSize: 9,
+                            fontFamily: "var(--font-jb)",
+                            color: signal.trace.fundamental.signal === "BUY" ? "var(--bull)" : signal.trace.fundamental.signal === "SELL" ? "var(--bear)" : "var(--hold)",
+                            border: `1px solid ${signal.trace.fundamental.signal === "BUY" ? "var(--bull)" : signal.trace.fundamental.signal === "SELL" ? "var(--bear)" : "var(--hold)"}`,
+                            padding: "1px 6px",
+                            borderRadius: 3,
+                          }}>
+                            {signal.trace.fundamental.signal}
+                          </span>
+                        )}
+                      </div>
+                      {signal.trace.fundamental.latency_ms != null && (
+                        <span style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)" }}>{signal.trace.fundamental.latency_ms}ms</span>
+                      )}
+                    </div>
+                    {signal.trace.fundamental.reasoning && (
+                      <p style={{ color: "var(--dim)", fontSize: 12, fontFamily: "var(--font-nunito)", lineHeight: 1.55, margin: 0, marginBottom: signal.trace.fundamental.metrics ? 8 : 0 }}>
+                        {signal.trace.fundamental.reasoning}
+                      </p>
+                    )}
+                    {signal.trace.fundamental.metrics && Object.keys(signal.trace.fundamental.metrics).length > 0 && (
+                      <div className="flex flex-wrap gap-1.5" style={{ marginTop: 6 }}>
+                        {Object.entries(signal.trace.fundamental.metrics).slice(0, 4).map(([k, v]) => (
+                          <span key={k} style={{ fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)", background: "var(--elevated)", border: "1px solid var(--line)", padding: "2px 6px", borderRadius: 4 }}>
+                            {k}: {String(v)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sentiment panel */}
+                {signal.trace.sentiment && (
+                  <div style={{ padding: "12px 14px", borderBottom: signal.trace.synthesis ? "1px solid var(--line)" : undefined }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", letterSpacing: "0.06em" }}>SENTIMENT</span>
+                        {signal.trace.sentiment.signal && (
+                          <span style={{
+                            fontSize: 9,
+                            fontFamily: "var(--font-jb)",
+                            color: signal.trace.sentiment.signal === "BUY" ? "var(--bull)" : signal.trace.sentiment.signal === "SELL" ? "var(--bear)" : "var(--hold)",
+                            border: `1px solid ${signal.trace.sentiment.signal === "BUY" ? "var(--bull)" : signal.trace.sentiment.signal === "SELL" ? "var(--bear)" : "var(--hold)"}`,
+                            padding: "1px 6px",
+                            borderRadius: 3,
+                          }}>
+                            {signal.trace.sentiment.signal}
+                          </span>
+                        )}
+                      </div>
+                      {signal.trace.sentiment.latency_ms != null && (
+                        <span style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)" }}>{signal.trace.sentiment.latency_ms}ms</span>
+                      )}
+                    </div>
+                    {signal.trace.sentiment.reasoning && (
+                      <p style={{ color: "var(--dim)", fontSize: 12, fontFamily: "var(--font-nunito)", lineHeight: 1.55, margin: 0 }}>
+                        {signal.trace.sentiment.reasoning}
+                      </p>
+                    )}
+                    {(signal.trace.sentiment.sentiment_score != null || (signal.trace.sentiment.sources && signal.trace.sentiment.sources.length > 0)) && (
+                      <div className="flex gap-2" style={{ marginTop: 6 }}>
+                        {signal.trace.sentiment.sentiment_score != null && (
+                          <span style={{ fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)", background: "var(--elevated)", border: "1px solid var(--line)", padding: "2px 6px", borderRadius: 4 }}>
+                            score: {signal.trace.sentiment.sentiment_score.toFixed(2)}
+                          </span>
+                        )}
+                        {signal.trace.sentiment.sources && signal.trace.sentiment.sources.length > 0 && (
+                          <span style={{ fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)", background: "var(--elevated)", border: "1px solid var(--line)", padding: "2px 6px", borderRadius: 4 }}>
+                            {signal.trace.sentiment.sources.length} sources
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Synthesis panel */}
+                {signal.trace.synthesis && (
+                  <div style={{ padding: "12px 14px", background: "var(--elevated)" }}>
+                    <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", letterSpacing: "0.06em", marginBottom: 10 }}>SYNTHESIS</div>
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      {signal.trace.synthesis.bull_case && (
+                        <div>
+                          <div style={{ color: "var(--bull)", fontSize: 9, fontFamily: "var(--font-jb)", marginBottom: 4, letterSpacing: "0.04em" }}>BULL CASE</div>
+                          <p style={{ color: "var(--dim)", fontSize: 12, fontFamily: "var(--font-nunito)", lineHeight: 1.5, margin: 0 }}>
+                            {signal.trace.synthesis.bull_case}
+                          </p>
+                        </div>
+                      )}
+                      {signal.trace.synthesis.bear_case && (
+                        <div>
+                          <div style={{ color: "var(--bear)", fontSize: 9, fontFamily: "var(--font-jb)", marginBottom: 4, letterSpacing: "0.04em" }}>BEAR CASE</div>
+                          <p style={{ color: "var(--dim)", fontSize: 12, fontFamily: "var(--font-nunito)", lineHeight: 1.5, margin: 0 }}>
+                            {signal.trace.synthesis.bear_case}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    {signal.trace.synthesis.verdict && (
+                      <div style={{
+                        padding: "8px 10px",
+                        background: "var(--surface)",
+                        border: "1px solid var(--line)",
+                        borderRadius: 6,
+                      }}>
+                        <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-jb)", marginBottom: 4, letterSpacing: "0.04em" }}>VERDICT</div>
+                        <p style={{ color: "var(--ink)", fontSize: 12, fontFamily: "var(--font-nunito)", lineHeight: 1.5, margin: 0, fontWeight: 600 }}>
+                          {signal.trace.synthesis.verdict}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

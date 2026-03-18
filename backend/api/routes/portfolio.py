@@ -15,6 +15,9 @@ class Position(BaseModel):
     avg_cost: float
     current_price: float
     pnl: float
+    trade_id: str | None = None
+    executed_at: str | None = None
+    boundary_mode: str | None = None
 
 
 class PortfolioSummary(BaseModel):
@@ -36,6 +39,29 @@ def get_portfolio(user_id: str = Depends(get_current_user)):
         account = broker.get_account()
         raw_positions = broker.get_positions()
 
+        # Fetch trade metadata from Supabase for override button support.
+        # Graceful degradation: if Supabase is unavailable, positions still return.
+        trade_by_ticker: dict = {}
+        try:
+            from db.supabase import get_supabase
+            sb = get_supabase()
+            trades_result = (
+                sb.table("trades")
+                .select("id, ticker, executed_at, boundary_mode")
+                .eq("user_id", user_id)
+                .neq("status", "overridden")
+                .order("executed_at", desc=True)
+                .execute()
+            )
+            for t in (trades_result.data or []):
+                if t["ticker"] not in trade_by_ticker:
+                    trade_by_ticker[t["ticker"]] = t
+        except Exception as supabase_exc:
+            logger.warning(
+                "Supabase trade lookup failed — positions returned without override metadata: %r",
+                supabase_exc,
+            )
+
         positions = [
             Position(
                 ticker=p["ticker"],
@@ -43,6 +69,9 @@ def get_portfolio(user_id: str = Depends(get_current_user)):
                 avg_cost=p["avg_cost"],
                 current_price=p["current_price"],
                 pnl=p["unrealized_pl"],
+                trade_id=trade_by_ticker.get(p["ticker"], {}).get("id"),
+                executed_at=trade_by_ticker.get(p["ticker"], {}).get("executed_at"),
+                boundary_mode=trade_by_ticker.get(p["ticker"], {}).get("boundary_mode"),
             )
             for p in raw_positions
         ]
