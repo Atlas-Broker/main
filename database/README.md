@@ -16,7 +16,7 @@ Relational data with Row Level Security enforced on every table. Every table has
 | `trades` | Trade history — action, quantity, price, execution status, boundary mode used | ✅ Active |
 | `override_log` | Audit trail of user overrides in Autonomous mode | ✅ Active |
 
-RLS policies are deployed and enforced. All writes from the backend use the service role key (`SUPABASE_SERVICE_KEY`). Frontend reads use the anon key with RLS filtering by `user_id`.
+RLS policies use `auth.jwt() ->> 'sub'` to match Clerk user IDs (not Supabase's native `auth.uid()`). Frontend sends a Clerk JWT (from the `atlas-supabase` template) as the `Authorization` header. Backend writes use `SUPABASE_SERVICE_KEY` which bypasses RLS natively.
 
 **Deploy the schema:**
 
@@ -25,7 +25,12 @@ supabase link --project-ref qbbbuebbxueqclkrvoos
 supabase db push
 ```
 
-Migrations live in `supabase/supabase/migrations/`. The initial migration drops and recreates all tables cleanly.
+Migrations live in `supabase/supabase/migrations/`:
+
+| Migration | Description |
+|-----------|-------------|
+| `20260313054120_initial_schema.sql` | Creates all 5 tables with initial permissive RLS |
+| `20260317100000_user_scoped_rls.sql` | Replaces permissive policies with Clerk JWT-scoped user policies |
 
 ### MongoDB Atlas
 
@@ -66,7 +71,8 @@ database/
 │   ├── schema.sql                                   # Canonical schema reference
 │   └── supabase/
 │       └── migrations/
-│           └── 20260313054120_initial_schema.sql    # Active migration
+│           ├── 20260313054120_initial_schema.sql    # Tables + initial RLS
+│           └── 20260317100000_user_scoped_rls.sql   # User-scoped Clerk JWT policies
 └── mongo/
     └── schemas/
         └── reasoning_trace.json                     # JSON Schema for trace documents

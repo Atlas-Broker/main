@@ -78,19 +78,35 @@ Protocol-based `BrokerAdapter` with a working `AlpacaAdapter`. Places market ord
 
 **Status: Integrated end-to-end.**
 
-- Login page at `/login` using Clerk `<SignIn />` component
+- Login page at `/login` using Clerk `<SignIn />` component — light theme, mobile-first split-screen (signal table desktop left, Clerk widget right). Google OAuth only; email/password form hidden.
 - `proxy.ts` (Clerk middleware) protects `/dashboard` and `/admin` — unauthenticated requests redirect to `/login`
 - Frontend: `getClerkToken()` retrieves the session JWT; `fetchWithAuth()` attaches it to every API request
-- Backend: `ClerkAuthMiddleware` verifies JWTs against the instance-specific JWKS endpoint (`https://electric-foxhound-27.clerk.accounts.dev/.well-known/jwks.json`)
+- Backend: `ClerkAuthMiddleware` verifies JWTs against the instance-specific JWKS endpoint
 - JWKS URL is auto-derived from `CLERK_PUBLISHABLE_KEY` if `CLERK_JWKS_URL` is not set
 - `OPTIONS` (CORS preflight) requests bypass auth middleware
 - `request.state.user_id` is set on every authenticated request
 
 ---
 
+## Frontend-Direct Supabase Auth Sync
+
+**Status: Live.**
+
+`AuthSync` component (mounted in root layout) owns the Supabase user lifecycle — no webhook dependency:
+
+1. On sign-in, requests a Clerk JWT using the `atlas-supabase` template (`aud: "authenticated"`, HS256-signed with Supabase JWT secret).
+2. Creates a per-request Supabase client (`lib/supabase.ts`) with `Authorization: Bearer <token>`.
+3. `INSERT` profile for new users (boundary_mode `advisory`, onboarding_completed `false`).
+4. On `23505` conflict (existing row), `UPDATE` only Clerk-sourced identity fields (`email`, `display_name`) — preserves user settings.
+5. `UPSERT` portfolio record (`ignoreDuplicates: true`) — idempotent for returning users.
+
+Backend uses `SUPABASE_SERVICE_KEY` (bypasses RLS natively) for all writes. The Clerk webhook `/webhooks/clerk` is retained but no longer load-bearing for profile creation.
+
+---
+
 ## Supabase Integration
 
-**Status: All 5 tables active.**
+**Status: All 5 tables active with user-scoped RLS.**
 
 | Table | What it stores |
 |-------|---------------|
@@ -100,18 +116,23 @@ Protocol-based `BrokerAdapter` with a working `AlpacaAdapter`. Places market ord
 | `trades` | Full trade history with action, quantity, price, boundary mode |
 | `override_log` | Audit trail: every Autonomous mode cancellation recorded with timestamp and reason |
 
-RLS policies enforced on all tables. Service role key used by backend writes.
+RLS policies on all tables use `auth.jwt() ->> 'sub'` to match Clerk user IDs. Frontend reads use the Clerk JWT with the anon key. Backend writes use the service role key (bypasses RLS).
 
 ---
 
-## Database Schema Migration
+## Database Schema Migrations
 
-**Status: Deployed to Supabase.**
+**Status: Both migrations deployed to Supabase.**
 
-Migration `20260313054120_initial_schema.sql` creates all 5 tables with:
+`20260313054120_initial_schema.sql` — creates all 5 tables:
 - `user_id` on every table (multi-tenancy, maps to Clerk user IDs)
-- RLS policies scoped to `auth.uid()` for all operations
+- Initial permissive RLS policies (later replaced)
 - `override_log` with `trade_id` foreign key, `cancelled_at` timestamp, `reason` text
+
+`20260317100000_user_scoped_rls.sql` — replaces permissive policies with Clerk JWT-scoped policies:
+- `profiles`: SELECT + INSERT + UPDATE scoped to `(auth.jwt() ->> 'sub') = id`
+- `portfolios`: SELECT + INSERT + UPDATE scoped to `(auth.jwt() ->> 'sub') = user_id`
+- `positions`, `trades`, `override_log`: SELECT only, scoped to `(auth.jwt() ->> 'sub') = user_id`
 
 ---
 
@@ -129,7 +150,7 @@ Migration `20260313054120_initial_schema.sql` creates all 5 tables with:
 
 Pages:
 - `/` — Mobile-first marketing landing page. Conveys Atlas's value proposition: AI-driven signals, configurable execution authority, full reasoning transparency. Ticker tape, mode explainer, CTA.
-- `/login` — Split-screen Clerk sign-in. Always dark. Left: live signal feed preview. Right: Clerk widget.
+- `/login` — Light-theme, mobile-first Clerk sign-in. Desktop: split-screen (signal table left, Clerk widget right). Mobile: single centered column. Google OAuth only — email/password form hidden. `position: fixed; inset: 0` bypasses Next.js App Router height propagation.
 - `/dashboard` — 4-tab auth-gated dashboard. Portfolio overview, signal feed with approve/reject, positions table, settings with mode persistence.
 - `/admin` — Manual pipeline trigger, system status, env display.
 - `/design-system` — Living component library: colour tokens, typography, spacing, all button/badge/card variants, signal rows, motion specs, responsive breakpoints.
@@ -164,4 +185,12 @@ Schema deployed 13 March 2026. All 5 tables live with RLS. Backend reads and wri
 
 ---
 
-*Last updated: 17 March 2026*
+## Bug Fixes
+
+### `profile_service.py` — `maybe_single()` returning `None`
+
+`supabase-py` v2 returns `None` (not a response object) from `.maybe_single().execute()` when no row is found. Fixed `get_profile()`: `if result.data:` → `if result and result.data:`. Prevents `AttributeError: 'NoneType' object has no attribute 'data'` crash on profile lookups for new users.
+
+---
+
+*Last updated: 18 March 2026*

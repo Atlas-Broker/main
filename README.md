@@ -58,7 +58,7 @@ Login at `/login` via Clerk. The backend validates every request with `ClerkAuth
 
 ### Frontend Dashboard — authenticated
 
-Four pages: landing (`/`), login (`/login`), user dashboard (`/dashboard`, 4 tabs), admin panel (`/admin`), and design system (`/design-system`). Auth gated via Clerk. Theme defaults to light mode with a manual dark mode toggle.
+Four pages: landing (`/`), login (`/login`), user dashboard (`/dashboard`, 4 tabs), admin panel (`/admin`), and design system (`/design-system`). Auth gated via Clerk. Light theme throughout; manual dark mode toggle. Login is mobile-first with Google OAuth only.
 
 ### Databases — both active
 

@@ -17,7 +17,7 @@ Next.js 16 dashboard for the Atlas AI trading assistant. Deployed on Vercel (UAT
 Mobile-first marketing page. Ticker tape animation, execution mode explainer (advisory / conditional / autonomous), CTA to sign in.
 
 ### `/login` — Authentication
-Split-screen Clerk sign-in/sign-up. Left panel: live signal feed preview. Right panel: Clerk `<SignIn />` widget. Always dark by design.
+Light-theme, mobile-first Clerk sign-in. Desktop: split-screen — left panel shows an animated signal preview table; right panel has the Clerk `<SignIn />` widget. Mobile: single centered column. Google OAuth only; the email/password form and divider are hidden via Clerk appearance API. `position: fixed; inset: 0` on the root element bypasses Next.js App Router's height propagation issues.
 
 ### `/dashboard` — User Dashboard
 Auth-gated. Four-tab layout. Calls live backend APIs on mount. All requests include a Clerk JWT via `Authorization: Bearer <token>`.
@@ -42,6 +42,7 @@ Living styleguide: colour tokens, typography scale, spacing, all button variants
 | Component | Purpose |
 |-----------|---------|
 | `components/ThemeProvider.tsx` | Context provider — exposes `theme` + `toggleTheme`; applies `data-theme` to `<html>` |
+| `components/AuthSync.tsx` | Supabase user lifecycle sync — runs on every sign-in; inserts or updates profile + portfolio |
 
 ## Auth Flow
 
@@ -49,6 +50,11 @@ Living styleguide: colour tokens, typography scale, spacing, all button variants
 2. After sign-in, Clerk redirects to `/dashboard`.
 3. `lib/auth.ts` exports `getClerkToken()` — retrieves the current Clerk session JWT.
 4. `lib/api.ts` exports `fetchWithAuth()` — wraps `fetch()` with `Authorization: Bearer <token>` and handles network errors gracefully.
+5. `AuthSync` (mounted in root layout) requests a Clerk JWT using the `atlas-supabase` template and syncs the user's profile and portfolio to Supabase on sign-in. INSERT on first login; UPDATE identity fields only on conflict.
+
+## Supabase Client (Frontend)
+
+`lib/supabase.ts` exports `createSupabaseClient(clerkToken)` — creates a `@supabase/supabase-js` client with `Authorization: Bearer <clerk-token>` in global headers. RLS policies use `auth.jwt() ->> 'sub'` to scope rows to the authenticated user. Session persistence is disabled (Clerk owns the session).
 
 ## Environment Variables
 
@@ -61,6 +67,8 @@ Living styleguide: colour tokens, typography scale, spacing, all button variants
 | `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | `/login` |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL` | `/dashboard` |
 | `NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL` | `/dashboard` |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (RLS enforced) |
 
 > Never set `SUPABASE_SERVICE_KEY` in the frontend — it is backend-only.
 
