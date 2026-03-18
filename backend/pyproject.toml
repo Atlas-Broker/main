@@ -15,13 +15,9 @@ dependencies = [
     "pandas>=2.0.0",
     "alpaca-py>=0.28.0",
     "langgraph>=0.2.0",
-    "atlas-agents",
     "python-jose[cryptography]>=3.3.0",
     "svix>=1.14.0",
 ]
-
-[tool.uv.sources]
-atlas-agents = { path = "../agents", editable = true }
 
 [dependency-groups]
 dev = [
