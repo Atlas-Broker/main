@@ -9,7 +9,7 @@ from fastapi import FastAPI
 
 from api.middleware.cors import add_cors
 from api.middleware.auth import ClerkAuthMiddleware
-from api.routes import signals, portfolio, trades, pipeline, webhooks, profile
+from api.routes import signals, portfolio, trades, pipeline, webhooks, profile, scheduler as scheduler_router, broker as broker_router
 
 load_dotenv()
 
@@ -32,13 +32,22 @@ async def _keep_alive_loop(base_url: str) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from scheduler.runner import scheduler_loop
+
+    tasks: list[asyncio.Task] = []
+
     render_url = os.getenv("RENDER_EXTERNAL_URL")
-    task = None
     if render_url:
         logger.info("Starting keep-alive loop → %s", render_url)
-        task = asyncio.create_task(_keep_alive_loop(render_url))
+        tasks.append(asyncio.create_task(_keep_alive_loop(render_url)))
+
+    if os.getenv("SCHEDULER_ENABLED", "false").lower() == "true":
+        logger.info("Starting daily watchlist scheduler")
+        tasks.append(asyncio.create_task(scheduler_loop()))
+
     yield
-    if task:
+
+    for task in tasks:
         task.cancel()
 
 
@@ -62,6 +71,8 @@ app.include_router(trades.router)
 app.include_router(pipeline.router)
 app.include_router(webhooks.router)
 app.include_router(profile.router)
+app.include_router(scheduler_router.router)
+app.include_router(broker_router.router)
 
 
 @app.get("/health")

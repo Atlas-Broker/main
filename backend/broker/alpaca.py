@@ -13,11 +13,23 @@ from alpaca.trading.enums import OrderSide, TimeInForce
 
 
 class AlpacaAdapter:
-    def __init__(self) -> None:
-        api_key = os.environ["ALPACA_API_KEY"]
-        secret_key = os.environ["ALPACA_SECRET_KEY"]
-        paper = os.getenv("ALPACA_PAPER", "true").lower() == "true"
-        self._client = TradingClient(api_key=api_key, secret_key=secret_key, paper=paper)
+    def __init__(
+        self,
+        api_key: str | None = None,
+        secret_key: str | None = None,
+        paper: bool = True,
+    ) -> None:
+        """
+        Args:
+            api_key:    Alpaca API key. Falls back to ALPACA_API_KEY env var if not provided.
+            secret_key: Alpaca secret key. Falls back to ALPACA_SECRET_KEY env var if not provided.
+            paper:      True for paper trading (default), False for live.
+        """
+        resolved_key = api_key or os.environ["ALPACA_API_KEY"]
+        resolved_secret = secret_key or os.environ["ALPACA_SECRET_KEY"]
+        self._client = TradingClient(
+            api_key=resolved_key, secret_key=resolved_secret, paper=paper
+        )
 
     def place_order(self, ticker: str, action: str, notional: float) -> dict:
         side = OrderSide.BUY if action.upper() == "BUY" else OrderSide.SELL

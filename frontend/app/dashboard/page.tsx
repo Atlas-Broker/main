@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "../components/ThemeProvider";
@@ -590,6 +590,239 @@ function PositionsTab({
   );
 }
 
+// ─── Alpaca Connection ────────────────────────────────────────────────────────
+
+type BrokerConn = {
+  connected: boolean;
+  broker: string | null;
+  environment: string | null;
+  api_key: string | null;
+  api_secret_masked: string | null;
+};
+
+function AlpacaConnectionSection() {
+  const [conn, setConn]           = useState<BrokerConn | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [apiKey, setApiKey]       = useState("");
+  const [apiSecret, setApiSecret] = useState("");
+  const [env, setEnv]             = useState<"paper" | "live">("paper");
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState<string | null>(null);
+  const [disconnecting, setDisc]  = useState(false);
+
+  useEffect(() => {
+    fetchWithAuth(`${API_URL}/v1/broker/connection`)
+      .then((r) => r?.json())
+      .then((data) => setConn(data ?? { connected: false, broker: null, environment: null, api_key: null, api_secret_masked: null }))
+      .catch(() => setConn({ connected: false, broker: null, environment: null, api_key: null, api_secret_masked: null }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleConnect(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetchWithAuth(`${API_URL}/v1/broker/connection`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret, environment: env }),
+      });
+      if (!res) return;
+      if (res.ok) {
+        const masked = apiSecret.length > 4
+          ? `${"*".repeat(apiSecret.length - 4)}${apiSecret.slice(-4)}`
+          : "****";
+        setConn({ connected: true, broker: "alpaca", environment: env, api_key: apiKey, api_secret_masked: masked });
+        setApiKey("");
+        setApiSecret("");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setError((err as { detail?: string }).detail ?? "Connection failed. Check your keys and try again.");
+      }
+    } catch {
+      setError("Network error — could not reach the server.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    if (!window.confirm("Disconnect Alpaca? Scheduled runs will pause for your account.")) return;
+    setDisc(true);
+    try {
+      const res = await fetchWithAuth(`${API_URL}/v1/broker/connection`, { method: "DELETE" });
+      if (res?.ok) {
+        setConn({ connected: false, broker: null, environment: null, api_key: null, api_secret_masked: null });
+      }
+    } catch {
+      // non-fatal
+    } finally {
+      setDisc(false);
+    }
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 8,
+    border: "1px solid var(--line)",
+    background: "var(--elevated)",
+    color: "var(--ink)",
+    fontSize: 13,
+    fontFamily: "var(--font-jb)",
+    outline: "none",
+    boxSizing: "border-box",
+  };
+
+  return (
+    <div>
+      <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 10 }}>ALPACA ACCOUNT</div>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", boxShadow: "var(--card-shadow)" }}>
+
+        {loading ? (
+          <div style={{ padding: "18px", color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)" }}>
+            Checking connection…
+          </div>
+
+        ) : conn?.connected ? (
+          /* ── Connected state ── */
+          <div style={{ padding: "16px 18px" }}>
+            <div className="flex items-center gap-2 mb-3">
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--bull)", flexShrink: 0 }} />
+              <span style={{ color: "var(--bull)", fontSize: 13, fontFamily: "var(--font-nunito)", fontWeight: 600 }}>
+                Connected to Alpaca
+              </span>
+              <span style={{
+                fontSize: 10, fontFamily: "var(--font-jb)", color: conn.environment === "live" ? "var(--bear)" : "var(--hold)",
+                border: `1px solid ${conn.environment === "live" ? "var(--bear)" : "var(--hold)"}`,
+                padding: "2px 7px", borderRadius: 4, textTransform: "uppercase" as const, letterSpacing: "0.06em",
+              }}>
+                {conn.environment ?? "paper"}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-1.5 mb-4" style={{ fontSize: 12, fontFamily: "var(--font-jb)" }}>
+              <div className="flex justify-between">
+                <span style={{ color: "var(--ghost)" }}>API KEY</span>
+                <span style={{ color: "var(--dim)" }}>{conn.api_key ? `${conn.api_key.slice(0, 6)}…` : "—"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: "var(--ghost)" }}>SECRET</span>
+                <span style={{ color: "var(--dim)" }}>{conn.api_secret_masked ?? "—"}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={handleDisconnect}
+              disabled={disconnecting}
+              style={{
+                width: "100%", padding: "9px 0", borderRadius: 8,
+                border: "1px solid var(--bear)40", background: "var(--bear-bg)",
+                color: "var(--bear)", fontSize: 13, fontFamily: "var(--font-nunito)",
+                fontWeight: 600, cursor: disconnecting ? "not-allowed" : "pointer",
+                opacity: disconnecting ? 0.6 : 1,
+              }}
+            >
+              {disconnecting ? "Disconnecting…" : "Disconnect Alpaca"}
+            </button>
+          </div>
+
+        ) : (
+          /* ── Not connected — form ── */
+          <form onSubmit={handleConnect} style={{ padding: "16px 18px" }}>
+            <p style={{ color: "var(--dim)", fontSize: 13, fontFamily: "var(--font-nunito)", lineHeight: 1.6, marginBottom: 14 }}>
+              Connect your Alpaca paper trading account. Signals will be attributed to you
+              and the daily scheduler will run for your account automatically.
+            </p>
+
+            {/* Environment toggle */}
+            <div className="flex gap-2 mb-3">
+              {(["paper", "live"] as const).map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => setEnv(e)}
+                  style={{
+                    flex: 1, padding: "8px 0", borderRadius: 7,
+                    border: `1px solid ${env === e ? (e === "live" ? "var(--bear)" : "var(--hold)") : "var(--line)"}`,
+                    background: env === e ? (e === "live" ? "var(--bear-bg)" : "var(--hold-bg)") : "var(--elevated)",
+                    color: env === e ? (e === "live" ? "var(--bear)" : "var(--hold)") : "var(--ghost)",
+                    fontSize: 12, fontFamily: "var(--font-jb)", letterSpacing: "0.06em",
+                    textTransform: "uppercase" as const, cursor: "pointer", fontWeight: env === e ? 600 : 400,
+                  }}
+                >
+                  {e === "live" ? "⚠ Live" : "Paper"}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-2.5">
+              <div>
+                <label style={{ display: "block", color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", marginBottom: 5, letterSpacing: "0.06em" }}>
+                  API KEY
+                </label>
+                <input
+                  type="text"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="PK…"
+                  required
+                  autoComplete="off"
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", marginBottom: 5, letterSpacing: "0.06em" }}>
+                  SECRET KEY
+                </label>
+                <input
+                  type="password"
+                  value={apiSecret}
+                  onChange={(e) => setApiSecret(e.target.value)}
+                  placeholder="••••••••••••••••"
+                  required
+                  autoComplete="new-password"
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            {error && (
+              <div style={{
+                marginTop: 10, padding: "9px 12px", borderRadius: 7,
+                background: "var(--bear-bg)", border: "1px solid var(--bear)30",
+                color: "var(--bear)", fontSize: 12, fontFamily: "var(--font-nunito)",
+              }}>
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={saving || !apiKey || !apiSecret}
+              style={{
+                marginTop: 14, width: "100%", padding: "11px 0", borderRadius: 8,
+                background: saving || !apiKey || !apiSecret ? "var(--line)" : "var(--brand)",
+                border: "none", color: "#fff", fontSize: 14,
+                fontFamily: "var(--font-nunito)", fontWeight: 600,
+                cursor: saving || !apiKey || !apiSecret ? "not-allowed" : "pointer",
+                transition: "background 0.15s ease",
+              }}
+            >
+              {saving ? "Verifying & saving…" : "Connect Alpaca"}
+            </button>
+
+            <p style={{ marginTop: 10, color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", textAlign: "center" }}>
+              Find your keys at alpaca.markets → Paper Trading → API Keys
+            </p>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Tab: Settings ────────────────────────────────────────────────────────────
 
 export function SettingsTab() {
@@ -702,6 +935,9 @@ export function SettingsTab() {
           </button>
         ))}
       </div>
+
+      {/* Alpaca connection */}
+      <AlpacaConnectionSection />
 
       {/* About */}
       <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "16px 18px", boxShadow: "var(--card-shadow)" }}>

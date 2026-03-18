@@ -93,8 +93,12 @@ def approve_and_execute(signal_id: str, user_id: str) -> dict:
     if action == "HOLD":
         return {"status": "skipped", "message": "HOLD signal — no order placed."}
 
-    from broker.factory import get_broker
-    broker = get_broker()
+    from broker.factory import get_broker_for_user
+    broker = get_broker_for_user(user_id)
+    if broker is None:
+        raise ValueError(
+            "No broker connected. Connect your Alpaca account in Settings before approving signals."
+        )
     order = broker.place_order(ticker, action, notional=1000.0)
 
     # Persist to Supabase — failure must not fail the HTTP response

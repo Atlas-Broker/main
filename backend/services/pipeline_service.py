@@ -37,12 +37,18 @@ def run_pipeline_with_ebc(
         signal.action, ticker, signal.confidence * 100,
     )
 
-    # Only initialise broker for autonomous mode — avoids key errors in advisory/conditional
+    # Only initialise broker for autonomous mode — avoids unnecessary DB calls in advisory/conditional
     broker = None
     if bmode == BoundaryMode.AUTONOMOUS:
         try:
-            from broker.factory import get_broker
-            broker = get_broker()
+            from broker.factory import get_broker_for_user
+            broker = get_broker_for_user(user_id)
+            if broker is None:
+                logger.warning(
+                    "Autonomous mode requested for user %s but no broker connection found. "
+                    "Signal will be skipped.",
+                    user_id,
+                )
         except Exception as exc:
             logger.warning("Could not initialise broker for autonomous mode: %s", exc)
 
