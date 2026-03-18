@@ -1,68 +1,83 @@
 import { SignIn } from "@clerk/nextjs";
-import { dark } from "@clerk/themes";
 
 const SIGNALS = [
-  { ticker: "NVDA", action: "BUY",  conf: 94, delta: "+2.31%" },
-  { ticker: "TSLA", action: "BUY",  conf: 88, delta: "+1.47%" },
-  { ticker: "META", action: "SELL", conf: 82, delta: "−0.93%" },
-  { ticker: "AAPL", action: "HOLD", conf: 71, delta: "+0.22%" },
-  { ticker: "MSFT", action: "BUY",  conf: 91, delta: "+1.88%" },
-  { ticker: "AMZN", action: "SELL", conf: 76, delta: "−1.14%" },
-  { ticker: "GOOGL", action: "BUY", conf: 85, delta: "+0.97%" },
-  { ticker: "JPM",  action: "HOLD", conf: 68, delta: "−0.05%" },
+  { ticker: "NVDA",  action: "BUY",  conf: 94, delta: "+2.31%" },
+  { ticker: "TSLA",  action: "BUY",  conf: 88, delta: "+1.47%" },
+  { ticker: "META",  action: "SELL", conf: 82, delta: "−0.93%" },
+  { ticker: "AAPL",  action: "HOLD", conf: 71, delta: "+0.22%" },
+  { ticker: "MSFT",  action: "BUY",  conf: 91, delta: "+1.88%" },
+  { ticker: "AMZN",  action: "SELL", conf: 76, delta: "−1.14%" },
+  { ticker: "GOOGL", action: "BUY",  conf: 85, delta: "+0.97%" },
+  { ticker: "JPM",   action: "HOLD", conf: 68, delta: "−0.05%" },
 ] as const;
 
 const ACTION_COLOR: Record<string, string> = {
-  BUY:  "#00C896",
-  SELL: "#FF2D55",
-  HOLD: "#F5A623",
+  BUY:  "#00A876",
+  SELL: "#D92040",
+  HOLD: "#D97B00",
+};
+const ACTION_BG: Record<string, string> = {
+  BUY:  "rgba(0,168,118,0.10)",
+  SELL: "rgba(217,32,64,0.10)",
+  HOLD: "rgba(217,123,0,0.10)",
 };
 
-const appearance = {
-  baseTheme: dark,
+const clerkAppearance = {
   variables: {
-    colorPrimary:        "#C8102E",
-    colorBackground:     "transparent",
-    colorInputBackground:"#07080B",
-    colorInputText:      "#E8EDF3",
-    colorText:           "#E8EDF3",
-    colorTextSecondary:  "#7A8FA0",
-    colorDanger:         "#FF2D55",
-    borderRadius:        "2px",
-    fontFamily:          '"JetBrains Mono", "Courier New", monospace',
-    fontSize:            "13px",
-    spacingUnit:         "14px",
+    colorPrimary:         "#C8102E",
+    colorBackground:      "#FFFFFF",
+    colorInputBackground: "#F7F8FA",
+    colorInputText:       "#0D1117",
+    colorText:            "#0D1117",
+    colorTextSecondary:   "#46606E",
+    colorDanger:          "#D92040",
+    borderRadius:         "8px",
+    fontFamily:           '"JetBrains Mono", "Courier New", monospace',
+    fontSize:             "13px",
+    spacingUnit:          "14px",
   },
   elements: {
-    card:            { background: "transparent", border: "none", boxShadow: "none", padding: "0", gap: "16px" },
-    headerTitle:     { display: "none" },
-    headerSubtitle:  { display: "none" },
-    header:          { display: "none" },
+    rootBox: { width: "100%", maxWidth: "100%" },
+    card: {
+      background:   "#FFFFFF",
+      border:       "none",
+      borderRadius: "0",
+      boxShadow:    "none",
+      padding:      "24px",
+      width:        "100%",
+      maxWidth:     "100%",
+      boxSizing:    "border-box" as const,
+    },
+    headerTitle:    { display: "none" },
+    headerSubtitle: { display: "none" },
+    header:         { display: "none" },
+    // Hide the email/password form since only Google OAuth is used
+    form:           { display: "none" },
+    dividerRow:     { display: "none" },
     socialButtonsBlockButton: {
-      border:          "1px solid #1C2B3A",
-      background:      "#07080B",
-      color:           "#E8EDF3",
-      borderRadius:    "2px",
-      fontSize:        "11px",
-      letterSpacing:   "0.08em",
-      padding:         "11px",
+      border:       "1.5px solid #E0E6ED",
+      background:   "#FFFFFF",
+      color:        "#0D1117",
+      borderRadius: "8px",
+      fontSize:     "13px",
+      padding:      "12px 16px",
+      fontWeight:   "500",
+      boxShadow:    "0 1px 3px rgba(0,0,0,0.05)",
     },
-    socialButtonsBlockButtonText: {
-      fontFamily:      '"JetBrains Mono", monospace',
-      letterSpacing:   "0.06em",
+    footer: {
+      background:   "transparent",
+      borderTop:    "1px solid #E8ECF0",
+      paddingTop:   "14px",
+      marginTop:    "0",
     },
-    dividerLine:     { background: "#1C2B3A" },
-    dividerText:     { color: "#3D5060", fontSize: "9px", letterSpacing: "0.18em" },
-    footer:          { background: "transparent", borderTop: "1px solid #1C2B3A", paddingTop: "12px", marginTop: "4px" },
-    footerActionText:{ color: "#3D5060", fontSize: "11px" },
-    footerActionLink:{ color: "#C8102E", fontSize: "11px" },
-    formFieldInput:  { borderRadius: "2px", background: "#07080B", borderColor: "#1C2B3A" },
+    footerActionText: { color: "#8DA4B2", fontSize: "12px" },
+    footerActionLink: { color: "#C8102E", fontSize: "12px" },
     formButtonPrimary: {
-      borderRadius: "2px",
-      background:   "#C8102E",
-      fontSize:     "11px",
-      letterSpacing:"0.1em",
-      textTransform:"uppercase" as const,
+      borderRadius:  "8px",
+      background:    "#C8102E",
+      fontSize:      "13px",
+      letterSpacing: "0.04em",
+      fontWeight:    "600",
     },
   },
 };
@@ -71,320 +86,196 @@ export default function LoginPage() {
   return (
     <>
       <style>{`
-        @keyframes login-scan {
-          0%   { top: -4px; opacity: 0; }
-          5%   { opacity: 1; }
-          95%  { opacity: 1; }
-          100% { top: 100vh; opacity: 0; }
-        }
-        @keyframes login-sig {
-          from { opacity: 0; transform: translateX(-10px); }
-          to   { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes login-blink {
-          0%, 100% { opacity: 1; }
-          50%       { opacity: 0; }
-        }
-        @keyframes login-glow {
-          0%, 100% { opacity: 0.6; }
-          50%       { opacity: 1; }
-        }
-        @keyframes login-panel-in {
-          from { opacity: 0; transform: translateY(10px); }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        @keyframes fade-up {
+          from { opacity: 0; transform: translateY(14px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        .login-sig-row {
+        @keyframes sig-in {
+          from { opacity: 0; transform: translateX(-6px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes dot-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.4; transform: scale(0.8); }
+        }
+
+        /* Fixed to viewport — bypasses all parent height issues */
+        .l-root {
+          position: fixed;
+          inset: 0;
+          display: flex;
+          flex-direction: column;
+          background: #FFFFFF;
+          font-family: 'JetBrains Mono', 'Courier New', monospace;
+        }
+
+        /* Mobile: single centered column */
+        .l-left { display: none; }
+
+        .l-right {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 40px 24px;
+          overflow-y: auto;
+          animation: fade-up 0.45s ease both;
+        }
+
+        .l-content {
+          width: 100%;
+          max-width: 400px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+        }
+
+        .l-logo { margin-bottom: 36px; }
+
+        .l-heading { margin-bottom: 20px; }
+
+        /* Desktop ≥ 900px */
+        @media (min-width: 900px) {
+          .l-root {
+            flex-direction: row;
+          }
+          .l-left {
+            display: flex;
+            flex-direction: column;
+            flex: 0 0 56%;
+            height: 100%;
+            border-right: 1px solid #E8ECF0;
+            background: #FAFBFC;
+            padding: 52px 56px 40px;
+            overflow-y: auto;
+            position: relative;
+          }
+          .l-right {
+            flex: 1;
+            height: 100%;
+            overflow-y: auto;
+            padding: 52px 48px;
+          }
+          .l-content {
+            align-items: flex-start;
+            text-align: left;
+          }
+          .l-logo { display: none; }
+        }
+
+        .sig-row {
           opacity: 0;
-          animation: login-sig 0.35s ease forwards;
+          animation: sig-in 0.3s ease forwards;
         }
-        .login-blink { animation: login-blink 1.1s step-end infinite; }
-        .login-scan-line {
-          position: absolute; left: 0; right: 0; height: 1px;
-          background: linear-gradient(90deg, transparent 0%, rgba(200,16,46,0.15) 20%, rgba(200,16,46,0.25) 50%, rgba(200,16,46,0.15) 80%, transparent 100%);
-          animation: login-scan 10s linear infinite;
-          pointer-events: none; z-index: 2;
-        }
-        .login-panel-in {
-          animation: login-panel-in 0.5s ease both;
-        }
-        @media (max-width: 900px) {
-          .login-left-panel { display: none !important; }
-          .login-right-panel { flex: 1 !important; }
+        .live-dot {
+          display: inline-block;
+          width: 6px; height: 6px;
+          border-radius: 50%;
+          background: #00A876;
+          animation: dot-pulse 2.2s ease-in-out infinite;
+          flex-shrink: 0;
         }
       `}</style>
 
-      <div style={{
-        minHeight: "100vh",
-        background: "#07080B",
-        display: "flex",
-        fontFamily: '"JetBrains Mono", "Courier New", monospace',
-        position: "relative",
-        overflow: "hidden",
-      }}>
+      <div className="l-root">
 
-        {/* Grid overlay */}
-        <div style={{
-          position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0,
-          backgroundImage:
-            "linear-gradient(rgba(28,43,58,0.28) 1px, transparent 1px)," +
-            "linear-gradient(90deg, rgba(28,43,58,0.28) 1px, transparent 1px)",
-          backgroundSize: "48px 48px",
-        }} />
+        {/* ── LEFT panel (desktop only) ── */}
+        <div className="l-left">
+          <div style={{ position: "absolute", top: -60, left: -60, width: 220, height: 220, borderRadius: "50%", background: "radial-gradient(circle, rgba(200,16,46,0.05) 0%, transparent 65%)", pointerEvents: "none" }} />
 
-        {/* Scan line */}
-        <div className="login-scan-line" />
-
-        {/* ── LEFT PANEL ───────────────────────────────────────── */}
-        <div
-          className="login-left-panel"
-          style={{
-            flex: "0 0 58%",
-            borderRight: "1px solid #1C2B3A",
-            padding: "52px 56px",
-            display: "flex",
-            flexDirection: "column",
-            position: "relative",
-            overflow: "hidden",
-            zIndex: 1,
-          }}
-        >
-          {/* Radial brand glow */}
-          <div style={{
-            position: "absolute", top: -80, left: -80,
-            width: 280, height: 280, borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(200,16,46,0.10) 0%, transparent 65%)",
-            animation: "login-glow 5s ease-in-out infinite",
-            pointerEvents: "none",
-          }} />
-
-          {/* ─ Logo ─ */}
-          <header style={{ marginBottom: 52 }} className="login-panel-in">
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-              <div style={{
-                width: 3, height: 22,
-                background: "#C8102E",
-                transform: "skewX(-14deg)",
-                borderRadius: 1, flexShrink: 0,
-              }} />
-              <span style={{
-                fontFamily: '"Syne", system-ui, sans-serif',
-                fontSize: 24, fontWeight: 800,
-                color: "#E8EDF3", letterSpacing: "-0.02em",
-              }}>ATLAS</span>
-              <span style={{
-                color: "#263D52", fontSize: 10,
-                letterSpacing: "0.2em", marginLeft: 6, marginTop: 2,
-              }}>AI PORTFOLIO</span>
+          <div style={{ marginBottom: 44, animation: "fade-up 0.4s ease both" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+              <div style={{ width: 3, height: 22, background: "#C8102E", transform: "skewX(-12deg)", borderRadius: 1 }} />
+              <span style={{ fontFamily: "'Syne', system-ui, sans-serif", fontSize: 24, fontWeight: 800, color: "#0D1117", letterSpacing: "-0.02em" }}>ATLAS</span>
+              <span style={{ color: "#C8D4DF", fontSize: 9, letterSpacing: "0.2em", marginLeft: 4 }}>AI PORTFOLIO</span>
             </div>
-            <p style={{
-              color: "#263D52", fontSize: 10,
-              letterSpacing: "0.14em", marginLeft: 13,
-            }}>
-              AGENTIC INVESTMENT &amp; TRADING SYSTEM
-            </p>
-          </header>
+            <p style={{ color: "#C8D4DF", fontSize: 9, letterSpacing: "0.14em", paddingLeft: 13 }}>AGENTIC INVESTMENT &amp; TRADING SYSTEM</p>
+          </div>
 
-          {/* ─ Status badges ─ */}
-          <div style={{ display: "flex", gap: 10, marginBottom: 40 }}
-            className="login-panel-in"
-          >
+          <div style={{ display: "flex", gap: 8, marginBottom: 36, flexWrap: "wrap", animation: "fade-up 0.4s 0.06s ease both" }}>
             {([
-              { label: "SYSTEM",  value: "LIVE",     color: "#00C896", dot: true },
-              { label: "SIGNALS", value: "47 TODAY", color: "#E8EDF3" },
-              { label: "LATENCY", value: "12ms",     color: "#E8EDF3" },
-            ] as const).map(({ label, value, color, dot }) => (
-              <div key={label} style={{
-                border: "1px solid #1C2B3A",
-                borderRadius: 2,
-                padding: "5px 10px",
-                fontSize: 9, letterSpacing: "0.12em",
-                display: "flex", alignItems: "center", gap: 6,
-                background: "rgba(12,16,22,0.6)",
-              }}>
-                <span style={{ color: "#3D5060" }}>{label}</span>
-                <span style={{ color }}>{value}</span>
-                {dot && (
-                  <span style={{
-                    display: "inline-block", width: 5, height: 5,
-                    borderRadius: "50%", background: "#00C896",
-                    animation: "pulse-live 2s ease-in-out infinite",
-                  }} />
-                )}
+              { label: "SYSTEM",  value: "LIVE",     accent: "#00A876", dot: true  },
+              { label: "SIGNALS", value: "47 TODAY", accent: "#0D1117", dot: false },
+              { label: "LATENCY", value: "12ms",     accent: "#0D1117", dot: false },
+            ] as const).map(({ label, value, accent, dot }) => (
+              <div key={label} style={{ border: "1px solid #E0E6ED", borderRadius: 6, padding: "5px 10px", fontSize: 9, letterSpacing: "0.1em", display: "flex", alignItems: "center", gap: 6, background: "#FFFFFF" }}>
+                <span style={{ color: "#8DA4B2" }}>{label}</span>
+                <span style={{ color: accent, fontWeight: 600 }}>{value}</span>
+                {dot && <span className="live-dot" style={{ width: 5, height: 5 }} />}
               </div>
             ))}
           </div>
 
-          {/* ─ Signal table header ─ */}
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "56px 44px 1fr 60px",
-            gap: "0 14px",
-            padding: "8px 0",
-            borderTop: "1px solid #1C2B3A",
-            borderBottom: "1px solid #1C2B3A",
-            marginBottom: 2,
-            fontSize: 9, color: "#263D52", letterSpacing: "0.16em",
-          }}>
-            <span>TICKER</span>
-            <span>SIG</span>
-            <span>CONF</span>
-            <span style={{ textAlign: "right" }}>Δ DAY</span>
+          <div style={{ display: "grid", gridTemplateColumns: "60px 50px 1fr 64px", gap: "0 12px", padding: "8px 0", borderTop: "1px solid #E0E6ED", borderBottom: "1px solid #E0E6ED", marginBottom: 2, fontSize: 9, color: "#B0BEC5", letterSpacing: "0.16em" }}>
+            <span>TICKER</span><span>SIG</span><span>CONF</span><span style={{ textAlign: "right" }}>Δ DAY</span>
           </div>
 
-          {/* ─ Signal rows ─ */}
           {SIGNALS.map((s, i) => (
-            <div
-              key={s.ticker}
-              className="login-sig-row"
-              style={{
-                animationDelay: `${0.15 + i * 0.07}s`,
-                display: "grid",
-                gridTemplateColumns: "56px 44px 1fr 60px",
-                gap: "0 14px",
-                alignItems: "center",
-                padding: "9px 0",
-                borderBottom: "1px solid rgba(28,43,58,0.4)",
-                fontSize: 12,
-              }}
-            >
-              <span style={{ color: "#E8EDF3", fontWeight: 600, letterSpacing: "0.02em" }}>
-                {s.ticker}
-              </span>
-              <span style={{
-                color: ACTION_COLOR[s.action],
-                fontSize: 9, letterSpacing: "0.12em", fontWeight: 700,
-              }}>
+            <div key={s.ticker} className="sig-row" style={{ animationDelay: `${0.1 + i * 0.05}s`, display: "grid", gridTemplateColumns: "60px 50px 1fr 64px", gap: "0 12px", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #F0F2F5" }}>
+              <span style={{ color: "#0D1117", fontWeight: 600, fontSize: 13 }}>{s.ticker}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "2px 7px", borderRadius: 4, background: ACTION_BG[s.action], color: ACTION_COLOR[s.action], fontSize: 9, letterSpacing: "0.08em", fontWeight: 700, width: "fit-content" }}>
                 {s.action}
               </span>
               <div>
-                <div style={{
-                  height: 2, borderRadius: 1,
-                  background: "#1C2B3A", position: "relative", overflow: "hidden",
-                  marginBottom: 3,
-                }}>
-                  <div style={{
-                    position: "absolute", left: 0, top: 0, bottom: 0,
-                    width: `${s.conf}%`,
-                    background: ACTION_COLOR[s.action],
-                    borderRadius: 1, opacity: 0.75,
-                  }} />
+                <div style={{ height: 3, borderRadius: 2, background: "#EDF0F4", position: "relative", overflow: "hidden", marginBottom: 3 }}>
+                  <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${s.conf}%`, background: ACTION_COLOR[s.action], borderRadius: 2, opacity: 0.55 }} />
                 </div>
-                <span style={{ color: "#3D5060", fontSize: 9 }}>{s.conf}%</span>
+                <span style={{ color: "#B0BEC5", fontSize: 9 }}>{s.conf}%</span>
               </div>
-              <span style={{
-                textAlign: "right",
-                color: s.delta.startsWith("+") ? "#00C896" : "#FF2D55",
-                fontSize: 11, fontWeight: 600,
-              }}>
+              <span style={{ textAlign: "right", color: s.delta.startsWith("+") ? "#00A876" : "#D92040", fontSize: 12, fontWeight: 600 }}>
                 {s.delta}
               </span>
             </div>
           ))}
 
-          {/* ─ Footer ─ */}
-          <div style={{ marginTop: "auto", paddingTop: 36 }}>
-            <div style={{
-              borderTop: "1px solid #1C2B3A",
-              paddingTop: 14,
-              color: "#263D52", fontSize: 9, letterSpacing: "0.12em",
-            }}>
+          <div style={{ marginTop: "auto", paddingTop: 28 }}>
+            <p style={{ borderTop: "1px solid #E0E6ED", paddingTop: 14, color: "#C8D4DF", fontSize: 9, letterSpacing: "0.12em" }}>
               POWERED BY GEMINI 2.5 FLASH · ALPACA PAPER TRADING · SUPABASE
-            </div>
+            </p>
           </div>
         </div>
 
-        {/* ── RIGHT PANEL ──────────────────────────────────────── */}
-        <div
-          className="login-right-panel login-panel-in"
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "48px 40px",
-            zIndex: 1,
-            animationDelay: "0.1s",
-          }}
-        >
-          <div style={{ width: "100%", maxWidth: 340 }}>
+        {/* ── RIGHT panel ── */}
+        <div className="l-right">
+          <div className="l-content">
 
-            {/* Terminal header bar */}
-            <div style={{
-              border: "1px solid #1C2B3A",
-              borderBottom: "none",
-              padding: "9px 14px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              background: "#0C1016",
-            }}>
-              <div style={{
-                display: "flex", alignItems: "center", gap: 8,
-                fontSize: 9, color: "#3D5060", letterSpacing: "0.18em",
-              }}>
-                <div style={{
-                  width: 2, height: 11,
-                  background: "#C8102E",
-                  transform: "skewX(-14deg)",
-                }} />
-                ACCESS TERMINAL
+            {/* Logo — mobile only (hidden on desktop via CSS) */}
+            <div className="l-logo">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 8 }}>
+                <div style={{ width: 3, height: 20, background: "#C8102E", transform: "skewX(-12deg)", borderRadius: 1 }} />
+                <span style={{ fontFamily: "'Syne', system-ui, sans-serif", fontSize: 22, fontWeight: 800, color: "#0D1117", letterSpacing: "-0.02em" }}>ATLAS</span>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: 9, color: "#1C2B3A", letterSpacing: "0.1em" }}>v0.1.0</span>
-                <span style={{
-                  display: "inline-block", width: 5, height: 5,
-                  borderRadius: "50%", background: "#00C896",
-                  animation: "pulse-live 2s ease-in-out infinite",
-                }} />
-              </div>
+              <p style={{ color: "#B0BEC5", fontSize: 9, letterSpacing: "0.14em" }}>AGENTIC INVESTMENT &amp; TRADING SYSTEM</p>
             </div>
 
-            {/* Clerk widget container */}
-            <div style={{
-              border: "1px solid #1C2B3A",
-              background: "#0C1016",
-              padding: "28px 22px 20px",
-            }}>
-              {/* Custom title above Clerk */}
-              <div style={{ marginBottom: 18, paddingBottom: 14, borderBottom: "1px solid #1C2B3A" }}>
-                <p style={{ color: "#E8EDF3", fontSize: 13, fontWeight: 600, marginBottom: 3 }}>
-                  AUTHENTICATE
-                </p>
-                <p style={{ color: "#3D5060", fontSize: 9, letterSpacing: "0.12em" }}>
-                  SIGN IN TO CONTINUE TO ATLAS
-                </p>
-              </div>
-
-              <SignIn appearance={appearance} />
+            {/* Heading */}
+            <div className="l-heading">
+              <h1 style={{ fontFamily: "'Syne', system-ui, sans-serif", fontSize: 26, fontWeight: 700, color: "#0D1117", letterSpacing: "-0.02em", marginBottom: 6 }}>
+                Sign in
+              </h1>
+              <p style={{ color: "#8DA4B2", fontSize: 12 }}>Continue to your Atlas portfolio</p>
             </div>
 
-            {/* Terminal footer bar */}
+            {/* Clerk — outer wrapper owns the border/shadow so overflow:hidden clips
+                the Clerk card flush without cutting off the shadow */}
             <div style={{
-              border: "1px solid #1C2B3A",
-              borderTop: "none",
-              padding: "8px 14px",
-              background: "#07080B",
-              fontSize: 9, color: "#1C2B3A",
-              letterSpacing: "0.1em",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
+              width: "100%",
+              border: "1px solid #E8ECF0",
+              borderRadius: "12px",
+              boxShadow: "0 4px 24px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04)",
+              overflow: "hidden",
             }}>
-              <span>SECURE SESSION · TLS 1.3</span>
-              <span className="login-blink" style={{ color: "#C8102E" }}>_</span>
+              <SignIn appearance={clerkAppearance} />
             </div>
 
+            <p style={{ marginTop: 20, fontSize: 9, color: "#C8D4DF", letterSpacing: "0.14em" }}>
+              ADVISORY · CONDITIONAL · AUTONOMOUS
+            </p>
           </div>
-
-          {/* Tagline */}
-          <p style={{
-            marginTop: 24, fontSize: 9, color: "#1C2B3A",
-            letterSpacing: "0.14em", textAlign: "center",
-            lineHeight: 1.8,
-          }}>
-            ADVISORY · CONDITIONAL · AUTONOMOUS
-          </p>
         </div>
 
       </div>

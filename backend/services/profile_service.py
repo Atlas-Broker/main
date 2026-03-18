@@ -47,7 +47,7 @@ def get_profile(user_id: str) -> dict:
         .maybe_single()
         .execute()
     )
-    if result.data:
+    if result and result.data:
         return result.data
     logger.warning(
         "Profile not found for user_id %r — Clerk webhook may have missed this user. "
