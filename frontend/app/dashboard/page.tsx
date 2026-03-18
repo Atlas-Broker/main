@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { useTheme } from "../components/ThemeProvider";
 import { fetchWithAuth } from "@/lib/api";
 import { UserMenu } from "@/components/UserMenu";
@@ -1203,6 +1204,7 @@ export default function UserDashboard() {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const { isLoaded, isSignedIn } = useAuth();
 
   function fetchPortfolio() {
     fetchWithAuth(`${API_URL}/v1/portfolio`)
@@ -1220,21 +1222,22 @@ export default function UserDashboard() {
   }
 
   useEffect(() => {
+    // Wait for Clerk to finish loading before attempting authenticated fetches.
+    // Without this guard, getToken() returns null during Clerk's init and the
+    // dashboard incorrectly redirects to /login before auth is confirmed.
+    if (!isLoaded) return;
+    if (!isSignedIn) { router.push("/login"); return; }
+
     async function loadData() {
       const [portRes, sigsRes] = await Promise.all([
         fetchWithAuth(`${API_URL}/v1/portfolio`),
         fetchWithAuth(`${API_URL}/v1/signals?limit=20`),
       ]);
 
-      if (!portRes || !sigsRes) {
-        router.push("/login");
-        return;
-      }
-
+      // null means network error or backend down — don't redirect, just show empty state
       try {
-        const [port, sigs] = await Promise.all([portRes.json(), sigsRes.json()]);
-        setPortfolio(port);
-        setSignals(Array.isArray(sigs) ? sigs : []);
+        if (portRes) { const port = await portRes.json(); setPortfolio(port); }
+        if (sigsRes) { const sigs = await sigsRes.json(); setSignals(Array.isArray(sigs) ? sigs : []); }
       } catch (err) {
         console.error("Failed to parse dashboard data", err);
       } finally {
@@ -1243,7 +1246,7 @@ export default function UserDashboard() {
     }
 
     loadData();
-  }, [router]);
+  }, [isLoaded, isSignedIn, router]);
 
   const primarySignal = signals[0] ?? null;
   const hasPendingConditional = signals.some((s) => s.boundary_mode === "conditional");
