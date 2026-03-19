@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { fetchWithAuth } from "@/lib/api";
+import { fetchWithAuth, fetchMyProfile, type UserRole } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -161,11 +161,16 @@ function RunPipelinePanel({ onRan }: { onRan: () => void }) {
     setRunning(true);
     setResult(null);
     setError(null);
+    const philosophyMode = localStorage.getItem("atlas_philosophy_mode") ?? "balanced";
     try {
       const res = await fetchWithAuth(`${API}/v1/pipeline/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticker: ticker.toUpperCase(), boundary_mode: mode }),
+        body: JSON.stringify({
+          ticker: ticker.toUpperCase(),
+          boundary_mode: mode,
+          philosophy_mode: philosophyMode,
+        }),
       });
       if (!res) return;
       if (!res.ok) {
@@ -600,6 +605,8 @@ export default function AdminDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [signals, setSignals]       = useState<Signal[]>([]);
   const [signalsLoading, setSignalsLoading] = useState(true);
+  const [role, setRole]             = useState<UserRole | null>(null);
+  const [roleLoading, setRoleLoading] = useState(true);
   const router = useRouter();
 
   async function loadSignals() {
@@ -615,7 +622,32 @@ export default function AdminDashboard() {
     }
   }
 
+  useEffect(() => {
+    fetchMyProfile()
+      .then((profile) => {
+        if (!profile) { router.push("/login"); return; }
+        setRole(profile.role);
+        if (profile.role === "user") {
+          router.push("/dashboard");
+        }
+      })
+      .catch(() => router.push("/dashboard"))
+      .finally(() => setRoleLoading(false));
+  }, [router]);
+
   useEffect(() => { loadSignals(); }, []);
+
+  if (roleLoading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#07080B", color: "#3D5060", fontFamily: "var(--font-jb)", fontSize: 13 }}>
+        Verifying access…
+      </div>
+    );
+  }
+
+  if (role === "user") {
+    return null; // redirect in progress
+  }
 
   return (
     <div className="min-h-screen flex" style={{ background: "#07080B", fontFamily: "var(--font-nunito)" }}>

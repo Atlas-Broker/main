@@ -29,3 +29,22 @@ export async function fetchWithAuth(
 
   return res;
 }
+
+export type UserRole = "user" | "admin" | "superadmin";
+
+export type MyProfile = {
+  id: string;
+  boundary_mode: string;
+  display_name: string | null;
+  email: string;
+  onboarding_completed: boolean;
+  role: UserRole;
+};
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+export async function fetchMyProfile(): Promise<MyProfile | null> {
+  const res = await fetchWithAuth(`${API_URL}/v1/profile/me`);
+  if (!res || !res.ok) return null;
+  return res.json() as Promise<MyProfile>;
+}

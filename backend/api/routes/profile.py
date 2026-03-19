@@ -8,6 +8,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from api.dependencies import get_current_user
+from db.supabase import get_user_role
 from services.profile_service import get_profile, update_profile
 
 router = APIRouter(prefix="/v1", tags=["profile"])
@@ -17,6 +18,14 @@ logger = logging.getLogger(__name__)
 class ProfileUpdate(BaseModel):
     boundary_mode: Literal["advisory", "conditional", "autonomous"] | None = None
     display_name: str | None = None
+
+
+@router.get("/profile/me")
+def read_profile_me(user_id: str = Depends(get_current_user)) -> dict:
+    """Return the current user's profile including their RBAC role."""
+    profile = get_profile(user_id)
+    role = get_user_role(user_id)
+    return {**profile, "role": role}
 
 
 @router.get("/profile")

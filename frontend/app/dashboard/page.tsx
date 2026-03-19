@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useTheme } from "../components/ThemeProvider";
-import { fetchWithAuth } from "@/lib/api";
+import { fetchWithAuth, fetchMyProfile, type UserRole } from "@/lib/api";
 import { UserMenu } from "@/components/UserMenu";
 import { BacktestTab } from "./BacktestTab";
 
@@ -1057,9 +1057,59 @@ function AlpacaConnectionSection() {
 
 // ─── Tab: Settings ────────────────────────────────────────────────────────────
 
+type PhilosophyMode = "balanced" | "value" | "momentum" | "macro";
+
+const PHILOSOPHY_OPTIONS: {
+  id: PhilosophyMode;
+  label: string;
+  desc: string;
+  color: string;
+}[] = [
+  {
+    id: "balanced",
+    label: "Balanced",
+    desc: "No overlay. Default multi-factor reasoning.",
+    color: "var(--dim)",
+  },
+  {
+    id: "value",
+    label: "Value",
+    desc: "Intrinsic value, margin of safety, competitive moat.",
+    color: "var(--bull)",
+  },
+  {
+    id: "momentum",
+    label: "Momentum",
+    desc: "Price trend, relative strength, breakout patterns.",
+    color: "var(--brand)",
+  },
+  {
+    id: "macro",
+    label: "Macro",
+    desc: "Interest rates, sector rotation, macro tailwinds.",
+    color: "var(--hold)",
+  },
+];
+
+const PHILOSOPHY_LS_KEY = "atlas_philosophy_mode";
+
 export function SettingsTab() {
   const { dark, toggle } = useTheme();
   const [mode, setMode] = useState<"advisory" | "conditional" | "autonomous">("conditional");
+  const [philosophy, setPhilosophy] = useState<PhilosophyMode>("balanced");
+
+  // Hydrate philosophy from localStorage after mount (avoids SSR mismatch)
+  useEffect(() => {
+    const stored = localStorage.getItem(PHILOSOPHY_LS_KEY) as PhilosophyMode | null;
+    if (stored && PHILOSOPHY_OPTIONS.some((o) => o.id === stored)) {
+      setPhilosophy(stored);
+    }
+  }, []);
+
+  function handlePhilosophyChange(newPhilosophy: PhilosophyMode) {
+    setPhilosophy(newPhilosophy);
+    localStorage.setItem(PHILOSOPHY_LS_KEY, newPhilosophy);
+  }
 
   const modes = [
     { id: "advisory",    label: "Advisory",    color: "var(--dim)",  desc: "AI signals only. You execute." },
@@ -1168,6 +1218,35 @@ export function SettingsTab() {
         ))}
       </div>
 
+      {/* Philosophy mode */}
+      <div>
+        <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 10 }}>INVESTMENT PHILOSOPHY</div>
+        {PHILOSOPHY_OPTIONS.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => handlePhilosophyChange(p.id)}
+            data-selected={philosophy === p.id ? "true" : "false"}
+            className="text-left w-full mb-2"
+            style={{
+              background: philosophy === p.id ? "var(--elevated)" : "var(--surface)",
+              border: `1px solid ${philosophy === p.id ? p.color : "var(--line)"}`,
+              borderRadius: 10,
+              padding: "14px 18px",
+              cursor: "pointer",
+              boxShadow: "var(--card-shadow)",
+            }}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-display font-bold" style={{ fontSize: 15, color: philosophy === p.id ? p.color : "var(--dim)" }}>
+                {p.label}
+              </span>
+              {philosophy === p.id && <div style={{ width: 7, height: 7, borderRadius: "50%", background: p.color }} />}
+            </div>
+            <p style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)" }}>{p.desc}</p>
+          </button>
+        ))}
+      </div>
+
       {/* Alpaca connection */}
       <AlpacaConnectionSection />
 
@@ -1209,6 +1288,7 @@ export default function UserDashboard() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState<UserRole | null>(null);
   const router = useRouter();
   const { isLoaded, isSignedIn } = useAuth();
 
@@ -1235,10 +1315,13 @@ export default function UserDashboard() {
     if (!isSignedIn) { router.push("/login"); return; }
 
     async function loadData() {
-      const [portRes, sigsRes] = await Promise.all([
+      const [portRes, sigsRes, profile] = await Promise.all([
         fetchWithAuth(`${API_URL}/v1/portfolio`),
         fetchWithAuth(`${API_URL}/v1/signals?limit=20`),
+        fetchMyProfile(),
       ]);
+
+      if (profile) setRole(profile.role);
 
       // null means network error or backend down — don't redirect, just show empty state
       try {
@@ -1279,6 +1362,22 @@ export default function UserDashboard() {
             <span className="live-dot" />
             <span style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)" }}>live</span>
           </div>
+          {(role === "admin" || role === "superadmin") && (
+            <Link
+              href="/admin"
+              style={{
+                fontSize: 11,
+                fontFamily: "var(--font-jb)",
+                color: "var(--ghost)",
+                border: "1px solid var(--line)",
+                borderRadius: 4,
+                padding: "2px 8px",
+                textDecoration: "none",
+              }}
+            >
+              Admin
+            </Link>
+          )}
           <UserMenu />
         </div>
       </header>

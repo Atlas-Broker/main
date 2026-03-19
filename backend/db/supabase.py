@@ -17,3 +17,25 @@ def get_supabase() -> Client:
         key = os.environ["SUPABASE_SERVICE_KEY"]
         _client = create_client(url, key)
     return _client
+
+
+def get_user_role(user_id: str) -> str:
+    """
+    Return the RBAC role for the given user_id.
+    Reads profiles.role from Supabase.
+    Returns 'user' as the safe default if the row is missing or has no role.
+    """
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("profiles")
+            .select("role")
+            .eq("id", user_id)
+            .maybe_single()
+            .execute()
+        )
+        if result and result.data and result.data.get("role"):
+            return result.data["role"]
+    except Exception:
+        pass
+    return "user"
