@@ -7,6 +7,7 @@ surface for backend/services/pipeline_service.py.
 """
 import asyncio
 import time
+from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -30,6 +31,12 @@ async def run_pipeline_async(
     user_id: str = "system",
     as_of_date: str | None = None,
 ) -> AgentSignal:
+    if as_of_date is not None:
+        try:
+            datetime.strptime(as_of_date, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError(f"as_of_date must be in YYYY-MM-DD format, got: {as_of_date!r}")
+
     start = time.time()
     graph = get_graph()
 

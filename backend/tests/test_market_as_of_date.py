@@ -1,7 +1,6 @@
 # backend/tests/test_market_as_of_date.py
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import pandas as pd
-from datetime import datetime
 
 
 def _make_ohlcv_df(dates, opens=None):
