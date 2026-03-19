@@ -5,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, field_validator, model_validator
 
 from api.dependencies import get_current_user
+from db.supabase import get_user_role
 from backtesting.runner import run_backtest_job
 from services.backtest_service import create_job, delete_job, get_job, list_jobs
 
@@ -50,10 +51,13 @@ async def create_backtest(
     user_id: str = Depends(get_current_user),
 ):
     jobs = list_jobs(user_id)
-    if any(j["status"] == "running" for j in jobs):
+    user_role = get_user_role(user_id)
+    max_concurrent = 10 if user_role == "superadmin" else 5 if user_role == "admin" else 1
+    running_count = sum(1 for j in jobs if j["status"] == "running")
+    if running_count >= max_concurrent:
         raise HTTPException(
             status_code=429,
-            detail="You already have a backtest running. Please wait for it to complete.",
+            detail=f"Maximum {max_concurrent} concurrent backtests reached for your plan.",
         )
     job_id = create_job(
         user_id=user_id,

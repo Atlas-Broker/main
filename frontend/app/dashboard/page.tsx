@@ -1415,7 +1415,7 @@ export default function UserDashboard() {
             {tab === "signals"   && <SignalsTab signals={signals} loading={loading} onReject={handleRejectSignal} />}
             {tab === "positions" && <PositionsTab portfolio={portfolio} refreshPortfolio={fetchPortfolio} />}
             {tab === "settings"  && <SettingsTab />}
-            {tab === "backtest"  && <BacktestTab />}
+            {tab === "backtest"  && <BacktestTab role={role ?? undefined} />}
           </>
         )}
       </main>
