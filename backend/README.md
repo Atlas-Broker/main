@@ -115,6 +115,10 @@ Returns action, confidence, reasoning, risk parameters (stop-loss, take-profit, 
 | `ALPACA_BASE_URL` | No | Defaults to paper trading endpoint |
 | `BROKER_TYPE` | No | `alpaca` (default) — future: `ibkr` |
 | `RENDER_EXTERNAL_URL` | Auto | Set by Render — used by the keep-alive ping task |
+| `SCHEDULER_ENABLED` | No | `true` to activate daily 9:30 AM ET pipeline runs (default: `false`) |
+| `SCHEDULER_TICKERS` | No | Comma-separated tickers for scheduled runs (e.g. `AAPL,MSFT,TSLA,NVDA,META`). Falls back to `WATCHLIST_TICKERS`. |
+| `SCHEDULER_EBC_MODE` | No | Override boundary mode for all scheduled runs: `advisory`, `conditional`, or `autonomous`. Defaults to per-user profile value. |
+| `SCHEDULER_USER_ID` | No | Clerk user_id to attribute scheduled runs to (v1 single-user mode). When set, skips broker_connections lookup. |
 
 *Either `CLERK_PUBLISHABLE_KEY` or `CLERK_JWKS_URL` must be set for auth to work.
 
