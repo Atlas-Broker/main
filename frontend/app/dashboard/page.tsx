@@ -686,11 +686,15 @@ export function OverrideButton({ tradeId, executedAt, onSuccess }: OverrideButto
     if (!window.confirm("Cancel this trade? This cannot be undone.")) return;
     setOverriding(true);
     try {
-      const res = await fetch(`${API_URL}/v1/trades/${tradeId}/override`, {
+      const res = await fetchWithAuth(`${API_URL}/v1/trades/${tradeId}/override`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason: "user_initiated" }),
       });
+      if (!res) {
+        window.alert("Authentication failed — please refresh and try again.");
+        return;
+      }
       const data = await res.json();
       if (data.success) {
         setDone(true);
