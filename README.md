@@ -55,10 +55,26 @@ Login at `/login` via Clerk. The backend validates every request with `ClerkAuth
 | `POST /v1/signals/{id}/reject` | ✅ Live | Persists rejection to MongoDB trace |
 | `GET /v1/trades` | ✅ Live | Trade history from Supabase |
 | `POST /v1/trades/{id}/override` | ✅ Live | Cancels Alpaca order, writes to `override_log` |
+| `POST /v1/backtest` | ✅ Live | Create backtest job — real Gemini pipeline, async |
+| `GET /v1/backtest` | ✅ Live | List backtest jobs for user |
+| `GET /v1/backtest/{id}` | ✅ Live | Job status + full results (polling target) |
+| `DELETE /v1/backtest/{id}` | ✅ Live | Delete job + MongoDB results |
+
+### Backtesting Engine — fully operational
+
+Replays the real AI pipeline (live Gemini calls) across historical date ranges and multiple tickers. Simulates trade execution in a virtual portfolio without touching Alpaca. Results persisted to Supabase (metadata) and MongoDB (full daily runs, equity curve, metrics).
+
+Key design decisions:
+- `as_of_date` constrains yfinance price/fundamental data to the historical date — no look-ahead bias
+- $10,000 shared capital pool across all tickers; $1,000 notional per trade
+- Confidence thresholds mirror live EBC config (conditional ≥ 60%, autonomous ≥ 65%)
+- Advisory mode produces signals only — no trades, total_trades always 0
+
+Metrics computed: cumulative return, Sharpe ratio (annualised, risk-free=0), max drawdown, win rate, signal-to-execution rate, per-ticker return contribution.
 
 ### Frontend Dashboard — authenticated
 
-Four pages: landing (`/`), login (`/login`), user dashboard (`/dashboard`, 4 tabs), admin panel (`/admin`), and design system (`/design-system`). Auth gated via Clerk. Light theme throughout; manual dark mode toggle. Login is mobile-first with Google OAuth only.
+Five pages: landing (`/`), login (`/login`), user dashboard (`/dashboard`, 5 tabs), admin panel (`/admin`), and design system (`/design-system`). Auth gated via Clerk. Light theme throughout; manual dark mode toggle. Login is mobile-first with Google OAuth only.
 
 ### Databases — both active
 

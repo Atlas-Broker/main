@@ -20,13 +20,14 @@ Mobile-first marketing page. Ticker tape animation, execution mode explainer (ad
 Light-theme, mobile-first Clerk sign-in. Desktop: split-screen — left panel shows an animated signal preview table; right panel has the Clerk `<SignIn />` widget. Mobile: single centered column. Google OAuth only; the email/password form and divider are hidden via Clerk appearance API. `position: fixed; inset: 0` on the root element bypasses Next.js App Router's height propagation issues.
 
 ### `/dashboard` — User Dashboard
-Auth-gated. Four-tab layout. Calls live backend APIs on mount. All requests include a Clerk JWT via `Authorization: Bearer <token>`.
+Auth-gated. Five-tab layout. Calls live backend APIs on mount. All requests include a Clerk JWT via `Authorization: Bearer <token>`.
 
 | Tab | What it shows | API call |
 |-----|---------------|----------|
 | Overview | Portfolio summary, latest signal, open positions snapshot | `/v1/portfolio` |
 | Signals | Signal list with confidence bars, risk params, approve/reject buttons | `/v1/signals` |
 | Positions | Open positions table with unrealised P&L | `/v1/portfolio` |
+| Backtest | Job list with progress bars, new job form, results detail with equity curve | `/v1/backtest` |
 | Settings | Theme toggle, execution mode selector (persisted to Supabase `profiles`) | — |
 
 Signal approval calls `POST /v1/signals/{id}/approve` and re-fetches. Signal rejection calls `POST /v1/signals/{id}/reject`.

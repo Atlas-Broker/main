@@ -15,6 +15,7 @@ Relational data with Row Level Security enforced on every table. Every table has
 | `positions` | Open positions — ticker, shares, average cost. Synced from Alpaca on trade execution | ✅ Active |
 | `trades` | Trade history — action, quantity, price, execution status, boundary mode used | ✅ Active |
 | `override_log` | Audit trail of user overrides in Autonomous mode | ✅ Active |
+| `backtest_jobs` | Backtest job metadata — status, tickers, date range, EBC mode, summary metrics, progress | ✅ Active |
 
 RLS policies use `auth.jwt() ->> 'sub'` to match Clerk user IDs (not Supabase's native `auth.uid()`). Frontend sends a Clerk JWT (from the `atlas-supabase` template) as the `Authorization` header. Backend writes use `SUPABASE_SERVICE_KEY` which bypasses RLS natively.
 
@@ -31,12 +32,16 @@ Migrations live in `supabase/supabase/migrations/`:
 |-----------|-------------|
 | `20260313054120_initial_schema.sql` | Creates all 5 tables with initial permissive RLS |
 | `20260317100000_user_scoped_rls.sql` | Replaces permissive policies with Clerk JWT-scoped user policies |
+| `20260319120000_backtest_jobs.sql` | Creates `backtest_jobs` table with user-scoped RLS |
 
 ### MongoDB Atlas
 
+Two collections in the `atlas` database.
+
+#### `reasoning_traces`
+
 Agent reasoning traces — deeply nested documents with variable structure per pipeline run.
 
-**Collection:** `reasoning_traces`
 **Schema definition:** `mongo/schemas/reasoning_trace.json`
 
 Each document captures the full pipeline run for a single ticker:
@@ -63,6 +68,17 @@ JSON Schema validation is active at `moderate` level — invalid documents are f
 | `{ ticker: 1, created_at: -1 }` | Traces by stock |
 | `{ "pipeline_run.final_decision.action": 1 }` | Filter by BUY / SELL / HOLD |
 
+#### `backtest_results`
+
+Full backtest results — one document per job. Stores daily pipeline runs, equity curve, and computed metrics.
+
+| Field | Contents |
+|-------|----------|
+| `job_id` | UUID matching the Supabase `backtest_jobs` row |
+| `daily_runs` | Array of per-day, per-ticker records: action, confidence, executed, price, shares, portfolio value |
+| `equity_curve` | Array of `{ date, value }` — total portfolio value at end of each trading day |
+| `metrics` | Cumulative return, Sharpe ratio, max drawdown, win rate, signal-to-execution rate, per-ticker contribution |
+
 ## Directory Structure
 
 ```
@@ -72,7 +88,8 @@ database/
 │   └── supabase/
 │       └── migrations/
 │           ├── 20260313054120_initial_schema.sql    # Tables + initial RLS
-│           └── 20260317100000_user_scoped_rls.sql   # User-scoped Clerk JWT policies
+│           ├── 20260317100000_user_scoped_rls.sql   # User-scoped Clerk JWT policies
+│           └── 20260319120000_backtest_jobs.sql     # backtest_jobs table + RLS
 └── mongo/
     └── schemas/
         └── reasoning_trace.json                     # JSON Schema for trace documents

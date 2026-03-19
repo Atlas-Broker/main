@@ -24,7 +24,8 @@ backend/
 │       ├── pipeline.py            # POST /v1/pipeline/run — full live pipeline
 │       ├── signals.py             # GET /v1/signals, POST approve/reject
 │       ├── portfolio.py           # GET /v1/portfolio — live Alpaca data
-│       └── trades.py              # GET /v1/trades, POST /v1/trades/{id}/override
+│       ├── trades.py              # GET /v1/trades, POST /v1/trades/{id}/override
+│       └── backtest.py            # POST/GET/DELETE /v1/backtest — backtest job management
 ├── broker/
 │   ├── base.py                    # BrokerAdapter Protocol
 │   ├── alpaca.py                  # AlpacaAdapter — paper trading
@@ -34,9 +35,15 @@ backend/
 │   └── controller.py              # ExecutionBoundaryController.execute()
 ├── db/
 │   └── supabase.py                # Supabase client — trades, positions, profiles, override_log
+├── backtesting/
+│   ├── __init__.py
+│   ├── runner.py                  # Background task: orchestrates full backtest run
+│   ├── simulator.py               # VirtualPortfolio — cash, positions, P&L simulation
+│   └── metrics.py                 # Sharpe, drawdown, win rate, signal-to-execution rate
 └── services/
     ├── pipeline_service.py        # run_pipeline_with_ebc — agents → EBC → response
-    └── signals_service.py         # MongoDB queries; approve-and-execute with idempotency guard
+    ├── signals_service.py         # MongoDB queries; approve-and-execute with idempotency guard
+    └── backtest_service.py        # Backtest job CRUD (Supabase) + results persistence (MongoDB)
 ```
 
 `atlas-agents` (the `agents/` package) is installed as a local editable dependency.
@@ -66,6 +73,10 @@ The JWKS URL is derived automatically from `CLERK_PUBLISHABLE_KEY` (decodes the 
 | `GET` | `/v1/portfolio` | ✅ Live | Returns live equity, cash, and positions from Alpaca |
 | `GET` | `/v1/trades` | ✅ Live | Returns trade history from Supabase |
 | `POST` | `/v1/trades/{id}/override` | ✅ Live | Cancels Alpaca order; writes to Supabase `override_log` |
+| `POST` | `/v1/backtest` | ✅ Live | Create backtest job + start background task |
+| `GET` | `/v1/backtest` | ✅ Live | List all backtest jobs for user |
+| `GET` | `/v1/backtest/{id}` | ✅ Live | Job status + full results (polling target) |
+| `DELETE` | `/v1/backtest/{id}` | ✅ Live | Delete job + MongoDB document |
 
 ### Run the Pipeline
 
