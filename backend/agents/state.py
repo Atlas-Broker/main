@@ -16,6 +16,7 @@ class AgentState(TypedDict):
     ticker: str
     user_id: str
     boundary_mode: str
+    as_of_date: str | None
 
     # Market data (populated by fetch_data node)
     ohlcv: list[dict]

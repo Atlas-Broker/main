@@ -24,8 +24,9 @@ from agents.memory import trace as trace_store
 
 async def fetch_data(state: AgentState) -> dict:
     ticker = state["ticker"]
+    as_of_date = state.get("as_of_date")
     ohlcv, info, news = await asyncio.gather(
-        asyncio.to_thread(market.fetch_ohlcv, ticker),
+        asyncio.to_thread(market.fetch_ohlcv, ticker, as_of_date=as_of_date),
         asyncio.to_thread(market.fetch_info, ticker),
         asyncio.to_thread(market.fetch_news, ticker),
     )
@@ -36,6 +37,7 @@ async def fetch_data(state: AgentState) -> dict:
         "news": news,
         "current_price": current_price,
         "analyst_outputs": {},
+        "as_of_date": as_of_date,  # preserve for downstream nodes
     }
 
 

@@ -28,6 +28,7 @@ async def run_pipeline_async(
     ticker: str,
     boundary_mode: str = "advisory",
     user_id: str = "system",
+    as_of_date: str | None = None,
 ) -> AgentSignal:
     start = time.time()
     graph = get_graph()
@@ -36,6 +37,7 @@ async def run_pipeline_async(
         "ticker": ticker,
         "user_id": user_id,
         "boundary_mode": boundary_mode,
+        "as_of_date": as_of_date,
         "analyst_outputs": {},
         "synthesis": None,
         "risk": None,
@@ -69,6 +71,7 @@ def run_pipeline(
     ticker: str,
     boundary_mode: str = "advisory",
     user_id: str = "system",
+    as_of_date: str | None = None,
 ) -> AgentSignal:
     """Sync wrapper — safe to call from FastAPI sync route handlers."""
-    return asyncio.run(run_pipeline_async(ticker, boundary_mode, user_id))
+    return asyncio.run(run_pipeline_async(ticker, boundary_mode, user_id, as_of_date))

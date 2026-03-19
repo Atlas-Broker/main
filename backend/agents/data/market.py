@@ -1,27 +1,71 @@
 """Market data fetcher — wraps yfinance for OHLCV, fundamentals, and news."""
 
+from datetime import datetime, timedelta
+
 import yfinance as yf
 
 
-def fetch_ohlcv(ticker: str, period: str = "90d", interval: str = "1d") -> list[dict]:
-    df = yf.download(ticker, period=period, interval=interval, progress=False)
+def fetch_ohlcv(
+    ticker: str,
+    period: str = "90d",
+    interval: str = "1d",
+    as_of_date: str | None = None,
+) -> list[dict]:
+    if as_of_date:
+        end_dt = datetime.strptime(as_of_date, "%Y-%m-%d")
+        start_dt = end_dt - timedelta(days=90)
+        # end is exclusive in yfinance — add 1 day to include as_of_date
+        df = yf.download(
+            ticker,
+            start=start_dt.strftime("%Y-%m-%d"),
+            end=(end_dt + timedelta(days=1)).strftime("%Y-%m-%d"),
+            interval=interval,
+            progress=False,
+        )
+    else:
+        df = yf.download(ticker, period=period, interval=interval, progress=False)
+
     if df.empty:
         return []
     # Flatten multi-level columns (yfinance returns ('Close', 'AAPL') style)
     df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
     df = df.reset_index()
-    date_col = "Datetime" if "Datetime" in df.columns else "Date"
-    records = []
-    for _, row in df.iterrows():
-        records.append({
+    # Detect the date column — yfinance names it 'Datetime' (intraday) or 'Date' (daily);
+    # unnamed indexes become 'index' after reset_index (e.g. in tests)
+    if "Datetime" in df.columns:
+        date_col = "Datetime"
+    elif "Date" in df.columns:
+        date_col = "Date"
+    else:
+        date_col = "index"
+    return [
+        {
             "date": str(row[date_col])[:10],
-            "open": round(float(row["Open"]), 4),
-            "high": round(float(row["High"]), 4),
-            "low": round(float(row["Low"]), 4),
-            "close": round(float(row["Close"]), 4),
+            "open":   round(float(row["Open"]),   4),
+            "high":   round(float(row["High"]),   4),
+            "low":    round(float(row["Low"]),    4),
+            "close":  round(float(row["Close"]),  4),
             "volume": int(row["Volume"]),
-        })
-    return records
+        }
+        for _, row in df.iterrows()
+    ]
+
+
+def fetch_next_open(ticker: str, after_date: str) -> float | None:
+    """Return the first available open price strictly after after_date."""
+    start_dt = datetime.strptime(after_date, "%Y-%m-%d") + timedelta(days=1)
+    end_dt = start_dt + timedelta(days=7)  # buffer for weekends/holidays
+    df = yf.download(
+        ticker,
+        start=start_dt.strftime("%Y-%m-%d"),
+        end=end_dt.strftime("%Y-%m-%d"),
+        interval="1d",
+        progress=False,
+    )
+    if df.empty:
+        return None
+    df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
+    return float(df["Open"].iloc[0])
 
 
 def fetch_info(ticker: str) -> dict:
