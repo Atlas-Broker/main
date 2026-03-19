@@ -1,8 +1,19 @@
-"""Market data fetcher — wraps yfinance for OHLCV, fundamentals, and news."""
+"""Market data fetcher — wraps yfinance for OHLCV, fundamentals, and news.
 
+For historical (backtest) runs, news is sourced from the Alpaca News API so
+that only articles published before `as_of_date` are included — eliminating
+look-ahead bias.  Live runs continue to use yfinance news.
+"""
+
+import logging
+import os
 from datetime import datetime, timedelta
 
 import yfinance as yf
+from alpaca.data.historical import NewsClient
+from alpaca.data.requests import NewsRequest
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_ohlcv(
@@ -82,10 +93,54 @@ def fetch_info(ticker: str) -> dict:
     return {k: info.get(k) for k in keys}
 
 
-def fetch_news(ticker: str) -> list[dict]:
+def fetch_news(ticker: str, as_of_date: str | None = None) -> list[dict]:
+    """Fetch recent news for *ticker*.
+
+    Args:
+        ticker: Stock ticker symbol (e.g. "AAPL").
+        as_of_date: ISO date string (``"YYYY-MM-DD"``).  When provided, the
+            Alpaca News API is used so that only articles published **before**
+            this date are returned — preventing look-ahead bias in backtests.
+            When ``None``, yfinance is used (live trading, current news).
+
+    Returns:
+        List of dicts with ``title`` and ``published`` keys (max 10 items).
+        Returns an empty list on error rather than raising.
+    """
+    if as_of_date:
+        return _fetch_news_alpaca(ticker, as_of_date)
+    return _fetch_news_yfinance(ticker)
+
+
+def _fetch_news_alpaca(ticker: str, as_of_date: str) -> list[dict]:
+    """Use the Alpaca News API to fetch articles published before *as_of_date*."""
+    try:
+        api_key = os.environ["ALPACA_API_KEY"]
+        secret_key = os.environ["ALPACA_SECRET_KEY"]
+        end_dt = datetime.strptime(as_of_date, "%Y-%m-%d")
+        client = NewsClient(api_key=api_key, secret_key=secret_key)
+        request = NewsRequest(symbols=ticker, end=end_dt, limit=10)
+        news = client.get_news(request)
+        return [
+            {
+                "title": article.headline,
+                "published": article.created_at.isoformat() if article.created_at else "",
+            }
+            for article in news
+        ]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Alpaca news fetch failed for %s (as_of=%s): %s", ticker, as_of_date, exc)
+        return []
+
+
+def _fetch_news_yfinance(ticker: str) -> list[dict]:
+    """Use yfinance to fetch current news (live trading path)."""
     t = yf.Ticker(ticker)
     news = t.news or []
     return [
-        {"title": n.get("content", {}).get("title", ""), "published": n.get("content", {}).get("pubDate", "")}
+        {
+            "title": n.get("content", {}).get("title", ""),
+            "published": n.get("content", {}).get("pubDate", ""),
+        }
         for n in news[:10]
     ]

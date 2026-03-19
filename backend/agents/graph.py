@@ -28,7 +28,7 @@ async def fetch_data(state: AgentState) -> dict:
     ohlcv, info, news = await asyncio.gather(
         asyncio.to_thread(market.fetch_ohlcv, ticker, as_of_date=as_of_date),
         asyncio.to_thread(market.fetch_info, ticker),
-        asyncio.to_thread(market.fetch_news, ticker),
+        asyncio.to_thread(market.fetch_news, ticker, as_of_date),
     )
     current_price = info.get("currentPrice") or (ohlcv[-1]["close"] if ohlcv else 0.0)
     return {
@@ -42,17 +42,32 @@ async def fetch_data(state: AgentState) -> dict:
 
 
 async def run_technical(state: AgentState) -> dict:
-    result = await asyncio.to_thread(technical.analyse, state["ticker"], state["ohlcv"])
+    result = await asyncio.to_thread(
+        technical.analyse,
+        state["ticker"],
+        state["ohlcv"],
+        state.get("philosophy_mode"),
+    )
     return {"analyst_outputs": {"technical": result}}
 
 
 async def run_fundamental(state: AgentState) -> dict:
-    result = await asyncio.to_thread(fundamental.analyse, state["ticker"], state["info"])
+    result = await asyncio.to_thread(
+        fundamental.analyse,
+        state["ticker"],
+        state["info"],
+        state.get("philosophy_mode"),
+    )
     return {"analyst_outputs": {"fundamental": result}}
 
 
 async def run_sentiment(state: AgentState) -> dict:
-    result = await asyncio.to_thread(sentiment.analyse, state["ticker"], state["news"])
+    result = await asyncio.to_thread(
+        sentiment.analyse,
+        state["ticker"],
+        state["news"],
+        state.get("philosophy_mode"),
+    )
     return {"analyst_outputs": {"sentiment": result}}
 
 
