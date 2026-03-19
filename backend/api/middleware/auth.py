@@ -14,7 +14,7 @@ from fastapi import HTTPException
 from jose import JWTError, jwt as jose_jwt
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def _derive_jwks_url() -> str:
     return "https://api.clerk.com/v1/jwks"
 
 
-_ALWAYS_PUBLIC = {"/health", "/webhooks/clerk"}
+_ALWAYS_PUBLIC = {"/health", "/webhooks/clerk", "/favicon.ico"}
 _DEV_PUBLIC = {"/docs", "/openapi.json", "/redoc"}
 
 
@@ -103,17 +103,17 @@ class ClerkAuthMiddleware(BaseHTTPMiddleware):
 
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Missing Authorization header")
+            return JSONResponse({"detail": "Missing Authorization header"}, status_code=401)
 
         token = auth_header.removeprefix("Bearer ").strip()
 
         try:
             user_id = await self._verify_token(token)
-        except HTTPException:
-            raise
+        except HTTPException as exc:
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
         except Exception as exc:
             logger.error("Unexpected error during JWT verification: %s", exc)
-            raise HTTPException(status_code=401, detail="Authentication error")
+            return JSONResponse({"detail": "Authentication error"}, status_code=401)
 
         request.state.user_id = user_id
         return await call_next(request)
@@ -136,13 +136,13 @@ class ClerkAuthMiddleware(BaseHTTPMiddleware):
         except Exception as exc:
             logger.error("Failed to fetch JWKS: %s", exc)
             if not self._jwks_cache.is_valid():
-                raise HTTPException(status_code=503, detail="Authentication service unavailable")
+                raise RuntimeError("Authentication service unavailable")
 
     async def _verify_token(self, token: str, leeway: int = 0) -> str:
         await self._ensure_jwks()
 
         if not self._jwks_cache.keys:
-            raise HTTPException(status_code=503, detail="No JWKS keys available")
+            raise RuntimeError("No JWKS keys available")
 
         last_error: Exception | None = None
 
@@ -163,4 +163,4 @@ class ClerkAuthMiddleware(BaseHTTPMiddleware):
                 continue
 
         logger.debug("JWT verification failed: %s", last_error)
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise HTTPException(status_code=401, detail="Invalid or expired token")  # caught by dispatch
