@@ -34,6 +34,25 @@ def scheduler_status(_: str = Depends(get_current_user)):
     }
 
 
+@router.post("/trigger")
+async def trigger(user_id: str = Depends(get_current_user)):
+    """
+    Alias for run-now. Immediately run the full watchlist for the authenticated user.
+    Results appear in the caller's dashboard — does not affect other users.
+    """
+    logger.info("[Scheduler] /trigger invoked by user %s", user_id)
+    results = await run_all_users(override_user_id=user_id)
+    ok = sum(1 for r in results if r.get("status") == "ok")
+    errors = sum(1 for r in results if r.get("status") == "error")
+    return {
+        "triggered_by": user_id,
+        "tickers_run": len(results),
+        "succeeded": ok,
+        "failed": errors,
+        "results": results,
+    }
+
+
 @router.post("/run-now")
 async def run_now(user_id: str = Depends(get_current_user)):
     """

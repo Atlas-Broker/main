@@ -4,12 +4,16 @@ Daily watchlist scheduler.
 
 Runs the Atlas pipeline for ALL connected users every US market day at 9:30 AM ET.
 Each user runs with their own Alpaca credentials and their own boundary_mode from profiles.
-
-No hardcoded user IDs — the scheduler discovers active users from the broker_connections table.
+When SCHEDULER_USER_ID is set, only that single user is scheduled (v1 single-user mode).
+When SCHEDULER_EBC_MODE is set, it overrides per-user profile boundary_mode.
 
 Configuration (env vars):
   SCHEDULER_ENABLED   — "true" to activate (default: false)
-  WATCHLIST_TICKERS   — comma-separated tickers (default: AAPL,MSFT,TSLA,NVDA,META)
+  SCHEDULER_TICKERS   — comma-separated tickers (default: AAPL,MSFT,TSLA,NVDA,META)
+                        Falls back to WATCHLIST_TICKERS for backward compatibility.
+  SCHEDULER_EBC_MODE  — override boundary mode: advisory/conditional/autonomous (default: per-user profile)
+  SCHEDULER_USER_ID   — Clerk user_id to attribute scheduled runs to (v1 single-user mode).
+                        When set, only this user is scheduled; broker_connections table is ignored.
 """
 import asyncio
 import logging
@@ -65,12 +69,24 @@ def next_market_open(from_dt: datetime | None = None) -> datetime:
 
 
 def _get_watchlist() -> list[str]:
-    raw = os.getenv("WATCHLIST_TICKERS", "AAPL,MSFT,TSLA,NVDA,META")
+    # SCHEDULER_TICKERS takes priority; fall back to legacy WATCHLIST_TICKERS
+    raw = os.getenv("SCHEDULER_TICKERS") or os.getenv("WATCHLIST_TICKERS", "AAPL,MSFT,TSLA,NVDA,META")
     return [t.strip().upper() for t in raw.split(",") if t.strip()]
 
 
+def _get_ebc_mode_override() -> str | None:
+    """Return SCHEDULER_EBC_MODE if set, otherwise None (use per-user profile)."""
+    return os.getenv("SCHEDULER_EBC_MODE") or None
+
+
 def _get_user_boundary_mode(user_id: str) -> str:
-    """Fetch the user's boundary_mode from their Supabase profile. Defaults to 'conditional'."""
+    """
+    Fetch the boundary_mode to use for a scheduled run.
+    Priority: SCHEDULER_EBC_MODE env var > user's Supabase profile > 'conditional'.
+    """
+    override = _get_ebc_mode_override()
+    if override:
+        return override
     try:
         from services.profile_service import get_profile
         profile = get_profile(user_id)
@@ -87,6 +103,8 @@ _state: dict = {
     "last_run_utc": None,
     "last_run_results": [],
     "watchlist": [],
+    "tickers": [],        # alias for watchlist — exposed in /status for clarity
+    "ebc_mode": None,     # SCHEDULER_EBC_MODE value, or None (per-user profile)
     "active_users": 0,
 }
 
@@ -145,12 +163,21 @@ async def run_watchlist_for_user(user_id: str) -> list[dict]:
 async def run_all_users(override_user_id: str | None = None) -> list[dict]:
     """
     Run the watchlist pipeline for all connected users (or just override_user_id).
-    Used by both the scheduled loop and the run-now endpoint.
+
+    Resolution order for user list:
+    1. override_user_id — explicit caller (e.g. /trigger endpoint)
+    2. SCHEDULER_USER_ID env var — v1 single-user mode
+    3. Active broker connections from the database (multi-user mode)
+
+    Used by both the scheduled loop and the /trigger endpoint.
     """
     from services.broker_service import get_active_user_ids
 
     if override_user_id:
         user_ids = [override_user_id]
+    elif scheduler_user_id := os.getenv("SCHEDULER_USER_ID"):
+        user_ids = [scheduler_user_id]
+        logger.info("[Scheduler] Single-user mode via SCHEDULER_USER_ID: %s", scheduler_user_id)
     else:
         user_ids = await asyncio.to_thread(get_active_user_ids)
 
@@ -173,10 +200,17 @@ async def scheduler_loop() -> None:
     Main scheduler loop. Sleeps until next 9:30 AM ET market open, runs all connected users,
     repeats. Runs as a background asyncio task alongside the keep-alive loop.
     """
+    watchlist = _get_watchlist()
+    ebc_mode = _get_ebc_mode_override()
     _state["enabled"] = True
-    _state["watchlist"] = _get_watchlist()
+    _state["watchlist"] = watchlist
+    _state["tickers"] = watchlist
+    _state["ebc_mode"] = ebc_mode
 
-    logger.info("[Scheduler] Started | watchlist=%s", _state["watchlist"])
+    logger.info(
+        "[Scheduler] Started | watchlist=%s | ebc_mode=%s",
+        watchlist, ebc_mode or "per-user-profile",
+    )
 
     while True:
         next_run = next_market_open()
