@@ -7,6 +7,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useTheme } from "../components/ThemeProvider";
 import { fetchWithAuth } from "@/lib/api";
 import { UserMenu } from "@/components/UserMenu";
+import { BacktestTab } from "./BacktestTab";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -103,7 +104,7 @@ const ACTION_STYLE = {
   HOLD: { color: "var(--hold)", bg: "var(--hold-bg)", glow: "signal-glow-hold" },
 } as const;
 
-type Tab = "overview" | "signals" | "positions" | "settings";
+type Tab = "overview" | "signals" | "positions" | "settings" | "backtest";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -1200,6 +1201,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "signals",   label: "Signals",   icon: "◎" },
   { id: "positions", label: "Positions", icon: "▤" },
   { id: "settings",  label: "Settings",  icon: "⊙" },
+  { id: "backtest",  label: "Backtest",  icon: "⏮" },
 ];
 
 export default function UserDashboard() {
@@ -1314,12 +1316,13 @@ export default function UserDashboard() {
             {tab === "signals"   && <SignalsTab signals={signals} loading={loading} onReject={handleRejectSignal} />}
             {tab === "positions" && <PositionsTab portfolio={portfolio} refreshPortfolio={fetchPortfolio} />}
             {tab === "settings"  && <SettingsTab />}
+            {tab === "backtest"  && <BacktestTab />}
           </>
         )}
       </main>
 
       {/* ── Bottom nav ── */}
-      <nav className="sticky bottom-0 z-20 grid grid-cols-4" style={{
+      <nav className="sticky bottom-0 z-20 grid grid-cols-5" style={{
         background: "var(--nav-bg)",
         backdropFilter: "blur(12px)",
         borderTop: "1px solid var(--line)",
