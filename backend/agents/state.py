@@ -17,6 +17,7 @@ class AgentState(TypedDict):
     user_id: str
     boundary_mode: str
     as_of_date: str | None
+    philosophy_mode: str | None  # 'balanced', 'value', 'momentum', 'macro' — None = balanced
 
     # Market data (populated by fetch_data node)
     ohlcv: list[dict]

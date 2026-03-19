@@ -5,10 +5,12 @@ import time
 
 from google.genai import types
 from agents.llm.factory import get_llm
+from agents.philosophy import get_philosophy_prefix
 
 
-def analyse(ticker: str, info: dict) -> dict:
+def analyse(ticker: str, info: dict, philosophy_mode: str | None = None) -> dict:
     start = time.time()
+    philosophy_prefix = get_philosophy_prefix(philosophy_mode)
 
     metrics = {
         "pe_ratio": info.get("trailingPE"),
@@ -27,7 +29,7 @@ def analyse(ticker: str, info: dict) -> dict:
         "current_price": info.get("currentPrice"),
     }
 
-    prompt = f"""You are a fundamental analyst for a swing trading system. Analyse {ticker} and return a JSON object.
+    prompt = f"""{philosophy_prefix}You are a fundamental analyst for a swing trading system. Analyse {ticker} and return a JSON object.
 
 Company: {info.get("shortName", ticker)} | Sector: {info.get("sector")} | Industry: {info.get("industry")}
 

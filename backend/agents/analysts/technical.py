@@ -5,6 +5,7 @@ import time
 
 from google.genai import types
 from agents.llm.factory import get_llm
+from agents.philosophy import get_philosophy_prefix
 
 
 def _compute_indicators(ohlcv: list[dict]) -> dict:
@@ -50,11 +51,12 @@ def _compute_indicators(ohlcv: list[dict]) -> dict:
     }
 
 
-def analyse(ticker: str, ohlcv: list[dict]) -> dict:
+def analyse(ticker: str, ohlcv: list[dict], philosophy_mode: str | None = None) -> dict:
     start = time.time()
     indicators = _compute_indicators(ohlcv)
+    philosophy_prefix = get_philosophy_prefix(philosophy_mode)
 
-    prompt = f"""You are a technical analyst for a swing trading system. Analyse {ticker} and return a JSON object.
+    prompt = f"""{philosophy_prefix}You are a technical analyst for a swing trading system. Analyse {ticker} and return a JSON object.
 
 Computed indicators:
 {json.dumps(indicators, indent=2)}

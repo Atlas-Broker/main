@@ -30,6 +30,7 @@ async def run_pipeline_async(
     boundary_mode: str = "advisory",
     user_id: str = "system",
     as_of_date: str | None = None,
+    philosophy_mode: str | None = None,
 ) -> AgentSignal:
     if as_of_date is not None:
         try:
@@ -45,6 +46,7 @@ async def run_pipeline_async(
         "user_id": user_id,
         "boundary_mode": boundary_mode,
         "as_of_date": as_of_date,
+        "philosophy_mode": philosophy_mode,
         "analyst_outputs": {},
         "synthesis": None,
         "risk": None,
@@ -79,6 +81,9 @@ def run_pipeline(
     boundary_mode: str = "advisory",
     user_id: str = "system",
     as_of_date: str | None = None,
+    philosophy_mode: str | None = None,
 ) -> AgentSignal:
     """Sync wrapper — safe to call from FastAPI sync route handlers."""
-    return asyncio.run(run_pipeline_async(ticker, boundary_mode, user_id, as_of_date))
+    return asyncio.run(
+        run_pipeline_async(ticker, boundary_mode, user_id, as_of_date, philosophy_mode)
+    )

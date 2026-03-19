@@ -17,6 +17,7 @@ def run_pipeline_with_ebc(
     boundary_mode: str,
     user_id: str = "system",
     as_of_date: str | None = None,
+    philosophy_mode: str | None = None,
 ) -> dict:
     """
     Run the full agent pipeline for a ticker and apply the EBC.
@@ -32,7 +33,13 @@ def run_pipeline_with_ebc(
 
     from agents.orchestrator import run_pipeline
 
-    signal = run_pipeline(ticker=ticker.upper(), boundary_mode=boundary_mode, user_id=user_id, as_of_date=as_of_date)
+    signal = run_pipeline(
+        ticker=ticker.upper(),
+        boundary_mode=boundary_mode,
+        user_id=user_id,
+        as_of_date=as_of_date,
+        philosophy_mode=philosophy_mode,
+    )
     logger.info(
         "Pipeline complete: %s %s %.0f%% confidence",
         signal.action, ticker, signal.confidence * 100,

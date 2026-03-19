@@ -5,14 +5,16 @@ import time
 
 from google.genai import types
 from agents.llm.factory import get_llm
+from agents.philosophy import get_philosophy_prefix
 
 
-def analyse(ticker: str, news: list[dict]) -> dict:
+def analyse(ticker: str, news: list[dict], philosophy_mode: str | None = None) -> dict:
     start = time.time()
+    philosophy_prefix = get_philosophy_prefix(philosophy_mode)
 
     headlines = [n["title"] for n in news if n.get("title")]
 
-    prompt = f"""You are a sentiment analyst for a swing trading system. Analyse recent news for {ticker} and return a JSON object.
+    prompt = f"""{philosophy_prefix}You are a sentiment analyst for a swing trading system. Analyse recent news for {ticker} and return a JSON object.
 
 Recent news headlines:
 {json.dumps(headlines, indent=2)}
