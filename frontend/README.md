@@ -2,6 +2,8 @@
 
 Next.js 16 dashboard for the Atlas AI trading assistant. Deployed on Vercel (UAT).
 
+![Frontend Architecture](../docs/diagrams/frontend-architecture.png)
+
 ## Stack
 
 - **Framework** — Next.js 16 (App Router)

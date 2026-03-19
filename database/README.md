@@ -2,6 +2,8 @@
 
 Schema definitions for both databases. Neither requires manual GUI steps — both are managed via CLI.
 
+![Database Schema](../docs/diagrams/database-schema.png)
+
 ## Databases
 
 ### Supabase (PostgreSQL)

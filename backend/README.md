@@ -2,6 +2,8 @@
 
 FastAPI REST API for the Atlas AI trading assistant. Deployed on Render (UAT) via Docker.
 
+![Backend Architecture](../docs/diagrams/backend-architecture.png)
+
 ## Stack
 
 - **Framework** — FastAPI 0.115+

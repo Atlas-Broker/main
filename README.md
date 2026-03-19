@@ -4,6 +4,8 @@
 
 Atlas is a multi-agent AI trading assistant that runs a full analysis pipeline on any stock ticker and lets you control how much authority the AI has over trade execution — from pure signals to fully autonomous trading.
 
+![Atlas System Architecture](docs/diagrams/atlas-system-architecture.png)
+
 ## What Makes Atlas Different
 
 Most retail AI trading tools are black boxes. Atlas shows its reasoning at every step and lets you set the execution boundary:
