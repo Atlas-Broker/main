@@ -61,12 +61,16 @@ def compute_metrics(
 
     # Trade stats
     executed = [r for r in daily_runs if r.get("executed")]
+    # Signals: all runs with a valid action. The runner always attaches the pipeline's
+    # signal.action to every run_record (even non-executed ones), so this correctly
+    # counts all signals regardless of whether they were executed.
     signals = [r for r in daily_runs if r.get("action") not in (None, "ERROR")]
     total_trades = len(executed)
     total_signals = len(signals)
 
-    profitable = sum(1 for r in executed if (r.get("pnl") or 0) > 0)
-    win_rate = (profitable / total_trades) if total_trades > 0 else None
+    closed_trades = [r for r in executed if r.get("pnl") is not None]
+    profitable = sum(1 for r in closed_trades if r["pnl"] > 0)
+    win_rate = (profitable / len(closed_trades)) if closed_trades else None
     ser = (total_trades / total_signals) if total_signals > 0 else None
 
     # Per-ticker

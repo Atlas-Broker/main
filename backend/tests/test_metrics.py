@@ -58,6 +58,18 @@ def test_win_rate_computed_correctly():
     assert result["win_rate"] == pytest.approx(2 / 3, rel=1e-3)
 
 
+def test_win_rate_ignores_buy_records_without_pnl():
+    # BUY records have no pnl (position still open) — should not count as losses
+    runs = [
+        {"executed": True, "action": "BUY",  "pnl": None,  "ticker": "AAPL"},  # open position
+        {"executed": True, "action": "SELL", "pnl": 50.0,  "ticker": "AAPL"},  # win
+        {"executed": True, "action": "SELL", "pnl": -20.0, "ticker": "MSFT"},  # loss
+    ]
+    result = compute_metrics([10000, 10030], 10000.0, runs)
+    assert result["total_trades"] == 3              # all 3 executed
+    assert result["win_rate"] == pytest.approx(0.5) # 1 win / 2 closed trades
+
+
 def test_signal_to_execution_rate_none_when_no_signals():
     result = compute_metrics([10000], 10000.0, [])
     assert result["signal_to_execution_rate"] is None
