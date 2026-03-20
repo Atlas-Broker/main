@@ -32,15 +32,15 @@ const NEUTRAL_LIGHT = [
 ];
 
 const NEUTRAL_DARK = [
-  { token: "--bg",       hex: "#07080B", label: "Page background"     },
-  { token: "--deep",     hex: "#0C1016", label: "Section alternates"  },
-  { token: "--surface",  hex: "#111820", label: "Cards, inputs"        },
-  { token: "--elevated", hex: "#182030", label: "Raised elements"     },
-  { token: "--line",     hex: "#1C2B3A", label: "Borders / dividers"  },
-  { token: "--line2",    hex: "#263D52", label: "Hover borders"       },
+  { token: "--bg",       hex: "#0A0E1A", label: "Page background"     },
+  { token: "--deep",     hex: "#0D1321", label: "Section alternates"  },
+  { token: "--surface",  hex: "#0F1829", label: "Cards, inputs"        },
+  { token: "--elevated", hex: "#131D2E", label: "Raised elements"     },
+  { token: "--line",     hex: "#1E3050", label: "Borders / dividers"  },
+  { token: "--line2",    hex: "#2A4060", label: "Hover borders"       },
   { token: "--ink",      hex: "#E8EDF3", label: "Primary text"        },
   { token: "--dim",      hex: "#7A8FA0", label: "Secondary text"      },
-  { token: "--ghost",    hex: "#3D5060", label: "Placeholder text"    },
+  { token: "--ghost",    hex: "#4A6080", label: "Placeholder text"    },
 ];
 
 const SPACING_TOKENS = [
@@ -362,8 +362,8 @@ export default function DesignSystemPage() {
               <div className="ds-subsection">
                 <SubLabel text="Neutral — Dark mode" />
                 <div style={{
-                  background:"#07080B", borderRadius:12, padding:20,
-                  border:"1px solid #1C2B3A",
+                  background:"#0A0E1A", borderRadius:12, padding:20,
+                  border:"1px solid #1E3050",
                 }}>
                   <div className="ds-color-grid">
                     {NEUTRAL_DARK.map(c => (
