@@ -1112,7 +1112,7 @@ const PHILOSOPHY_OPTIONS: {
 
 const PHILOSOPHY_LS_KEY = "atlas_philosophy_mode";
 
-export function SettingsTab() {
+export function SettingsTab({ tier }: { tier: "free" | "pro" | "max" }) {
   const { dark, toggle } = useTheme();
   const [mode, setMode] = useState<"advisory" | "autonomous" | "autonomous_guardrail">("advisory");
   const [philosophy, setPhilosophy] = useState<PhilosophyMode>("balanced");
@@ -1177,8 +1177,26 @@ export function SettingsTab() {
     }
   }
 
+  const tierColor = tier === "pro" ? "var(--tier-pro)" : tier === "max" ? "var(--tier-max)" : "var(--dim)";
+
   return (
     <div className="flex flex-col gap-4 pb-6">
+      {/* Tier badge */}
+      <div className="flex items-center gap-2">
+        <span style={{
+          fontSize: 10,
+          fontFamily: "var(--font-jb)",
+          color: tierColor,
+          border: `1px solid ${tierColor}`,
+          padding: "2px 8px",
+          borderRadius: 4,
+          textTransform: "uppercase" as const,
+          letterSpacing: "0.06em",
+        }}>
+          {tier}
+        </span>
+      </div>
+
       {/* Appearance */}
       <div>
         <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 10 }}>APPEARANCE</div>
@@ -1226,59 +1244,121 @@ export function SettingsTab() {
       {/* Execution mode */}
       <div>
         <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 10 }}>EXECUTION MODE</div>
-        {modes.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => handleModeChange(m.id)}
-            data-selected={mode === m.id ? "true" : "false"}
-            className="text-left w-full mb-2"
-            style={{
-              background: mode === m.id ? "var(--elevated)" : "var(--surface)",
-              border: `1px solid ${mode === m.id ? m.color : "var(--line)"}`,
-              borderRadius: 10,
-              padding: "14px 18px",
-              cursor: "pointer",
-              boxShadow: "var(--card-shadow)",
-            }}
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-display font-bold" style={{ fontSize: 15, color: mode === m.id ? m.color : "var(--dim)" }}>
-                {m.label}
-              </span>
-              {mode === m.id && <div style={{ width: 7, height: 7, borderRadius: "50%", background: m.color }} />}
+        {tier === "free" ? (
+          <>
+            <div
+              className="text-left w-full mb-2"
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--line)",
+                borderRadius: 10,
+                padding: "14px 18px",
+                boxShadow: "var(--card-shadow)",
+              }}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-display font-bold" style={{ fontSize: 15, color: "var(--dim)" }}>
+                  Advisory
+                </span>
+              </div>
+              <p style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)" }}>AI signals only. You review and execute every trade manually.</p>
             </div>
-            <p style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)" }}>{m.desc}</p>
-          </button>
-        ))}
+            <div style={{
+              marginTop: 8,
+              padding: "10px 14px",
+              borderRadius: 8,
+              background: "var(--elevated)",
+              border: "1px solid var(--line)",
+              color: "var(--ghost)",
+              fontSize: 12,
+              fontFamily: "var(--font-nunito)",
+            }}>
+              Upgrade to Pro or Max to unlock Autonomous mode
+            </div>
+          </>
+        ) : (
+          modes.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => handleModeChange(m.id)}
+              data-selected={mode === m.id ? "true" : "false"}
+              className="text-left w-full mb-2"
+              style={{
+                background: mode === m.id ? "var(--elevated)" : "var(--surface)",
+                border: `1px solid ${mode === m.id ? m.color : "var(--line)"}`,
+                borderRadius: 10,
+                padding: "14px 18px",
+                cursor: "pointer",
+                boxShadow: "var(--card-shadow)",
+              }}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-display font-bold" style={{ fontSize: 15, color: mode === m.id ? m.color : "var(--dim)" }}>
+                  {m.label}
+                </span>
+                {mode === m.id && <div style={{ width: 7, height: 7, borderRadius: "50%", background: m.color }} />}
+              </div>
+              <p style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)" }}>{m.desc}</p>
+            </button>
+          ))
+        )}
       </div>
 
       {/* Philosophy mode */}
       <div>
         <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 10 }}>INVESTMENT PHILOSOPHY</div>
-        {PHILOSOPHY_OPTIONS.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => handlePhilosophyChange(p.id)}
-            data-selected={philosophy === p.id ? "true" : "false"}
-            className="text-left w-full mb-2"
-            style={{
-              background: philosophy === p.id ? "var(--elevated)" : "var(--surface)",
-              border: `1px solid ${philosophy === p.id ? p.color : "var(--line)"}`,
+        {tier === "free" ? (
+          <>
+            <div style={{
+              background: "var(--surface)",
+              border: "1px solid var(--line)",
               borderRadius: 10,
               padding: "14px 18px",
-              cursor: "pointer",
               boxShadow: "var(--card-shadow)",
-            }}
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-display font-bold" style={{ fontSize: 15, color: philosophy === p.id ? p.color : "var(--dim)" }}>
-                {p.label}
-              </span>
-              {philosophy === p.id && <div style={{ width: 7, height: 7, borderRadius: "50%", background: p.color }} />}
+              opacity: 0.5,
+            }}>
+              <div style={{ height: 14, width: "40%", background: "var(--line2)", borderRadius: 4, marginBottom: 8 }} />
+              <div style={{ height: 12, width: "70%", background: "var(--line2)", borderRadius: 4 }} />
             </div>
-            <p style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)" }}>{p.desc}</p>
-          </button>
-        ))}
+            <div style={{
+              marginTop: 8,
+              padding: "10px 14px",
+              borderRadius: 8,
+              background: "var(--elevated)",
+              border: "1px solid var(--line)",
+              color: "var(--ghost)",
+              fontSize: 12,
+              fontFamily: "var(--font-nunito)",
+            }}>
+              Upgrade to Pro or Max to select an investment philosophy
+            </div>
+          </>
+        ) : (
+          PHILOSOPHY_OPTIONS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => handlePhilosophyChange(p.id)}
+              data-selected={philosophy === p.id ? "true" : "false"}
+              className="text-left w-full mb-2"
+              style={{
+                background: philosophy === p.id ? "var(--elevated)" : "var(--surface)",
+                border: `1px solid ${philosophy === p.id ? p.color : "var(--line)"}`,
+                borderRadius: 10,
+                padding: "14px 18px",
+                cursor: "pointer",
+                boxShadow: "var(--card-shadow)",
+              }}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-display font-bold" style={{ fontSize: 15, color: philosophy === p.id ? p.color : "var(--dim)" }}>
+                  {p.label}
+                </span>
+                {philosophy === p.id && <div style={{ width: 7, height: 7, borderRadius: "50%", background: p.color }} />}
+              </div>
+              <p style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)" }}>{p.desc}</p>
+            </button>
+          ))
+        )}
       </div>
 
       {/* Alpaca connection */}
@@ -1461,7 +1541,7 @@ export default function UserDashboard() {
               />
             )}
             {tab === "signals"   && <SignalsTab signals={signals} loading={loading} />}
-            {tab === "settings"  && <SettingsTab />}
+            {tab === "settings"  && <SettingsTab tier={tier} />}
             {tab === "backtest"  && <BacktestTab role={role ?? undefined} />}
           </>
         )}
