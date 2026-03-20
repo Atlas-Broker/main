@@ -8,7 +8,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from api.dependencies import get_current_user
-from db.supabase import get_user_role, get_user_tier
+from db.supabase import get_user_role
 from services.profile_service import get_profile, update_profile
 
 router = APIRouter(prefix="/v1", tags=["profile"])
@@ -32,7 +32,7 @@ def read_profile_me(user_id: str = Depends(get_current_user)) -> dict:
 def read_profile(user_id: str = Depends(get_current_user)) -> dict:
     """Return the current user's profile including their tier."""
     profile = get_profile(user_id)
-    return {**profile, "tier": profile.get("tier", "free")}
+    return profile
 
 
 @router.patch("/profile")
