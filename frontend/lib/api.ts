@@ -31,6 +31,7 @@ export async function fetchWithAuth(
 }
 
 export type UserRole = "user" | "admin" | "superadmin";
+export type UserTier = "free" | "pro" | "max";
 
 export type MyProfile = {
   id: string;
@@ -39,6 +40,15 @@ export type MyProfile = {
   email: string;
   onboarding_completed: boolean;
   role: UserRole;
+  tier: UserTier;
+};
+
+export type EquityCurvePoint = { date: string; value: number };
+export type DecisionLogEntry = {
+  action: "BUY" | "SELL" | "HOLD";
+  confidence: number;
+  reasoning: string;
+  created_at: string;
 };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -47,4 +57,16 @@ export async function fetchMyProfile(): Promise<MyProfile | null> {
   const res = await fetchWithAuth(`${API_URL}/v1/profile/me`);
   if (!res || !res.ok) return null;
   return res.json() as Promise<MyProfile>;
+}
+
+export async function fetchEquityCurve(apiUrl: string): Promise<EquityCurvePoint[]> {
+  const res = await fetchWithAuth(`${apiUrl}/v1/portfolio/equity-curve`);
+  if (!res || !res.ok) return [];
+  return res.json();
+}
+
+export async function fetchDecisionLog(apiUrl: string, ticker: string, limit = 20): Promise<DecisionLogEntry[]> {
+  const res = await fetchWithAuth(`${apiUrl}/v1/portfolio/positions/${ticker}/log?limit=${limit}`);
+  if (!res || !res.ok) return [];
+  return res.json();
 }
