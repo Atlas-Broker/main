@@ -7,6 +7,7 @@ look-ahead bias.  Live runs continue to use yfinance news.
 
 import logging
 import os
+import time
 from datetime import datetime, timedelta
 
 import yfinance as yf
@@ -14,6 +15,17 @@ from alpaca.data.historical import NewsClient
 from alpaca.data.requests import NewsRequest
 
 logger = logging.getLogger(__name__)
+
+
+def _yf_download_with_retry(ticker: str, retries: int = 3, **kwargs) -> "pd.DataFrame":  # type: ignore[name-defined]
+    """Download yfinance data with exponential backoff on 401 crumb errors."""
+    for attempt in range(retries):
+        df = yf.download(ticker, progress=False, **kwargs)
+        if not df.empty:
+            return df
+        if attempt < retries - 1:
+            time.sleep(2 ** attempt)  # 1s, 2s, 4s
+    return df  # return empty on exhaustion
 
 
 def fetch_ohlcv(
@@ -26,15 +38,14 @@ def fetch_ohlcv(
         end_dt = datetime.strptime(as_of_date, "%Y-%m-%d")
         start_dt = end_dt - timedelta(days=90)
         # end is exclusive in yfinance — add 1 day to include as_of_date
-        df = yf.download(
+        df = _yf_download_with_retry(
             ticker,
             start=start_dt.strftime("%Y-%m-%d"),
             end=(end_dt + timedelta(days=1)).strftime("%Y-%m-%d"),
             interval=interval,
-            progress=False,
         )
     else:
-        df = yf.download(ticker, period=period, interval=interval, progress=False)
+        df = _yf_download_with_retry(ticker, period=period, interval=interval)
 
     if df.empty:
         return []
@@ -66,12 +77,11 @@ def fetch_next_open(ticker: str, after_date: str) -> float | None:
     """Return the first available open price strictly after after_date."""
     start_dt = datetime.strptime(after_date, "%Y-%m-%d") + timedelta(days=1)
     end_dt = start_dt + timedelta(days=7)  # buffer for weekends/holidays
-    df = yf.download(
+    df = _yf_download_with_retry(
         ticker,
         start=start_dt.strftime("%Y-%m-%d"),
         end=end_dt.strftime("%Y-%m-%d"),
         interval="1d",
-        progress=False,
     )
     if df.empty:
         return None
@@ -120,13 +130,15 @@ def _fetch_news_alpaca(ticker: str, as_of_date: str) -> list[dict]:
         end_dt = datetime.strptime(as_of_date, "%Y-%m-%d")
         client = NewsClient(api_key=api_key, secret_key=secret_key)
         request = NewsRequest(symbols=ticker, end=end_dt, limit=10)
-        news = client.get_news(request)
+        news_set = client.get_news(request)
+        # NewsSet.data is {"news": [News, ...]} — __iter__ yields (field, value) tuples
+        articles = news_set.data.get("news", []) if hasattr(news_set, "data") else []
         return [
             {
-                "title": article.headline,
-                "published": article.created_at.isoformat() if article.created_at else "",
+                "title": a.headline,
+                "published": a.created_at.isoformat() if a.created_at else "",
             }
-            for article in news
+            for a in articles
         ]
     except Exception as exc:  # noqa: BLE001
         logger.warning("Alpaca news fetch failed for %s (as_of=%s): %s", ticker, as_of_date, exc)
