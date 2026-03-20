@@ -254,24 +254,25 @@ async def update_user_tier(
 @router.get("/system-status")
 async def get_system_status(_: str = Depends(require_admin)) -> dict:
     """Ping all services and return their health status."""
-    now = datetime.utcnow().isoformat() + "Z"
+    import asyncio
+    now = datetime.now(timezone.utc).isoformat()
 
-    # MongoDB health
-    mongo_online = _ping_mongo()
+    # MongoDB health (blocking — run in thread pool)
+    mongo_online = await asyncio.to_thread(_ping_mongo)
     mongo_status = {
         "status": "online" if mongo_online else "offline",
         "last_checked": now,
         "detail": "Connected" if mongo_online else "Connection failed",
     }
 
-    # Supabase health
-    supabase_status = _check_supabase_health(now)
+    # Supabase health (blocking — run in thread pool)
+    supabase_status = await asyncio.to_thread(_check_supabase_health, now)
 
     # Alpaca health
     alpaca_status = await _check_alpaca_health(now)
 
-    # Pipeline health (based on last signal timestamp)
-    pipeline_status = _check_pipeline_health(now)
+    # Pipeline health (blocking — run in thread pool)
+    pipeline_status = await asyncio.to_thread(_check_pipeline_health, now)
 
     # Scheduler — always online for this iteration
     scheduler_status = {
