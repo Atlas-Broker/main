@@ -1485,13 +1485,13 @@ export default function UserDashboard() {
         backdropFilter: "blur(12px)",
         borderBottom: "1px solid var(--line)",
       }}>
-        <div className="flex items-center gap-2.5">
+        <Link href="/" className="flex items-center gap-2.5" style={{ textDecoration: "none" }}>
           <div className="relative flex items-center justify-center" style={{ width: 22, height: 22 }}>
             <div style={{ position: "absolute", width: 2, height: 18, background: "#C8102E", transform: "skewX(-14deg) translateX(2px)", borderRadius: 1 }} />
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#C8102E", position: "relative", zIndex: 1, marginLeft: 3 }} />
           </div>
           <span className="font-display font-bold" style={{ fontSize: 17, color: "var(--ink)", letterSpacing: "-0.02em" }}>ATLAS</span>
-        </div>
+        </Link>
 
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
