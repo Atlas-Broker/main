@@ -671,21 +671,61 @@ function PortfolioTab({
 function SignalsTab({
   signals,
   loading,
-  onReject,
 }: {
   signals: Signal[];
   loading: boolean;
-  onReject?: (id: string) => void;
 }) {
-  if (loading) return <div style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)", padding: "32px 0", textAlign: "center" }}>Loading signals…</div>;
-  if (!signals.length) return <div style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)", padding: "32px 0", textAlign: "center" }}>No signals yet — run the pipeline from admin.</div>;
+  const router = useRouter();
+  const ACTION_COLOR = {
+    BUY:  "var(--bull)",
+    SELL: "var(--bear)",
+    HOLD: "var(--hold)",
+  } as const;
+
+  if (loading) return (
+    <div style={{ color: "var(--ghost)", fontSize: 13, padding: "32px 0", textAlign: "center" }}>Loading signals…</div>
+  );
+  if (!signals.length) return (
+    <div style={{ color: "var(--ghost)", fontSize: 13, padding: "32px 0", textAlign: "center" }}>No signals yet — run the pipeline from admin.</div>
+  );
 
   return (
-    <div className="flex flex-col gap-3 pb-6">
-      <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 4 }}>
-        ALL SIGNALS — {signals.length} RUNS
-      </div>
-      {signals.map((sig) => <SignalCard key={sig.id} signal={sig} onReject={onReject} />)}
+    <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
+      {signals.map((sig, i) => {
+        const c = ACTION_COLOR[sig.action];
+        return (
+          <button
+            key={sig.id}
+            onClick={() => router.push(`/dashboard/signal/${sig.id}`)}
+            style={{
+              width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "14px 16px", background: "transparent", border: "none",
+              borderBottom: i < signals.length - 1 ? "1px solid var(--line)" : "none",
+              cursor: "pointer", textAlign: "left",
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <span style={{
+                padding: "2px 8px", borderRadius: 4, fontSize: 11,
+                fontFamily: "var(--font-mono)", fontWeight: 700,
+                color: c, background: `${c}20`, border: `1px solid ${c}40`,
+              }}>
+                {sig.action}
+              </span>
+              <span className="font-display font-bold" style={{ fontSize: 16, color: "var(--ink)" }}>{sig.ticker}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="num" style={{ color: c, fontSize: 13, fontWeight: 600 }}>
+                {Math.round(sig.confidence * 100)}%
+              </span>
+              <span style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
+                {relTime(sig.created_at)}
+              </span>
+              <span style={{ color: "var(--ghost)", fontSize: 12 }}>›</span>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -1420,7 +1460,7 @@ export default function UserDashboard() {
                 onPositionClick={handlePositionClick}
               />
             )}
-            {tab === "signals"   && <SignalsTab signals={signals} loading={loading} onReject={handleRejectSignal} />}
+            {tab === "signals"   && <SignalsTab signals={signals} loading={loading} />}
             {tab === "settings"  && <SettingsTab />}
             {tab === "backtest"  && <BacktestTab role={role ?? undefined} />}
           </>
