@@ -34,9 +34,9 @@ def run_pipeline(req: PipelineRequest, user_id: str = Depends(get_current_user))
     """
     Run the full agent pipeline for a ticker and apply the EBC.
 
-    - advisory:    Returns signal. No execution.
-    - conditional: Returns signal with status=awaiting_approval.
-    - autonomous:  Executes via Alpaca paper trading. Returns filled order details.
+    - advisory:              Returns signal. No execution.
+    - autonomous_guardrail:  Executes high-confidence signals; queues low-confidence for review.
+    - autonomous:            Executes via Alpaca paper trading. Returns filled order details.
 
     Optional philosophy_mode overlays an investment lens on all analyst prompts:
     - balanced (default): No overlay. Current behaviour.

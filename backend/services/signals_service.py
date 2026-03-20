@@ -40,8 +40,6 @@ def _trace_to_signal(trace: dict) -> dict:
         status = "rejected"
     elif execution.get("executed") is True:
         status = "executed"
-    elif boundary_mode == "conditional":
-        status = "awaiting_approval"
     else:
         status = "signal"
 

@@ -34,7 +34,7 @@ def test_create_backtest_returns_job_id(client):
             "tickers": ["AAPL"],
             "start_date": "2025-01-01",
             "end_date": "2025-02-01",
-            "ebc_mode": "conditional",
+            "ebc_mode": "advisory",
         }, headers={"Authorization": "Bearer fake"})
     assert resp.status_code == 200
     assert resp.json()["job_id"] == "job-123"
@@ -45,7 +45,7 @@ def test_create_backtest_rejects_future_end_date(client):
         "tickers": ["AAPL"],
         "start_date": "2026-01-01",
         "end_date": "2099-12-31",
-        "ebc_mode": "conditional",
+        "ebc_mode": "advisory",
     }, headers={"Authorization": "Bearer fake"})
     assert resp.status_code == 422
 

@@ -16,11 +16,11 @@ def test_create_job_inserts_row_with_correct_shape():
     sb = _sb_mock()
     with patch("services.backtest_service.get_supabase", return_value=sb):
         from services.backtest_service import create_job
-        job_id = create_job("user_1", ["AAPL", "MSFT"], "2026-01-01", "2026-02-01", "conditional")
+        job_id = create_job("user_1", ["AAPL", "MSFT"], "2026-01-01", "2026-02-01", "advisory")
     payload = sb.table.return_value.insert.call_args[0][0]
     assert payload["user_id"] == "user_1"
     assert payload["tickers"] == ["AAPL", "MSFT"]
-    assert payload["ebc_mode"] == "conditional"
+    assert payload["ebc_mode"] == "advisory"
     assert payload["status"] == "queued"
     assert payload["initial_capital"] == 10000.0
     assert "id" in payload

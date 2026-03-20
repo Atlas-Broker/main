@@ -28,8 +28,8 @@ class BacktestRequest(BaseModel):
     @field_validator("ebc_mode")
     @classmethod
     def validate_mode(cls, v: str) -> str:
-        if v not in ("advisory", "conditional", "autonomous", "autonomous_guardrail"):
-            raise ValueError("ebc_mode must be advisory, conditional, autonomous, or autonomous_guardrail")
+        if v not in ("advisory", "autonomous_guardrail", "autonomous"):
+            raise ValueError("ebc_mode must be advisory, autonomous_guardrail, or autonomous")
         return v
 
     @model_validator(mode="after")

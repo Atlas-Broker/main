@@ -189,7 +189,7 @@ def test_get_profile_me_returns_role(regular_client):
     """GET /v1/profile/me returns the user's profile with a role field."""
     fake_profile = {
         "id": _REGULAR_USER,
-        "boundary_mode": "conditional",
+        "boundary_mode": "advisory",
         "display_name": "Test User",
         "email": "test@example.com",
         "onboarding_completed": False,

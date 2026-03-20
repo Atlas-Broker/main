@@ -25,7 +25,7 @@ def test_record_trade_inserts_correct_shape():
         from services.trade_service import record_trade
         record_trade(
             user_id="user_001", portfolio_id="port-uuid-001", ticker="TSLA",
-            action="BUY", boundary_mode="conditional", signal_id="mongo-trace-abc", order=order,
+            action="BUY", boundary_mode="advisory", signal_id="mongo-trace-abc", order=order,
         )
     insert_call = mock_sb.table.return_value.insert.call_args[0][0]
     assert insert_call["user_id"] == "user_001"

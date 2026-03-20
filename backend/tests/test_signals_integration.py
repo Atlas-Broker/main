@@ -13,7 +13,7 @@ def _fake_trace(executed=False, user_id=_FAKE_USER):
         "_id": ObjectId(),
         "user_id": user_id,
         "ticker": "TSLA",
-        "boundary_mode": "conditional",
+        "boundary_mode": "advisory",
         "pipeline_run": {
             "final_decision": {"action": "BUY", "confidence": 0.85, "reasoning": "strong momentum"},
             "risk": {"stop_loss": 240, "take_profit": 270, "position_size": 10, "risk_reward_ratio": 2.0},

@@ -5,7 +5,6 @@ Takes an AgentSignal and a configured mode, routes to the correct
 execution path, and returns an ExecutionResult.
 
 Advisory:              No execution. Returns signal for display.
-Conditional:           Returns awaiting_approval. Execution only on user approval.
 Autonomous:            Places order via broker immediately. Override window open.
 AutonomousGuardrail:   Confidence >= 65%: executes immediately (same as autonomous).
                        Confidence < 65%: returns awaiting_approval for human review.
@@ -58,7 +57,7 @@ class EBC:
 
         Args:
             signal: AgentSignal from orchestrator
-            mode:   "advisory" | "conditional" | "autonomous" | "autonomous_guardrail"
+            mode:   "advisory" | "autonomous" | "autonomous_guardrail"
         """
         bmode = BoundaryMode(mode)
         config = MODE_CONFIG[bmode]
@@ -106,14 +105,6 @@ class EBC:
                     f"Confidence {signal.confidence:.0%} below threshold "
                     f"{config['min_confidence']:.0%} for {mode} mode."
                 ),
-            )
-
-        if bmode == BoundaryMode.CONDITIONAL:
-            return ExecutionResult(
-                **base,
-                executed=False,
-                status="awaiting_approval",
-                message="Signal pending user approval. POST /v1/signals/{id}/approve to execute.",
             )
 
         # Autonomous / Autonomous Guardrail (high confidence) — execute immediately

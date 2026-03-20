@@ -12,7 +12,7 @@ from api.dependencies import get_current_user
 _FAKE_USER = "user_clerk_test_001"
 _FAKE_PROFILE = {
     "id": _FAKE_USER,
-    "boundary_mode": "conditional",
+    "boundary_mode": "advisory",
     "display_name": "Test User",
     "email": "test@example.com",
     "onboarding_completed": False,
@@ -38,7 +38,7 @@ def test_get_profile_returns_profile(client):
         resp = client.get("/v1/profile", headers={"Authorization": "Bearer fake-token"})
     assert resp.status_code == 200
     data = resp.json()
-    assert data["boundary_mode"] == "conditional"
+    assert data["boundary_mode"] == "advisory"
     assert data["id"] == _FAKE_USER
 
 

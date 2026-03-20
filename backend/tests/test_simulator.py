@@ -17,21 +17,6 @@ def test_advisory_never_executes():
     assert p.cash == 10000.0  # unchanged
 
 
-# ── Conditional thresholds ────────────────────────────────────────────────────
-
-def test_conditional_below_threshold_does_not_execute():
-    p = _make_portfolio()
-    result = p.process("2026-01-05", "AAPL", "BUY", 0.59, "conditional", 200.0, False)
-    assert result["executed"] is False
-
-
-def test_conditional_at_threshold_executes():
-    p = _make_portfolio()
-    result = p.process("2026-01-05", "AAPL", "BUY", 0.60, "conditional", 200.0, False)
-    assert result["executed"] is True
-    assert result["action"] == "BUY"
-
-
 # ── Autonomous threshold ──────────────────────────────────────────────────────
 
 def test_autonomous_at_threshold_executes():

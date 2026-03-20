@@ -11,7 +11,7 @@ Configuration (env vars):
   SCHEDULER_ENABLED   — "true" to activate (default: false)
   SCHEDULER_TICKERS   — comma-separated tickers (default: AAPL,MSFT,TSLA,NVDA,META)
                         Falls back to WATCHLIST_TICKERS for backward compatibility.
-  SCHEDULER_EBC_MODE  — override boundary mode: advisory/conditional/autonomous (default: per-user profile)
+  SCHEDULER_EBC_MODE  — override boundary mode: advisory/autonomous_guardrail/autonomous (default: per-user profile)
   SCHEDULER_USER_ID   — Clerk user_id to attribute scheduled runs to (v1 single-user mode).
                         When set, only this user is scheduled; broker_connections table is ignored.
 """
@@ -82,7 +82,7 @@ def _get_ebc_mode_override() -> str | None:
 def _get_user_boundary_mode(user_id: str) -> str:
     """
     Fetch the boundary_mode to use for a scheduled run.
-    Priority: SCHEDULER_EBC_MODE env var > user's Supabase profile > 'conditional'.
+    Priority: SCHEDULER_EBC_MODE env var > user's Supabase profile > 'advisory'.
     """
     override = _get_ebc_mode_override()
     if override:
@@ -90,10 +90,10 @@ def _get_user_boundary_mode(user_id: str) -> str:
     try:
         from services.profile_service import get_profile
         profile = get_profile(user_id)
-        return profile.get("boundary_mode", "conditional")
+        return profile.get("boundary_mode", "advisory")
     except Exception as exc:
         logger.warning("[Scheduler] Could not fetch boundary_mode for %s: %s", user_id, exc)
-        return "conditional"
+        return "advisory"
 
 
 # Shared state for the status endpoint — module-level is fine for a single-process server.

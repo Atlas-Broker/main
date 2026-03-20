@@ -46,7 +46,7 @@ def test_get_profile_creates_default_when_missing(caplog):
 
 def test_update_profile_calls_supabase_update():
     mock_sb = _make_sb_mock(
-        profile_data={"id": "u2", "boundary_mode": "conditional", "display_name": "Bob"}
+        profile_data={"id": "u2", "boundary_mode": "advisory", "display_name": "Bob"}
     )
     import importlib
     from services import profile_service

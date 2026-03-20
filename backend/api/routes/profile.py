@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class ProfileUpdate(BaseModel):
-    boundary_mode: Literal["advisory", "conditional", "autonomous"] | None = None
+    boundary_mode: Literal["advisory", "autonomous_guardrail", "autonomous"] | None = None
     display_name: str | None = None
 
 
