@@ -35,19 +35,19 @@
 }
 
 html.dark {
-  --bg:          #07080B;
-  --deep:        #0C1016;
-  --surface:     #111820;
-  --elevated:    #182030;
-  --line:        #1C2B3A;
-  --line2:       #263D52;
+  --bg:          #0A0E1A;   /* was #07080B */
+  --deep:        #0D1321;   /* was #0C1016 */
+  --surface:     #0F1829;   /* was #111820 */
+  --elevated:    #131D2E;   /* was #182030 */
+  --line:        #1E3050;   /* was #1C2B3A */
+  --line2:       #2A4060;   /* was #263D52 */
+  --ghost:       #4A6080;   /* was #3D5060 */
 
   --ink:         #E8EDF3;
   --dim:         #7A8FA0;
-  --ghost:       #3D5060;
 
-  --header-bg:   rgba(7,8,11,0.92);
-  --nav-bg:      rgba(7,8,11,0.95);
+  --header-bg:   rgba(10,14,26,0.92);
+  --nav-bg:      rgba(10,14,26,0.95);
   --card-shadow: none;
 
   --bull:        #00C896;
@@ -232,3 +232,69 @@ body {
   border-radius: 2px;
   transition: width 0.6s ease;
 }
+
+/* ─── Tier tokens ────────────────────────────────────────────────────────── */
+:root {
+  --tier-pro: #7B61FF;   /* Pro badge — soft violet */
+  --tier-max: #F5A623;   /* Max badge — gold (same as --hold) */
+}
+
+/* ─── Agent timeline ─────────────────────────────────────────────────────── */
+
+.agent-timeline {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.agent-timeline-node {
+  display: flex;
+  gap: 12px;
+  position: relative;
+}
+
+.agent-timeline-node::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 16px;
+  bottom: -8px;
+  width: 1px;
+  background: var(--line);
+}
+
+.agent-timeline-node:last-child::before {
+  display: none;
+}
+
+/* ─── Decision log row ───────────────────────────────────────────────────── */
+
+.decision-log-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.decision-log-row:last-child {
+  border-bottom: none;
+}
+
+/* ─── System status pill ─────────────────────────────────────────────────── */
+
+.system-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.system-status-pill.online   { background: rgba(0,200,150,0.12); color: var(--bull); border: 1px solid rgba(0,200,150,0.3); }
+.system-status-pill.degraded { background: rgba(245,166,35,0.12); color: var(--hold); border: 1px solid rgba(245,166,35,0.3); }
+.system-status-pill.offline  { background: rgba(255,45,85,0.12);  color: var(--bear); border: 1px solid rgba(255,45,85,0.3);  }
