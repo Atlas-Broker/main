@@ -98,6 +98,15 @@ function relTime(iso: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function fmtMode(mode: string): string {
+  const labels: Record<string, string> = {
+    advisory: "ADVISORY",
+    autonomous_guardrail: "AUTONOMOUS · GUARDRAIL",
+    autonomous: "AUTONOMOUS",
+  };
+  return labels[mode] ?? mode.toUpperCase().replace(/_/g, " ");
+}
+
 const ACTION_STYLE = {
   BUY:  { color: "var(--bull)", bg: "var(--bull-bg)", glow: "signal-glow-bull" },
   SELL: { color: "var(--bear)", bg: "var(--bear-bg)", glow: "signal-glow-bear" },
@@ -537,7 +546,7 @@ export function SignalCard({
 
 // ─── Tab: Portfolio ───────────────────────────────────────────────────────────
 
-function AIModeStrip({ philosophy, positionCount }: { philosophy: string; positionCount: number }) {
+function AIModeStrip({ philosophy, positionCount, boundaryMode }: { philosophy: string; positionCount: number; boundaryMode: string }) {
   return (
     <div style={{
       background: "var(--elevated)", border: "1px solid var(--line)",
@@ -548,7 +557,7 @@ function AIModeStrip({ philosophy, positionCount }: { philosophy: string; positi
       <div className="flex items-center gap-2">
         <span className="live-dot" />
         <span style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-mono)", letterSpacing: "0.06em" }}>
-          AI · AUTONOMOUS
+          {fmtMode(boundaryMode)}
         </span>
       </div>
       <div className="flex items-center gap-3">
@@ -567,11 +576,13 @@ function PortfolioTab({
   portfolio,
   tier,
   philosophy,
+  boundaryMode,
   onPositionClick,
 }: {
   portfolio: Portfolio | null;
   tier: "free" | "pro" | "max";
   philosophy: string;
+  boundaryMode: string;
   onPositionClick: (ticker: string) => void;
 }) {
   const router = useRouter();
@@ -616,7 +627,7 @@ function PortfolioTab({
 
       {/* AI Mode Strip — Pro/Max only */}
       {(tier === "pro" || tier === "max") && portfolio && (
-        <AIModeStrip philosophy={philosophy} positionCount={portfolio.positions.length} />
+        <AIModeStrip philosophy={philosophy} positionCount={portfolio.positions.length} boundaryMode={boundaryMode} />
       )}
 
       {/* Positions list */}
@@ -1273,6 +1284,7 @@ export default function UserDashboard() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [tier, setTier] = useState<"free" | "pro" | "max">("free");
   const [philosophy, setPhilosophy] = useState<string>("balanced");
+  const [boundaryMode, setBoundaryMode] = useState<string>("advisory");
   const router = useRouter();
   const { isLoaded, isSignedIn } = useAuth();
 
@@ -1312,6 +1324,7 @@ export default function UserDashboard() {
       if (profile) {
         setRole(profile.role);
         if (profile.tier) setTier(profile.tier as "free" | "pro" | "max");
+        if (profile.boundary_mode) setBoundaryMode(profile.boundary_mode);
       }
       // philosophy is stored in localStorage (not yet on the profile API)
       const storedPhilosophy = typeof window !== "undefined"
@@ -1403,6 +1416,7 @@ export default function UserDashboard() {
                 portfolio={portfolio}
                 tier={tier}
                 philosophy={philosophy}
+                boundaryMode={boundaryMode}
                 onPositionClick={handlePositionClick}
               />
             )}
