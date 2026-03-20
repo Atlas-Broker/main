@@ -38,6 +38,12 @@ def compute_metrics(
         if daily_values[i - 1] > 0
     ]
 
+    # CAGR (Compound Annual Growth Rate)
+    cagr = None
+    if len(daily_values) >= 2 and initial_capital > 0 and final_value > 0:
+        years = len(daily_values) / 252.0
+        cagr = (final_value / initial_capital) ** (1.0 / years) - 1
+
     # Sharpe ratio (risk-free rate = 0)
     sharpe = None
     if len(daily_returns) >= 2:
@@ -59,6 +65,11 @@ def compute_metrics(
             if dd > max_drawdown:
                 max_drawdown = dd
 
+    # Calmar ratio = CAGR / max_drawdown
+    calmar = None
+    if cagr is not None and max_drawdown > 0:
+        calmar = cagr / max_drawdown
+
     # Trade stats
     executed = [r for r in daily_runs if r.get("executed")]
     # Signals: all runs with a valid action. The runner always attaches the pipeline's
@@ -72,6 +83,11 @@ def compute_metrics(
     profitable = sum(1 for r in closed_trades if r["pnl"] > 0)
     win_rate = (profitable / len(closed_trades)) if closed_trades else None
     ser = (total_trades / total_signals) if total_signals > 0 else None
+
+    # Profit factor = gross profit / gross loss
+    gross_profit = sum(r["pnl"] for r in closed_trades if r["pnl"] > 0)
+    gross_loss = sum(abs(r["pnl"]) for r in closed_trades if r["pnl"] < 0)
+    profit_factor = round(gross_profit / gross_loss, 4) if gross_loss > 0 else None
 
     # Per-ticker
     ticker_pnl: dict[str, float] = {}
@@ -97,17 +113,23 @@ def compute_metrics(
         "win_rate":                 round(win_rate, 4) if win_rate is not None else None,
         "signal_to_execution_rate": round(ser, 4)      if ser is not None else None,
         "per_ticker":               per_ticker,
+        "cagr":                     round(cagr, 6) if cagr is not None else None,
+        "calmar_ratio":             round(calmar, 4) if calmar is not None else None,
+        "profit_factor":            profit_factor,
     }
 
 
 def _empty_metrics() -> dict:
     """Return default metrics for empty backtest."""
     return {
-        "cumulative_return": 0.0,
+        "cumulative_return":        0.0,
         "sharpe_ratio":             None,
         "max_drawdown":             0.0,
         "total_trades":             0,
         "win_rate":                 None,
         "signal_to_execution_rate": None,
         "per_ticker":               {},
+        "cagr":                     None,
+        "calmar_ratio":             None,
+        "profit_factor":            None,
     }

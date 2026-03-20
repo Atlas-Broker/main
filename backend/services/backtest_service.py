@@ -72,7 +72,7 @@ def get_job(job_id: str, user_id: str) -> Optional[dict]:
     if not result.data:
         return None
     job = result.data[0]
-    if job.get("mongo_id") and job["status"] in ("completed", "failed", "running"):
+    if job.get("mongo_id") and job["status"] in ("completed", "failed", "running", "cancelled"):
         doc = _get_results_col().find_one({"_id": ObjectId(job["mongo_id"])})
         if doc:
             doc["_id"] = str(doc["_id"])
@@ -114,7 +114,7 @@ def update_job_status(
         patch["progress"] = progress
     if error_message:
         patch["error_message"] = error_message
-    if status in ("completed", "failed"):
+    if status in ("completed", "failed", "cancelled"):
         patch["completed_at"] = datetime.now(timezone.utc).isoformat()
     get_supabase().table("backtest_jobs").update(patch).eq("id", job_id).execute()
 

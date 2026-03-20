@@ -29,6 +29,13 @@ from services.backtest_service import (
 
 logger = logging.getLogger(__name__)
 
+# In-process cancellation flags. Set by the cancel endpoint; checked between days.
+_cancellation_flags: set[str] = set()
+
+def request_cancellation(job_id: str) -> None:
+    """Signal the running job to stop after the current day finishes."""
+    _cancellation_flags.add(job_id)
+
 
 def _trading_days(start: date_cls, end: date_cls) -> list[str]:
     """Business days (Mon–Fri) between start and end inclusive."""
@@ -60,6 +67,10 @@ async def run_backtest_job(
     errors = 0
 
     for trading_day in trading_days:
+        if job_id in _cancellation_flags:
+            _cancellation_flags.discard(job_id)
+            update_job_status(job_id, "cancelled")
+            return
         is_last = trading_day == last_day
         day_runs: list[dict] = []
 
@@ -124,7 +135,7 @@ async def run_backtest_job(
             r["portfolio_value_after"] = total_value
 
         all_daily_runs.extend(day_runs)
-        append_day_results(mongo_id, day_runs, {"date": trading_day, "value": total_value})
+        append_day_results(mongo_id, day_runs, {"date": trading_day, "value": total_value, "cash": round(portfolio.cash, 2)})
         progress = int((runs_completed / total_runs) * 100)
         update_job_status(job_id, "running", progress=progress)
 

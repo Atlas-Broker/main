@@ -10,9 +10,10 @@ from dataclasses import dataclass, field
 NOTIONAL = 1000.0  # $1,000 per trade — matches live EBC config
 
 CONFIDENCE_THRESHOLDS: dict[str, float | None] = {
-    "advisory":    None,   # never execute
-    "conditional": 0.60,
-    "autonomous":  0.65,
+    "advisory":              None,   # never execute
+    "conditional":           0.60,
+    "autonomous":            0.65,
+    "autonomous_guardrail":  0.65,
 }
 
 

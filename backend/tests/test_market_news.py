@@ -36,6 +36,7 @@ def test_fetch_news_with_as_of_date_uses_alpaca():
     ]
 
     mock_news_response = MagicMock()
+    mock_news_response.data = {"news": articles}
     mock_news_response.__iter__ = MagicMock(return_value=iter(articles))
 
     mock_client_instance = MagicMock()

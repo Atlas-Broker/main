@@ -1,4 +1,4 @@
--- Migration 003: add tier column to profiles, remove conditional from boundary_mode
+-- Migration: add tier column to profiles, remove conditional from boundary_mode
 -- Applies to: public.profiles
 -- Safe to re-run (idempotent guards on ADD COLUMN and DROP/ADD CONSTRAINT)
 

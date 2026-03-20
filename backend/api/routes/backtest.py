@@ -6,8 +6,8 @@ from pydantic import BaseModel, field_validator, model_validator
 
 from api.dependencies import get_current_user
 from db.supabase import get_user_role
-from backtesting.runner import run_backtest_job
-from services.backtest_service import create_job, delete_job, get_job, list_jobs
+from backtesting.runner import run_backtest_job, request_cancellation
+from services.backtest_service import create_job, delete_job, get_job, list_jobs, update_job_status
 
 router = APIRouter(prefix="/v1/backtest", tags=["backtest"])
 
@@ -28,8 +28,8 @@ class BacktestRequest(BaseModel):
     @field_validator("ebc_mode")
     @classmethod
     def validate_mode(cls, v: str) -> str:
-        if v not in ("advisory", "conditional", "autonomous"):
-            raise ValueError("ebc_mode must be advisory, conditional, or autonomous")
+        if v not in ("advisory", "conditional", "autonomous", "autonomous_guardrail"):
+            raise ValueError("ebc_mode must be advisory, conditional, autonomous, or autonomous_guardrail")
         return v
 
     @model_validator(mode="after")
@@ -99,3 +99,20 @@ def delete_backtest_job(job_id: str, user_id: str = Depends(get_current_user)):
     if result is False:
         raise HTTPException(status_code=409, detail="Cannot delete a running job.")
     return {"deleted": True}
+
+
+@router.post("/{job_id}/cancel")
+def cancel_backtest_job(job_id: str, user_id: str = Depends(get_current_user)):
+    """Cancel a queued or running backtest job."""
+    job = get_job(job_id, user_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] not in ("running", "queued"):
+        raise HTTPException(status_code=409, detail=f"Cannot cancel job with status '{job['status']}'")
+    if job["status"] == "queued":
+        # Queued jobs haven't started the runner yet — cancel immediately
+        update_job_status(job_id, "cancelled")
+    else:
+        # Running jobs: set the in-process flag; runner will stop after current day
+        request_cancellation(job_id)
+    return {"cancelling": True}

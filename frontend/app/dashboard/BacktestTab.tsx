@@ -8,7 +8,7 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type JobStatus = "queued" | "running" | "completed" | "failed";
+type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 type BacktestJob = {
   id: string;
@@ -32,7 +32,7 @@ type BacktestJob = {
 
 type BacktestResults = {
   daily_runs: DailyRun[];
-  equity_curve: { date: string; value: number }[];
+  equity_curve: { date: string; value: number; cash?: number }[];
   metrics: Record<string, unknown>;
 };
 
@@ -60,9 +60,10 @@ const pct = (n: number | null | undefined) =>
   n == null ? "—" : `${(n * 100).toFixed(2)}%`;
 
 const modeColor: Record<string, string> = {
-  advisory:    "var(--dim)",
-  conditional: "var(--hold)",
-  autonomous:  "var(--bull)",
+  advisory:             "var(--dim)",
+  conditional:          "var(--hold)",
+  autonomous_guardrail: "var(--brand)",
+  autonomous:           "var(--bull)",
 };
 
 const statusColor: Record<JobStatus, string> = {
@@ -70,6 +71,7 @@ const statusColor: Record<JobStatus, string> = {
   running:   "var(--hold)",
   completed: "var(--bull)",
   failed:    "var(--bear)",
+  cancelled: "var(--dim)",
 };
 
 function tradingDayEstimate(start: string, end: string): number {
@@ -235,6 +237,11 @@ export function BacktestTab({ role }: { role?: string }) {
     setJobs((prev) => prev.filter((j) => j.id !== jobId));
   }
 
+  async function cancelJob(jobId: string) {
+    await fetchWithAuth(`${API}/v1/backtest/${jobId}/cancel`, { method: "POST" });
+    await loadJobs();
+  }
+
   if (view === "new") {
     return (
       <>
@@ -345,8 +352,20 @@ export function BacktestTab({ role }: { role?: string }) {
                 }}>
                   {job.status}
                 </span>
-                {/* Delete button — only for non-running */}
-                {job.status !== "running" && (
+                {/* Cancel button — only for running/queued */}
+                {(job.status === "running" || job.status === "queued") && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); cancelJob(job.id); }}
+                    style={{
+                      background: "none", border: "1px solid var(--bear)40", cursor: "pointer",
+                      color: "var(--bear)", fontSize: 10, padding: "2px 7px", borderRadius: 4,
+                      fontFamily: "var(--font-jb)",
+                    }}
+                    title="Cancel"
+                  >cancel</button>
+                )}
+                {/* Delete button — only for non-running, non-queued */}
+                {job.status !== "running" && job.status !== "queued" && (
                   <button
                     onClick={(e) => { e.stopPropagation(); deleteJob(job.id); }}
                     style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ghost)", fontSize: 14, lineHeight: 1, padding: "0 2px" }}
@@ -427,7 +446,7 @@ function NewBacktestForm({
   const [tickers, setTickers] = useState("AAPL, MSFT, TSLA");
   const [startDate, setStartDate] = useState("2025-11-17");
   const [endDate, setEndDate] = useState("2026-01-17");
-  const [mode, setMode] = useState("conditional");
+  const [mode, setMode] = useState("advisory");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -502,7 +521,7 @@ function NewBacktestForm({
       <div>
         <div style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", marginBottom: 8 }}>EBC MODE</div>
         <div className="flex gap-2">
-          {(["advisory", "conditional", "autonomous"] as const).map((m) => (
+          {(["advisory", "autonomous_guardrail", "autonomous"] as const).map((m) => (
             <button
               key={m} type="button" onClick={() => setMode(m)}
               style={{
@@ -514,7 +533,7 @@ function NewBacktestForm({
                 cursor: "pointer", transition: "all 0.15s",
               }}
             >
-              {m}
+              {m === "autonomous_guardrail" ? "auto+guard" : m}
             </button>
           ))}
         </div>
@@ -632,6 +651,19 @@ function ResultsDetail({
         }}>
           {job.status}
         </span>
+        {isLive && (
+          <button
+            onClick={async () => {
+              await fetchWithAuth(`${API}/v1/backtest/${job.id}/cancel`, { method: "POST" });
+              onBack();
+            }}
+            style={{
+              background: "none", border: "1px solid var(--bear)40", cursor: "pointer",
+              color: "var(--bear)", fontSize: 10, padding: "2px 7px", borderRadius: 4,
+              fontFamily: "var(--font-jb)",
+            }}
+          >cancel</button>
+        )}
       </div>
 
       {/* Live progress section */}
@@ -658,6 +690,11 @@ function ResultsDetail({
             </div>
           )}
         </div>
+      )}
+
+      {/* Live equity curve — updates as days complete */}
+      {(isLive || job.status === "completed" || job.status === "cancelled") && (job.results?.equity_curve?.length ?? 0) >= 2 && (
+        <EquityCurve points={job.results!.equity_curve} />
       )}
 
       {/* Live decision feed */}
@@ -719,84 +756,90 @@ function ResultsDetail({
       )}
 
       {/* Completed: metrics grid */}
-      {job.status === "completed" && (
-        <>
+      {job.status === "completed" && (() => {
+        const m = job.results?.metrics as Record<string, unknown> | undefined;
+        const cagr = m?.cagr as number | null | undefined;
+        const calmar = m?.calmar_ratio as number | null | undefined;
+        const pf = m?.profit_factor as number | null | undefined;
+
+        const cells = [
+          { label: "TOTAL RETURN",  value: pct(job.total_return),             color: (job.total_return ?? 0) >= 0 ? "var(--bull)" : "var(--bear)" },
+          { label: "CAGR",          value: pct(cagr),                         color: (cagr ?? 0) >= 0 ? "var(--bull)" : "var(--bear)" },
+          { label: "SHARPE",        value: fmt(job.sharpe_ratio),              color: (job.sharpe_ratio ?? 0) >= 1 ? "var(--bull)" : "var(--hold)" },
+          { label: "MAX DRAWDOWN",  value: pct(job.max_drawdown),             color: "var(--bear)" },
+          { label: "CALMAR",        value: fmt(calmar),                        color: (calmar ?? 0) >= 1 ? "var(--bull)" : "var(--hold)" },
+          { label: "PROFIT FACTOR", value: fmt(pf),                            color: (pf ?? 0) >= 1 ? "var(--bull)" : "var(--bear)" },
+          { label: "WIN RATE",      value: pct(job.win_rate),                  color: (job.win_rate ?? 0) >= 0.5 ? "var(--bull)" : "var(--bear)" },
+          { label: "TRADES",        value: String(job.total_trades ?? "—"),    color: "var(--dim)" },
+          { label: "SIG→EXEC",      value: pct(job.signal_to_execution_rate), color: "var(--dim)" },
+        ];
+
+        return (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-            {[
-              { label: "RETURN",   value: pct(job.total_return),              positive: (job.total_return ?? 0) >= 0 },
-              { label: "SHARPE",   value: fmt(job.sharpe_ratio),               positive: (job.sharpe_ratio ?? 0) >= 1 },
-              { label: "MAX DD",   value: pct(job.max_drawdown),               positive: false },
-              { label: "WIN RATE", value: pct(job.win_rate),                   positive: (job.win_rate ?? 0) >= 0.5 },
-              { label: "TRADES",   value: String(job.total_trades ?? "—"),     positive: true },
-              { label: "SIG→EXEC", value: pct(job.signal_to_execution_rate),  positive: (job.signal_to_execution_rate ?? 0) >= 0.5 },
-            ].map((m) => (
-              <div key={m.label} style={{
+            {cells.map((cell) => (
+              <div key={cell.label} style={{
                 background: "var(--surface)", border: "1px solid var(--line)",
-                borderRadius: 8, padding: "12px", textAlign: "center",
+                borderRadius: 8, padding: "10px 8px", textAlign: "center",
               }}>
-                <div style={{ fontFamily: "var(--font-jb)", fontSize: 9, color: "var(--ghost)", marginBottom: 5 }}>{m.label}</div>
-                <div style={{
-                  fontFamily: "var(--font-jb)", fontSize: 15, fontWeight: 700,
-                  color: m.label === "MAX DD" ? "var(--bear)" : m.positive ? "var(--bull)" : "var(--bear)",
-                }}>{m.value}</div>
+                <div style={{ fontFamily: "var(--font-jb)", fontSize: 8, color: "var(--ghost)", marginBottom: 4, letterSpacing: "0.04em" }}>
+                  {cell.label}
+                </div>
+                <div style={{ fontFamily: "var(--font-jb)", fontSize: 14, fontWeight: 700, color: cell.color }}>
+                  {cell.value}
+                </div>
               </div>
             ))}
           </div>
+        );
+      })()}
 
-          {/* Equity sparkline (SVG) */}
-          {(job.results?.equity_curve?.length ?? 0) > 1 && (
-            <EquityCurve points={job.results!.equity_curve} />
-          )}
+      {/* Per-ticker (completed) */}
+      {job.status === "completed" && Object.keys(perTicker).length > 0 && (
+        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)" }}>
+            <span style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)" }}>PER TICKER</span>
+          </div>
+          {Object.entries(perTicker).map(([ticker, data]) => (
+            <div key={ticker} className="flex items-center gap-3" style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)" }}>
+              <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, color: "var(--ink)", minWidth: 50 }}>{ticker}</span>
+              <span style={{ fontFamily: "var(--font-nunito)", fontSize: 12, color: "var(--dim)" }}>{data.trades} trades</span>
+              <span style={{ marginLeft: "auto", fontFamily: "var(--font-jb)", fontSize: 13, fontWeight: 600, color: data.return_contribution >= 0 ? "var(--bull)" : "var(--bear)" }}>
+                {pct(data.return_contribution)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
-          {/* Per-ticker */}
-          {Object.keys(perTicker).length > 0 && (
-            <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
-              <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)" }}>
-                <span style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)" }}>PER TICKER</span>
-              </div>
-              {Object.entries(perTicker).map(([ticker, data]) => (
-                <div key={ticker} className="flex items-center gap-3" style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)" }}>
-                  <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, color: "var(--ink)", minWidth: 50 }}>{ticker}</span>
-                  <span style={{ fontFamily: "var(--font-nunito)", fontSize: 12, color: "var(--dim)" }}>{data.trades} trades</span>
-                  <span style={{ marginLeft: "auto", fontFamily: "var(--font-jb)", fontSize: 13, fontWeight: 600, color: data.return_contribution >= 0 ? "var(--bull)" : "var(--bear)" }}>
-                    {pct(data.return_contribution)}
+      {/* Daily runs (completed) */}
+      {job.status === "completed" && dailyRuns.length > 0 && (
+        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)" }}>
+            <span style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)" }}>
+              ALL DECISIONS — {dailyRuns.length}
+            </span>
+          </div>
+          <div style={{ maxHeight: 400, overflowY: "auto" }}>
+            {dailyRuns.map((r, i) => (
+              <div key={i} style={{ padding: "8px 16px", borderBottom: "1px solid var(--line)", opacity: r.executed ? 1 : 0.55 }}>
+                <div className="flex items-center gap-2">
+                  <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", minWidth: 78 }}>{r.date}</span>
+                  <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 12, color: "var(--ink)", minWidth: 44 }}>{r.ticker}</span>
+                  <ActionBadge action={r.action} />
+                  <span style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--dim)" }}>{Math.round(r.confidence * 100)}%</span>
+                  <span style={{ marginLeft: "auto", fontFamily: "var(--font-nunito)", fontSize: 11, color: r.executed ? "var(--bull)" : "var(--ghost)" }}>
+                    {r.executed ? "✓ exec" : r.skipped_reason ?? "skip"}
                   </span>
                 </div>
-              ))}
-            </div>
-          )}
-
-          {/* Daily runs */}
-          {dailyRuns.length > 0 && (
-            <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
-              <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)" }}>
-                <span style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)" }}>
-                  ALL DECISIONS — {dailyRuns.length}
-                </span>
-              </div>
-              <div style={{ maxHeight: 400, overflowY: "auto" }}>
-                {dailyRuns.map((r, i) => (
-                  <div key={i} style={{ padding: "8px 16px", borderBottom: "1px solid var(--line)", opacity: r.executed ? 1 : 0.55 }}>
-                    <div className="flex items-center gap-2">
-                      <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", minWidth: 78 }}>{r.date}</span>
-                      <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 12, color: "var(--ink)", minWidth: 44 }}>{r.ticker}</span>
-                      <ActionBadge action={r.action} />
-                      <span style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--dim)" }}>{Math.round(r.confidence * 100)}%</span>
-                      <span style={{ marginLeft: "auto", fontFamily: "var(--font-nunito)", fontSize: 11, color: r.executed ? "var(--bull)" : "var(--ghost)" }}>
-                        {r.executed ? "✓ exec" : r.skipped_reason ?? "skip"}
-                      </span>
-                    </div>
-                    {r.reasoning && (
-                      <div style={{ fontSize: 10, fontFamily: "var(--font-nunito)", color: "var(--ghost)", paddingLeft: 80, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {r.reasoning}
-                      </div>
-                    )}
+                {r.reasoning && (
+                  <div style={{ fontSize: 10, fontFamily: "var(--font-nunito)", color: "var(--ghost)", paddingLeft: 80, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {r.reasoning}
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          )}
-        </>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Failed */}
@@ -809,40 +852,114 @@ function ResultsDetail({
           {job.error_message ?? "Backtest failed. Check backend logs."}
         </div>
       )}
+
+      {/* Cancelled */}
+      {job.status === "cancelled" && (
+        <div style={{
+          background: "var(--elevated)", border: "1px solid var(--line)",
+          borderRadius: 8, padding: "12px 16px",
+          fontFamily: "var(--font-nunito)", fontSize: 13, color: "var(--dim)",
+        }}>
+          Backtest was cancelled. {(job.results?.equity_curve?.length ?? 0)} days of data recorded.
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Equity Sparkline ──────────────────────────────────────────────────────────
+// ── Equity Curve ──────────────────────────────────────────────────────────────
 
-function EquityCurve({ points }: { points: { date: string; value: number }[] }) {
-  const W = 320, H = 72, PAD = 8;
+function EquityCurve({ points, initialCapital = 10000 }: {
+  points: { date: string; value: number; cash?: number }[];
+  initialCapital?: number;
+}) {
+  if (points.length < 2) return null;
+
+  const W = 320, H = 140, PAD_X = 48, PAD_TOP = 16, PAD_BOT = 24;
+  const innerW = W - PAD_X;
+  const innerH = H - PAD_TOP - PAD_BOT;
+
   const vals = points.map((p) => p.value);
-  const min = Math.min(...vals), max = Math.max(...vals);
-  const range = max - min || 1;
-  const xs = vals.map((_, i) => PAD + ((W - PAD * 2) * i) / (vals.length - 1));
-  const ys = vals.map((v) => PAD + ((H - PAD * 2) * (1 - (v - min) / range)));
-  const polyline = xs.map((x, i) => `${x},${ys[i]}`).join(" ");
-  const fill = `${xs[0]},${H} ` + polyline + ` ${xs[xs.length - 1]},${H}`;
-  const positive = vals[vals.length - 1] >= vals[0];
+  const allVals = [initialCapital, ...vals];
+  const minV = Math.min(...allVals) * 0.995;
+  const maxV = Math.max(...allVals) * 1.005;
+  const range = maxV - minV || 1;
+
+  const toX = (i: number) => PAD_X + (innerW * i) / (points.length - 1);
+  const toY = (v: number) => PAD_TOP + innerH * (1 - (v - minV) / range);
+
+  const linePoints = points.map((p, i) => `${toX(i)},${toY(p.value)}`).join(" ");
+  const fillPoints = `${toX(0)},${toY(minV)} ` + linePoints + ` ${toX(points.length - 1)},${toY(minV)}`;
+
+  const baselineY = toY(initialCapital);
+  const finalVal = vals[vals.length - 1];
+  const positive = finalVal >= initialCapital;
   const color = positive ? "var(--bull)" : "var(--bear)";
+  const colorHex = positive ? "#22c55e" : "#ef4444";
+
+  // Y-axis labels (3 ticks)
+  const yTicks = [minV, (minV + maxV) / 2, maxV].map((v) => ({
+    y: toY(v),
+    label: v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${Math.round(v)}`,
+  }));
+
+  // Dot at last point
+  const lastX = toX(points.length - 1);
+  const lastY = toY(finalVal);
 
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "12px 16px" }}>
-      <div style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)", marginBottom: 8 }}>EQUITY CURVE</div>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: H, display: "block" }}>
+      <div className="flex items-center justify-between mb-2">
+        <span style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)" }}>EQUITY CURVE</span>
+        <span style={{ fontFamily: "var(--font-jb)", fontSize: 12, fontWeight: 700, color }}>
+          ${finalVal.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: H, display: "block", overflow: "visible" }}>
         <defs>
-          <linearGradient id="eq-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={positive ? "#22c55e" : "#ef4444"} stopOpacity="0.25" />
-            <stop offset="100%" stopColor={positive ? "#22c55e" : "#ef4444"} stopOpacity="0" />
+          <linearGradient id="eq-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={colorHex} stopOpacity="0.2" />
+            <stop offset="100%" stopColor={colorHex} stopOpacity="0.02" />
           </linearGradient>
         </defs>
-        <polygon points={fill} fill="url(#eq-fill)" />
-        <polyline points={polyline} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+
+        {/* Y-axis ticks */}
+        {yTicks.map((t, i) => (
+          <g key={i}>
+            <line x1={PAD_X} y1={t.y} x2={W} y2={t.y} stroke="var(--line)" strokeWidth="0.5" strokeDasharray="3,3" />
+            <text x={PAD_X - 4} y={t.y + 3.5} textAnchor="end" fill="var(--ghost)" fontSize="8" fontFamily="var(--font-jb)">
+              {t.label}
+            </text>
+          </g>
+        ))}
+
+        {/* Baseline at initial capital */}
+        {baselineY > PAD_TOP && baselineY < H - PAD_BOT && (
+          <line x1={PAD_X} y1={baselineY} x2={W} y2={baselineY} stroke="var(--ghost)" strokeWidth="0.75" strokeDasharray="4,4" opacity="0.5" />
+        )}
+
+        {/* Fill area */}
+        <polygon points={fillPoints} fill="url(#eq-grad)" />
+
+        {/* Main line */}
+        <polyline
+          points={linePoints}
+          fill="none"
+          stroke={color}
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+
+        {/* Terminal dot */}
+        <circle cx={lastX} cy={lastY} r="3" fill={color} />
+        <circle cx={lastX} cy={lastY} r="5" fill={color} opacity="0.2" />
       </svg>
-      <div className="flex justify-between" style={{ marginTop: 4, fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)" }}>
+      <div className="flex justify-between" style={{ marginTop: 2, fontFamily: "var(--font-jb)", fontSize: 9, color: "var(--ghost)" }}>
         <span>{points[0].date}</span>
-        <span style={{ color }}>${vals[vals.length - 1].toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+        <span style={{ color: "var(--ghost)", fontSize: 9 }}>
+          {positive ? "+" : ""}{(((finalVal - initialCapital) / initialCapital) * 100).toFixed(2)}%
+        </span>
         <span>{points[points.length - 1].date}</span>
       </div>
     </div>

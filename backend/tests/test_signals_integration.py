@@ -47,7 +47,7 @@ def test_approve_returns_executed_and_writes_to_supabase(client):
         patch("services.portfolio_service.get_or_create_portfolio", return_value="port-uuid-001"),
         patch("services.trade_service.record_trade") as mock_record,
         patch("services.trade_service.sync_positions") as mock_sync,
-        patch("broker.factory.get_broker") as mock_broker_fn,
+        patch("broker.factory.get_broker_for_user") as mock_broker_fn,
     ):
         mock_col = MagicMock()
         mock_col.find_one.return_value = trace
@@ -97,7 +97,7 @@ def test_approve_supabase_failure_still_returns_success(client):
     with (
         patch("services.signals_service._get_collection") as mock_col_fn,
         patch("services.portfolio_service.get_or_create_portfolio", side_effect=RuntimeError("DB down")),
-        patch("broker.factory.get_broker") as mock_broker_fn,
+        patch("broker.factory.get_broker_for_user") as mock_broker_fn,
     ):
         mock_col = MagicMock()
         mock_col.find_one.return_value = trace
