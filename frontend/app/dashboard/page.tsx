@@ -1443,7 +1443,10 @@ export default function UserDashboard() {
 
       if (profile) {
         setRole(profile.role);
-        if (profile.tier) setTier(profile.tier as "free" | "pro" | "max");
+        const VALID_TIERS = ["free", "pro", "max"] as const;
+        if (VALID_TIERS.includes(profile.tier as typeof VALID_TIERS[number])) {
+          setTier(profile.tier as typeof VALID_TIERS[number]);
+        }
         if (profile.boundary_mode) setBoundaryMode(profile.boundary_mode);
       }
       // philosophy is stored in localStorage (not yet on the profile API)
