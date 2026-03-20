@@ -181,14 +181,18 @@ class TickerDecision(BaseModel):
     created_at: str
 
 
+_mongo_client = None  # module-level singleton — avoids creating a new client per request
+
+
 def _get_mongo_collection():
-    """Return the reasoning_traces MongoDB collection using the shared client pattern."""
-    import os
+    """Return the reasoning_traces MongoDB collection using a module-level singleton client."""
+    global _mongo_client
     from pymongo import MongoClient
-    uri = os.environ["MONGODB_URI"]
-    client = MongoClient(uri)
+    if _mongo_client is None:
+        uri = os.environ["MONGODB_URI"]
+        _mongo_client = MongoClient(uri)
     db_name = os.environ.get("MONGODB_DB_NAME", "atlas")
-    return client[db_name]["reasoning_traces"]
+    return _mongo_client[db_name]["reasoning_traces"]
 
 
 @router.get(

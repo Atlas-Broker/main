@@ -234,7 +234,7 @@ def test_ticker_log_returns_empty_for_unknown_ticker(client):
 
 
 def test_ticker_log_respects_limit_param(client):
-    """limit query param should be forwarded to MongoDB query."""
+    """limit query param should be forwarded to MongoDB cursor.limit()."""
     col_mock = _make_mongo_mock(_MONGO_TRACES[:1])
 
     with patch("api.routes.portfolio._get_mongo_collection", return_value=col_mock):
@@ -245,6 +245,8 @@ def test_ticker_log_respects_limit_param(client):
 
     assert resp.status_code == 200
     assert len(resp.json()) == 1
+    # Verify limit was forwarded to the MongoDB cursor
+    col_mock.find.return_value.limit.assert_called_once_with(1)
 
 
 def test_ticker_log_rejects_limit_above_max(client):
