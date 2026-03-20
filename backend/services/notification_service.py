@@ -6,6 +6,7 @@ Sends a transactional email via the Resend Python SDK.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 
@@ -69,7 +70,7 @@ async def send_guardrail_notification(
     """
     try:
         if not RESEND_API_KEY:
-            logger.debug(
+            logger.warning(
                 "RESEND_API_KEY not set — skipping guardrail notification for user %s",
                 user_id,
             )
@@ -103,7 +104,7 @@ async def send_guardrail_notification(
                 f'<p><a href="{DASHBOARD_URL}">View your dashboard &rarr;</a></p>'
             ),
         }
-        resend.Emails.send(params)
+        await asyncio.to_thread(resend.Emails.send, params)
         logger.info(
             "Guardrail notification sent to %s for %s %s (%.0f%% confidence)",
             email,
