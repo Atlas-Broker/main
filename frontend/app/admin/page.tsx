@@ -41,7 +41,7 @@ type SystemStatus = Record<string, ServiceStatus>;
 type ConfirmModal = {
   title: string;
   body: string;
-  onConfirm: () => void;
+  onConfirm: () => Promise<void> | void;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -111,8 +111,8 @@ function StatCard({ label, value, sub, sparkline }: { label: string; value: stri
 function TierBadge({ tier }: { tier: "free" | "pro" | "max" }) {
   const styles: Record<string, React.CSSProperties> = {
     free: { color: "var(--ghost)", borderColor: "var(--line)", background: "transparent" },
-    pro:  { color: "var(--tier-pro)", borderColor: "var(--tier-pro)", background: "rgba(123,97,255,0.08)" },
-    max:  { color: "var(--tier-max)", borderColor: "var(--tier-max)", background: "rgba(245,166,35,0.08)" },
+    pro:  { color: "var(--tier-pro)", borderColor: "var(--tier-pro)", background: "color-mix(in srgb, var(--tier-pro) 8%, transparent)" },
+    max:  { color: "var(--tier-max)", borderColor: "var(--tier-max)", background: "color-mix(in srgb, var(--tier-max) 8%, transparent)" },
   };
   return (
     <span style={{ fontSize: 10, fontFamily: "var(--font-jb)", padding: "2px 7px", borderRadius: 4, border: "1px solid", textTransform: "uppercase", letterSpacing: "0.05em", ...styles[tier] }}>
@@ -150,7 +150,7 @@ function Modal({ modal, onClose }: { modal: ConfirmModal; onClose: () => void })
             Cancel
           </button>
           <button
-            onClick={() => { modal.onConfirm(); onClose(); }}
+            onClick={async () => { await modal.onConfirm(); onClose(); }}
             style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: "var(--brand)", color: "#fff", fontSize: 13, fontFamily: "var(--font-nunito)", fontWeight: 600, cursor: "pointer" }}
           >
             Confirm
@@ -242,11 +242,12 @@ function OverviewPage({ stats, statsLoading, systemStatus, systemLoading }: {
 
 // ─── Page 2: Users ────────────────────────────────────────────────────────────
 
-function UsersPage({ users, usersLoading, isSuperadmin, onAction }: {
+function UsersPage({ users, usersLoading, isSuperadmin, onAction, onRefresh }: {
   users: AdminUser[];
   usersLoading: boolean;
   isSuperadmin: boolean;
   onAction: (modal: ConfirmModal) => void;
+  onRefresh: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [tierFilter, setTierFilter] = useState<"all" | "free" | "pro" | "max">("all");
@@ -269,7 +270,7 @@ function UsersPage({ users, usersLoading, isSuperadmin, onAction }: {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ tier }),
         });
-        if (!res?.ok) console.error("Tier change failed");
+        if (res?.ok) { onRefresh(); } else { window.alert("Failed to update tier. Please try again."); }
       },
     });
   }
@@ -285,7 +286,7 @@ function UsersPage({ users, usersLoading, isSuperadmin, onAction }: {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ role }),
         });
-        if (!res?.ok) console.error("Role change failed");
+        if (res?.ok) { onRefresh(); } else { window.alert("Failed to update role. Please try again."); }
       },
     });
   }
@@ -351,7 +352,7 @@ function UsersPage({ users, usersLoading, isSuperadmin, onAction }: {
                     <td style={{ padding: "12px 16px" }}><RoleBadge role={u.role} /></td>
                     <td style={{ padding: "12px 16px", color: "var(--ghost)", whiteSpace: "nowrap" }}>{fmtDate(u.created_at)}</td>
                     <td style={{ padding: "12px 16px" }}>
-                      <span style={{ fontSize: 10, fontFamily: "var(--font-jb)", color: u.broker_connected ? "var(--bull)" : "var(--ghost)", padding: "2px 7px", borderRadius: 4, border: `1px solid ${u.broker_connected ? "var(--bull)40" : "var(--line)"}`, background: u.broker_connected ? "rgba(0,200,150,0.08)" : "transparent" }}>
+                      <span style={{ fontSize: 10, fontFamily: "var(--font-jb)", color: u.broker_connected ? "var(--bull)" : "var(--ghost)", padding: "2px 7px", borderRadius: 4, border: `1px solid ${u.broker_connected ? "var(--bull)40" : "var(--line)"}`, background: u.broker_connected ? "var(--bull-bg)" : "transparent" }}>
                         {u.broker_connected ? "Connected" : "Not connected"}
                       </span>
                     </td>
@@ -462,10 +463,11 @@ function SystemPage({ systemStatus, systemLoading, isSuperadmin }: {
 
 // ─── Page 4: Roles (superadmin only) ─────────────────────────────────────────
 
-function RolesPage({ users, usersLoading, onAction }: {
+function RolesPage({ users, usersLoading, onAction, onRefresh }: {
   users: AdminUser[];
   usersLoading: boolean;
   onAction: (modal: ConfirmModal) => void;
+  onRefresh: () => void;
 }) {
   const elevated = users.filter((u) => u.role === "admin" || u.role === "superadmin");
 
@@ -482,7 +484,7 @@ function RolesPage({ users, usersLoading, onAction }: {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ role }),
         });
-        if (!res?.ok) console.error("Role change failed");
+        if (res?.ok) { onRefresh(); } else { window.alert("Failed to update role. Please try again."); }
       },
     });
   }
@@ -702,13 +704,13 @@ export default function AdminDashboard() {
             <OverviewPage stats={stats} statsLoading={statsLoading} systemStatus={systemStatus} systemLoading={systemLoading} />
           )}
           {page === "users" && (
-            <UsersPage users={users} usersLoading={usersLoading} isSuperadmin={isSuperadmin} onAction={setModal} />
+            <UsersPage users={users} usersLoading={usersLoading} isSuperadmin={isSuperadmin} onAction={setModal} onRefresh={loadUsers} />
           )}
           {page === "system" && (
             <SystemPage systemStatus={systemStatus} systemLoading={systemLoading} isSuperadmin={isSuperadmin} />
           )}
           {page === "roles" && isSuperadmin && (
-            <RolesPage users={users} usersLoading={usersLoading} onAction={setModal} />
+            <RolesPage users={users} usersLoading={usersLoading} onAction={setModal} onRefresh={loadUsers} />
           )}
         </main>
       </div>
