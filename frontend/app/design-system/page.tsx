@@ -129,15 +129,21 @@ function SubLabel({ text }: { text: string }) {
 // ─── Nav items ────────────────────────────────────────────────────────────────
 
 const NAV = [
-  { id:"colors",      label:"Colors"      },
-  { id:"typography",  label:"Typography"  },
-  { id:"spacing",     label:"Spacing"     },
-  { id:"buttons",     label:"Buttons"     },
-  { id:"badges",      label:"Badges"      },
-  { id:"cards",       label:"Cards"       },
-  { id:"signals",     label:"Signals"     },
-  { id:"motion",      label:"Motion"      },
-  { id:"responsive",  label:"Responsive"  },
+  { id:"colors",        label:"Colors"        },
+  { id:"typography",    label:"Typography"    },
+  { id:"spacing",       label:"Spacing"       },
+  { id:"buttons",       label:"Buttons"       },
+  { id:"badges",        label:"Badges"        },
+  { id:"tier-badges",   label:"Tier Badges"   },
+  { id:"ai-mode-strip", label:"AI Mode Strip" },
+  { id:"signal-detail", label:"Signal Detail" },
+  { id:"agent-timeline",label:"Agent Timeline"},
+  { id:"decision-log",  label:"Decision Log"  },
+  { id:"system-status", label:"System Status" },
+  { id:"cards",         label:"Cards"         },
+  { id:"signals",       label:"Signals"       },
+  { id:"motion",        label:"Motion"        },
+  { id:"responsive",    label:"Responsive"    },
 ];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -597,7 +603,143 @@ export default function DesignSystemPage() {
               </div>
             </section>
 
-            {/* ─── 6. Cards ──────────────────────────────────────────── */}
+            {/* ─── 6. Tier Badges ────────────────────────────────────── */}
+            <section className="ds-section">
+              <Heading id="tier-badges" text="Tier Badges" />
+              <div className="flex gap-3 flex-wrap">
+                {[
+                  { label: "Free",  bg: "var(--elevated)", color: "var(--dim)",      border: "var(--line)" },
+                  { label: "Pro",   bg: "rgba(123,97,255,0.12)", color: "var(--tier-pro)", border: "rgba(123,97,255,0.3)" },
+                  { label: "Max",   bg: "rgba(245,166,35,0.12)", color: "var(--tier-max)", border: "rgba(245,166,35,0.3)" },
+                ].map((t) => (
+                  <span key={t.label} style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "4px 12px", borderRadius: 20, fontSize: 12,
+                    fontFamily: "var(--font-mono)", fontWeight: 700,
+                    background: t.bg, color: t.color, border: `1px solid ${t.border}`,
+                    letterSpacing: "0.06em",
+                  }}>
+                    {t.label}
+                  </span>
+                ))}
+              </div>
+            </section>
+
+            {/* ─── 7. AI Mode Strip ──────────────────────────────────── */}
+            <section className="ds-section">
+              <Heading id="ai-mode-strip" text="AI Mode Strip" />
+              <div style={{
+                background: "var(--elevated)", border: "1px solid var(--line)",
+                borderRadius: 8, padding: "10px 16px",
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                maxWidth: 480,
+              }}>
+                <div className="flex items-center gap-2">
+                  <span className="live-dot" />
+                  <span style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-mono)" }}>AUTONOMOUS · GUARDRAIL</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span style={{ color: "var(--dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}>Buffett</span>
+                  <span style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-mono)" }}>4 stocks active</span>
+                </div>
+              </div>
+            </section>
+
+            {/* ─── 8. Signal Detail Card ─────────────────────────────── */}
+            <section className="ds-section">
+              <Heading id="signal-detail" text="Signal Detail Card" />
+              <div style={{ maxWidth: 360 }}>
+                {(["BUY", "SELL", "HOLD"] as const).map((action) => {
+                  const c = action === "BUY" ? "var(--bull)" : action === "SELL" ? "var(--bear)" : "var(--hold)";
+                  return (
+                    <div key={action} style={{
+                      background: "var(--surface)", border: `1px solid ${c}40`,
+                      borderRadius: 12, padding: "16px 18px", marginBottom: 12,
+                    }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-display font-bold" style={{ fontSize: 20, color: "var(--ink)" }}>NVDA</span>
+                        <span className="font-display font-bold" style={{ fontSize: 20, color: c }}>{action}</span>
+                      </div>
+                      <div className="conf-bar-track" style={{ marginBottom: 8 }}>
+                        <div className="conf-bar-fill" style={{ width: "88%", background: c }} />
+                      </div>
+                      <span style={{ color: c, fontSize: 12, fontFamily: "var(--font-mono)" }}>88%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* ─── 9. Agent Timeline ─────────────────────────────────── */}
+            <section className="ds-section">
+              <Heading id="agent-timeline" text="Agent Timeline" />
+              <div className="agent-timeline" style={{ maxWidth: 360, padding: "4px 0" }}>
+                {[
+                  { label: "Fundamental Agent", text: "P/E 28x vs 5yr avg 42x — undervalued. FCF yield 3.2%.", dot: "var(--bull)" },
+                  { label: "Sentiment Agent",   text: "News sentiment 0.78/1.0. Institutional buying in 13F.", dot: "var(--bull)" },
+                  { label: "Technical Agent",   text: "RSI 58, above 20d SMA. Breakout confirmed.", dot: "var(--bull)" },
+                  { label: "Risk Agent",        text: "Stop −8%, target +22%. R:R 2.75. Size: $1,000.", dot: "var(--hold)" },
+                ].map((node, i) => (
+                  <div key={i} className="agent-timeline-node" style={{ marginBottom: 12 }}>
+                    <div style={{ flexShrink: 0, marginTop: 4 }}>
+                      <div style={{ width: 14, height: 14, borderRadius: "50%", background: node.dot, border: "2px solid var(--surface)" }} />
+                    </div>
+                    <div>
+                      <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-mono)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>
+                        {node.label}
+                      </div>
+                      <div style={{ color: "var(--dim)", fontSize: 13, fontFamily: "var(--font-body)", lineHeight: 1.5 }}>
+                        {node.text}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* ─── 10. Decision Log Row ──────────────────────────────── */}
+            <section className="ds-section">
+              <Heading id="decision-log" text="Decision Log Row" />
+              <div style={{ maxWidth: 480, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "0 16px" }}>
+                {[
+                  { action: "BUY",  conf: 94, time: "10:32", reason: "Breakout confirmed, earnings catalyst" },
+                  { action: "HOLD", conf: 81, time: "14:30", reason: "Momentum intact, maintaining position" },
+                  { action: "SELL", conf: 87, time: "15:45", reason: "Price target reached" },
+                ].map((row, i) => {
+                  const c = row.action === "BUY" ? "var(--bull)" : row.action === "SELL" ? "var(--bear)" : "var(--hold)";
+                  return (
+                    <div key={i} className="decision-log-row">
+                      <span style={{
+                        flexShrink: 0, padding: "2px 8px", borderRadius: 4, fontSize: 11,
+                        fontFamily: "var(--font-mono)", fontWeight: 700, color: c,
+                        background: `${c}20`, border: `1px solid ${c}40`,
+                      }}>{row.action}</span>
+                      <div className="flex-1">
+                        <div style={{ color: "var(--dim)", fontSize: 13 }}>{row.reason}</div>
+                        <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-mono)", marginTop: 2 }}>
+                          {row.time} · {row.conf}%
+                        </div>
+                      </div>
+                      <div className="conf-bar-track" style={{ width: 60, flexShrink: 0, alignSelf: "center" }}>
+                        <div className="conf-bar-fill" style={{ width: `${row.conf}%`, background: c }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* ─── 11. System Status Pill ────────────────────────────── */}
+            <section className="ds-section">
+              <Heading id="system-status" text="System Status Pill" />
+              <div className="flex gap-3 flex-wrap">
+                <span className="system-status-pill online"><span className="live-dot" style={{ width: 6, height: 6 }} />Online</span>
+                <span className="system-status-pill degraded"><span className="live-dot" style={{ width: 6, height: 6, background: "var(--hold)" }} />Degraded</span>
+                <span className="system-status-pill offline"><span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--bear)", display: "inline-block", flexShrink: 0 }} />Offline</span>
+              </div>
+            </section>
+
+            {/* ─── 12. Cards ─────────────────────────────────────────── */}
             <section className="ds-section">
               <Heading id="cards" text="Cards" />
               <p style={{ fontFamily:"var(--font-body)", fontSize:15, color:"var(--dim)", marginBottom:24 }}>
