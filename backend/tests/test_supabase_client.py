@@ -40,3 +40,47 @@ def test_get_supabase_missing_url_raises(monkeypatch):
     import pytest
     with pytest.raises(KeyError):
         mod.get_supabase()
+
+
+def _make_tier_mock(tier_value):
+    mock = MagicMock()
+    result = MagicMock()
+    result.data = {"tier": tier_value} if tier_value is not None else None
+    mock.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = result
+    return mock
+
+
+def test_get_user_tier_returns_pro():
+    import db.supabase as supabase_mod
+    mock_sb = _make_tier_mock("pro")
+    with patch.object(supabase_mod, "get_supabase", return_value=mock_sb):
+        result = supabase_mod.get_user_tier("u1")
+    assert result == "pro"
+
+
+def test_get_user_tier_returns_free_when_no_row():
+    import db.supabase as supabase_mod
+    mock_sb = _make_tier_mock(None)
+    with patch.object(supabase_mod, "get_supabase", return_value=mock_sb):
+        result = supabase_mod.get_user_tier("u_missing")
+    assert result == "free"
+
+
+def test_get_user_tier_returns_free_on_exception():
+    import db.supabase as supabase_mod
+    mock_sb = MagicMock()
+    mock_sb.table.return_value.select.side_effect = RuntimeError("DB down")
+    with patch.object(supabase_mod, "get_supabase", return_value=mock_sb):
+        result = supabase_mod.get_user_tier("u_error")
+    assert result == "free"
+
+
+def test_get_user_tier_defaults_free_when_tier_missing_from_row():
+    import db.supabase as supabase_mod
+    mock = MagicMock()
+    result = MagicMock()
+    result.data = {}  # row exists but no tier key
+    mock.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = result
+    with patch.object(supabase_mod, "get_supabase", return_value=mock):
+        tier = supabase_mod.get_user_tier("u_no_tier")
+    assert tier == "free"

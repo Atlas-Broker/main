@@ -28,6 +28,40 @@ def test_get_profile_returns_existing():
     assert result["display_name"] == "Alice"
 
 
+def test_get_profile_includes_tier_from_db():
+    mock_sb = _make_sb_mock(
+        profile_data={"id": "u1", "boundary_mode": "advisory", "display_name": "Alice", "tier": "pro"}
+    )
+    import importlib
+    from services import profile_service
+    importlib.reload(profile_service)
+    with patch("services.profile_service.get_supabase", return_value=mock_sb):
+        result = profile_service.get_profile("u1")
+    assert result["tier"] == "pro"
+
+
+def test_get_profile_defaults_tier_when_missing_from_db():
+    mock_sb = _make_sb_mock(
+        profile_data={"id": "u1", "boundary_mode": "advisory", "display_name": "Alice"}
+    )
+    import importlib
+    from services import profile_service
+    importlib.reload(profile_service)
+    with patch("services.profile_service.get_supabase", return_value=mock_sb):
+        result = profile_service.get_profile("u1")
+    assert result["tier"] == "free"
+
+
+def test_get_profile_default_row_includes_tier():
+    mock_sb = _make_sb_mock(profile_data=None)
+    import importlib
+    from services import profile_service
+    importlib.reload(profile_service)
+    with patch("services.profile_service.get_supabase", return_value=mock_sb):
+        result = profile_service.get_profile("u_new")
+    assert result["tier"] == "free"
+
+
 def test_get_profile_creates_default_when_missing(caplog):
     mock_sb = _make_sb_mock(profile_data=None)
     import importlib

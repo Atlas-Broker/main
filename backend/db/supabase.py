@@ -19,6 +19,24 @@ def get_supabase() -> Client:
     return _client
 
 
+def get_user_tier(user_id: str) -> str:
+    """Return the user's tier ('free', 'pro', 'max'). Defaults to 'free' on error."""
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("profiles")
+            .select("tier")
+            .eq("id", user_id)
+            .maybe_single()
+            .execute()
+        )
+        if result and result.data:
+            return result.data.get("tier", "free") or "free"
+    except Exception:
+        pass
+    return "free"
+
+
 def get_user_role(user_id: str) -> str:
     """
     Return the RBAC role for the given user_id.
