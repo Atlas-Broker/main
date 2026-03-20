@@ -104,7 +104,7 @@ const ACTION_STYLE = {
   HOLD: { color: "var(--hold)", bg: "var(--hold-bg)", glow: "signal-glow-hold" },
 } as const;
 
-type Tab = "overview" | "signals" | "positions" | "settings" | "backtest";
+type Tab = "portfolio" | "signals" | "backtest" | "settings";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -535,93 +535,122 @@ export function SignalCard({
   );
 }
 
-// ─── Tab: Overview ────────────────────────────────────────────────────────────
+// ─── Tab: Portfolio ───────────────────────────────────────────────────────────
 
-function OverviewTab({
+function AIModeStrip({ philosophy, positionCount }: { philosophy: string; positionCount: number }) {
+  return (
+    <div style={{
+      background: "var(--elevated)", border: "1px solid var(--line)",
+      borderRadius: 8, padding: "9px 14px",
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      marginBottom: 12,
+    }}>
+      <div className="flex items-center gap-2">
+        <span className="live-dot" />
+        <span style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-mono)", letterSpacing: "0.06em" }}>
+          AI · AUTONOMOUS
+        </span>
+      </div>
+      <div className="flex items-center gap-3">
+        <span style={{ color: "var(--dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
+          {philosophy.charAt(0).toUpperCase() + philosophy.slice(1)}
+        </span>
+        <span style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
+          {positionCount} active
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PortfolioTab({
   portfolio,
-  signals,
-  onReject,
+  tier,
+  philosophy,
+  onPositionClick,
 }: {
   portfolio: Portfolio | null;
-  signals: Signal[];
-  onReject?: (id: string) => void;
+  tier: "free" | "pro" | "max";
+  philosophy: string;
+  onPositionClick: (ticker: string) => void;
 }) {
-  const primary = signals[0] ?? null;
+  const router = useRouter();
   const pnlPos = portfolio ? portfolio.pnl_today >= 0 : true;
 
   return (
-    <div className="flex flex-col gap-4 pb-6">
-      {/* Portfolio card */}
-      <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12, padding: "20px 20px 16px", boxShadow: "var(--card-shadow)" }}>
-        <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 6 }}>PORTFOLIO VALUE</div>
-        <div className="num font-display font-bold" style={{ fontSize: 38, color: "var(--ink)", letterSpacing: "-0.03em", lineHeight: 1 }}>
-          {portfolio ? fmt(portfolio.total_value) : "—"}
-        </div>
-        {portfolio && (
-          <div className="flex items-center gap-3 mt-2">
-            <span className="num" style={{ fontSize: 14, color: pnlPos ? "var(--bull)" : "var(--bear)", fontWeight: 600 }}>
-              {pnlPos ? "+" : ""}{fmt(portfolio.pnl_today)} unrealised
-            </span>
+    <div className="flex flex-col gap-3 pb-6">
+      {/* Split header cards */}
+      <div className="grid grid-cols-2 gap-3">
+        {/* Total Value */}
+        <button
+          onClick={() => router.push("/dashboard/equity-curve?range=all")}
+          style={{
+            background: "var(--surface)", border: "1px solid var(--line)",
+            borderRadius: 12, padding: "16px 14px", textAlign: "left",
+            cursor: "pointer", boxShadow: "var(--card-shadow)",
+          }}
+        >
+          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginBottom: 6, letterSpacing: "0.06em" }}>TOTAL VALUE</div>
+          <div className="num font-display font-bold" style={{ fontSize: 22, color: "var(--ink)", letterSpacing: "-0.02em" }}>
+            {portfolio ? `$${(portfolio.total_value / 1000).toFixed(1)}k` : "—"}
           </div>
-        )}
-        <div className="grid grid-cols-2 gap-3 mt-4 pt-4" style={{ borderTop: "1px solid var(--line)" }}>
-          <div>
-            <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 3 }}>CASH</div>
-            <div className="num" style={{ color: "var(--dim)", fontSize: 16, fontWeight: 600 }}>{portfolio ? fmt(portfolio.cash) : "—"}</div>
+          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginTop: 4 }}>tap for curve →</div>
+        </button>
+
+        {/* Today's Return */}
+        <button
+          onClick={() => router.push("/dashboard/equity-curve?range=1d")}
+          style={{
+            background: "var(--surface)", border: `1px solid ${pnlPos ? "var(--bull)" : "var(--bear)"}30`,
+            borderRadius: 12, padding: "16px 14px", textAlign: "left",
+            cursor: "pointer", boxShadow: pnlPos ? "0 0 14px rgba(0,200,150,0.08)" : "0 0 14px rgba(255,45,85,0.08)",
+          }}
+        >
+          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginBottom: 6, letterSpacing: "0.06em" }}>TODAY</div>
+          <div className="num font-display font-bold" style={{ fontSize: 22, color: pnlPos ? "var(--bull)" : "var(--bear)", letterSpacing: "-0.02em" }}>
+            {portfolio ? `${pnlPos ? "+" : ""}${fmt(portfolio.pnl_today)}` : "—"}
           </div>
-          <div>
-            <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 3 }}>TOTAL P&amp;L</div>
-            <div className="num" style={{ color: portfolio && portfolio.pnl_total >= 0 ? "var(--bull)" : "var(--bear)", fontSize: 16, fontWeight: 600 }}>
-              {portfolio ? `${portfolio.pnl_total >= 0 ? "+" : ""}${fmt(portfolio.pnl_total)}` : "—"}
-            </div>
-          </div>
-        </div>
+          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginTop: 4 }}>tap for chart →</div>
+        </button>
       </div>
 
-      {/* Latest signal */}
-      {primary && (
-        <div>
-          <div className="flex items-center gap-2 mb-3" style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)" }}>
-            <span className="live-dot-red" /> LATEST SIGNAL
-          </div>
-          <SignalCard signal={primary} isPrimary onReject={onReject} />
-        </div>
+      {/* AI Mode Strip — Pro/Max only */}
+      {(tier === "pro" || tier === "max") && portfolio && (
+        <AIModeStrip philosophy={philosophy} positionCount={portfolio.positions.length} />
       )}
 
-      {/* Quick positions */}
-      {portfolio && portfolio.positions.length > 0 && (
-        <div>
-          <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 12 }}>POSITIONS</div>
-          <div className="flex flex-col gap-2">
-            {portfolio.positions.map((pos) => (
-              <div key={pos.ticker} className="flex items-center justify-between" style={{
-                background: "var(--surface)",
-                border: "1px solid var(--line)",
-                borderRadius: 8,
-                padding: "12px 14px",
+      {/* Positions list */}
+      <div>
+        <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-mono)", marginBottom: 10, letterSpacing: "0.06em" }}>POSITIONS</div>
+        {!portfolio || portfolio.positions.length === 0 ? (
+          <div style={{ color: "var(--ghost)", fontSize: 13, textAlign: "center", padding: "24px 0" }}>No open positions yet.</div>
+        ) : (
+          portfolio.positions.map((pos) => (
+            <button
+              key={pos.ticker}
+              onClick={() => onPositionClick(pos.ticker)}
+              style={{
+                width: "100%", background: "var(--surface)", border: "1px solid var(--line)",
+                borderRadius: 10, padding: "14px 16px", display: "flex",
+                alignItems: "center", justifyContent: "space-between",
+                cursor: "pointer", marginBottom: 8, textAlign: "left",
                 boxShadow: "var(--card-shadow)",
-              }}>
-                <div>
-                  <span className="font-display font-bold" style={{ color: "var(--ink)", fontSize: 16 }}>{pos.ticker}</span>
-                  <span className="num" style={{ color: "var(--ghost)", fontSize: 12, marginLeft: 8 }}>{pos.shares} shares</span>
-                </div>
-                <div className="text-right">
-                  <div className="num" style={{ color: "var(--ink)", fontSize: 14, fontWeight: 600 }}>{fmt(pos.current_price)}</div>
-                  <div className="num" style={{ color: pos.pnl >= 0 ? "var(--bull)" : "var(--bear)", fontSize: 12 }}>
-                    {pos.pnl >= 0 ? "+" : ""}{fmt(pos.pnl)}
-                  </div>
-                </div>
+              }}
+            >
+              <div>
+                <span className="font-display font-bold" style={{ fontSize: 16, color: "var(--ink)" }}>{pos.ticker}</span>
+                <span className="num" style={{ color: "var(--ghost)", fontSize: 12, marginLeft: 8 }}>{pos.shares} shares</span>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {portfolio && portfolio.positions.length === 0 && (
-        <div style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)", textAlign: "center", padding: "24px 0" }}>
-          No open positions yet.
-        </div>
-      )}
+              <div className="text-right">
+                <div className="num" style={{ color: pos.pnl >= 0 ? "var(--bull)" : "var(--bear)", fontSize: 14, fontWeight: 700 }}>
+                  {pos.pnl >= 0 ? "+" : ""}{fmt(pos.pnl)}
+                </div>
+                <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-mono)", marginTop: 2 }}>AI log →</div>
+              </div>
+            </button>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -758,72 +787,6 @@ export function OverrideButton({ tradeId, executedAt, onSuccess }: OverrideButto
           ? "Override window closed"
           : `Override (${formatCountdown(secondsLeft)} remaining)`}
     </button>
-  );
-}
-
-// ─── Tab: Positions ───────────────────────────────────────────────────────────
-
-function PositionsTab({
-  portfolio,
-  refreshPortfolio,
-}: {
-  portfolio: Portfolio | null;
-  refreshPortfolio: () => void;
-}) {
-  if (!portfolio) return <div style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)", padding: "32px 0", textAlign: "center" }}>Loading positions…</div>;
-  if (!portfolio.positions.length) return (
-    <div style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)", padding: "32px 0", textAlign: "center" }}>
-      No open positions.<br /><span style={{ fontSize: 12 }}>Run the pipeline in Autonomous mode to place a paper trade.</span>
-    </div>
-  );
-
-  return (
-    <div className="flex flex-col gap-3 pb-6">
-      <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 4 }}>OPEN POSITIONS</div>
-      {portfolio.positions.map((pos) => {
-        const pnl_pct = ((pos.current_price - pos.avg_cost) / pos.avg_cost) * 100;
-        const positive = pos.pnl >= 0;
-        return (
-          <div key={pos.ticker} style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "16px 18px", boxShadow: "var(--card-shadow)" }}>
-            <div className="flex items-center justify-between mb-3">
-              <span className="font-display font-bold" style={{ fontSize: 20, color: "var(--ink)" }}>{pos.ticker}</span>
-              <span className="num" style={{ color: positive ? "var(--bull)" : "var(--bear)", fontSize: 16, fontWeight: 700 }}>
-                {positive ? "+" : ""}{fmt(pos.pnl)}
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-3 text-center">
-              {[
-                { label: "SHARES",   value: String(pos.shares) },
-                { label: "AVG COST", value: fmt(pos.avg_cost) },
-                { label: "CURRENT",  value: fmt(pos.current_price) },
-              ].map((r) => (
-                <div key={r.label}>
-                  <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", marginBottom: 3 }}>{r.label}</div>
-                  <div className="num" style={{ color: "var(--dim)", fontSize: 14 }}>{r.value}</div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--line)" }}>
-              <div className="flex items-center justify-between mb-1">
-                <span style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)" }}>RETURN</span>
-                <span className="num" style={{ color: positive ? "var(--bull)" : "var(--bear)", fontSize: 12, fontWeight: 600 }}>
-                  {positive ? "+" : ""}{pnl_pct.toFixed(1)}%
-                </span>
-              </div>
-              <ConfBar value={Math.min(Math.abs(pnl_pct) / 20, 1)} color={positive ? "var(--bull)" : "var(--bear)"} />
-            </div>
-            {pos.trade_id && pos.executed_at &&
-              (pos.boundary_mode === "autonomous" || pos.boundary_mode === "autonomous_guardrail") && (
-              <OverrideButton
-                tradeId={pos.trade_id}
-                executedAt={pos.executed_at}
-                onSuccess={refreshPortfolio}
-              />
-            )}
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -1296,21 +1259,26 @@ export function SettingsTab() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: "overview",  label: "Overview",  icon: "◈" },
+  { id: "portfolio", label: "Portfolio", icon: "◈" },
   { id: "signals",   label: "Signals",   icon: "◎" },
-  { id: "positions", label: "Positions", icon: "▤" },
-  { id: "settings",  label: "Settings",  icon: "⊙" },
   { id: "backtest",  label: "Backtest",  icon: "⏮" },
+  { id: "settings",  label: "Settings",  icon: "⊙" },
 ];
 
 export default function UserDashboard() {
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>("portfolio");
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<UserRole | null>(null);
+  const [tier, setTier] = useState<"free" | "pro" | "max">("free");
+  const [philosophy, setPhilosophy] = useState<string>("balanced");
   const router = useRouter();
   const { isLoaded, isSignedIn } = useAuth();
+
+  function handlePositionClick(ticker: string) {
+    router.push(`/dashboard/stock/${ticker}`);
+  }
 
   function fetchPortfolio() {
     fetchWithAuth(`${API_URL}/v1/portfolio`)
@@ -1341,7 +1309,15 @@ export default function UserDashboard() {
         fetchMyProfile(),
       ]);
 
-      if (profile) setRole(profile.role);
+      if (profile) {
+        setRole(profile.role);
+        if (profile.tier) setTier(profile.tier as "free" | "pro" | "max");
+      }
+      // philosophy is stored in localStorage (not yet on the profile API)
+      const storedPhilosophy = typeof window !== "undefined"
+        ? localStorage.getItem("atlas_philosophy") ?? localStorage.getItem("atlas_philosophy_mode")
+        : null;
+      if (storedPhilosophy) setPhilosophy(storedPhilosophy);
 
       // null means network error or backend down — don't redirect, just show empty state
       try {
@@ -1422,9 +1398,15 @@ export default function UserDashboard() {
           </div>
         ) : (
           <>
-            {tab === "overview"  && <OverviewTab portfolio={portfolio} signals={signals} onReject={handleRejectSignal} />}
+            {tab === "portfolio" && (
+              <PortfolioTab
+                portfolio={portfolio}
+                tier={tier}
+                philosophy={philosophy}
+                onPositionClick={handlePositionClick}
+              />
+            )}
             {tab === "signals"   && <SignalsTab signals={signals} loading={loading} onReject={handleRejectSignal} />}
-            {tab === "positions" && <PositionsTab portfolio={portfolio} refreshPortfolio={fetchPortfolio} />}
             {tab === "settings"  && <SettingsTab />}
             {tab === "backtest"  && <BacktestTab role={role ?? undefined} />}
           </>
@@ -1432,7 +1414,7 @@ export default function UserDashboard() {
       </main>
 
       {/* ── Bottom nav ── */}
-      <nav className="sticky bottom-0 z-20 grid grid-cols-5" style={{
+      <nav className="sticky bottom-0 z-20 grid grid-cols-4" style={{
         background: "var(--nav-bg)",
         backdropFilter: "blur(12px)",
         borderTop: "1px solid var(--line)",
