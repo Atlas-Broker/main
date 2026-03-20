@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fetchWithAuth, fetchMyProfile, type UserRole } from "@/lib/api";
+import { AccountDropdown } from "@/components/AccountDropdown";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -60,15 +61,16 @@ function relTime(iso: string) {
 }
 
 const C = {
-  BUY:  "#00C896",
-  SELL: "#FF2D55",
-  HOLD: "#F5A623",
+  BUY:  "var(--bull)",
+  SELL: "var(--bear)",
+  HOLD: "var(--hold)",
 } as const;
 
 const MODE_COLOR: Record<string, string> = {
-  advisory:    "#7A8FA0",
-  conditional: "#F5A623",
-  autonomous:  "#00C896",
+  advisory:             "var(--dim)",
+  conditional:          "var(--hold)",    // legacy
+  autonomous:           "var(--bull)",
+  autonomous_guardrail: "var(--brand)",
 };
 
 // ─── Shared atoms ─────────────────────────────────────────────────────────────
@@ -92,7 +94,7 @@ function Tag({ color, children }: { color: string; children: React.ReactNode }) 
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ color: "#3D5060", fontSize: 10, fontFamily: "var(--font-jb)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>
+    <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>
       {children}
     </div>
   );
@@ -100,7 +102,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ background: "#111820", border: "1px solid #1C2B3A", borderRadius: 10, overflow: "hidden", ...style }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", ...style }}>
       {children}
     </div>
   );
@@ -109,16 +111,16 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
 // ─── Signals table ────────────────────────────────────────────────────────────
 
 function SignalsTable({ signals, loading }: { signals: Signal[]; loading: boolean }) {
-  if (loading) return <div style={{ padding: 32, color: "#3D5060", fontSize: 13, fontFamily: "var(--font-jb)", textAlign: "center" }}>Loading…</div>;
-  if (!signals.length) return <div style={{ padding: 32, color: "#3D5060", fontSize: 13, fontFamily: "var(--font-jb)", textAlign: "center" }}>No signals yet.</div>;
+  if (loading) return <div style={{ padding: 32, color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-jb)", textAlign: "center" }}>Loading…</div>;
+  if (!signals.length) return <div style={{ padding: 32, color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-jb)", textAlign: "center" }}>No signals yet.</div>;
 
   return (
     <Card>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, fontFamily: "var(--font-jb)" }}>
         <thead>
-          <tr style={{ borderBottom: "1px solid #1C2B3A", background: "#0C1016" }}>
+          <tr style={{ borderBottom: "1px solid var(--line)", background: "var(--deep)" }}>
             {["Ticker", "Action", "Confidence", "Mode", "Stop", "Target", "Time"].map((h) => (
-              <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "#3D5060", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+              <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "var(--ghost)", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
                 {h}
               </th>
             ))}
@@ -126,20 +128,20 @@ function SignalsTable({ signals, loading }: { signals: Signal[]; loading: boolea
         </thead>
         <tbody>
           {signals.map((s) => (
-            <tr key={s.id} style={{ borderBottom: "1px solid #1C2B3A" }}>
+            <tr key={s.id} style={{ borderBottom: "1px solid var(--line)" }}>
               <td style={{ padding: "12px 16px" }}>
-                <span className="font-display font-bold" style={{ color: "#E8EDF3", fontSize: 14 }}>{s.ticker}</span>
+                <span className="font-display font-bold" style={{ color: "var(--ink)", fontSize: 14 }}>{s.ticker}</span>
               </td>
               <td style={{ padding: "12px 16px" }}>
-                <Tag color={C[s.action] ?? "#7A8FA0"}>{s.action}</Tag>
+                <Tag color={C[s.action] ?? "var(--dim)"}>{s.action}</Tag>
               </td>
-              <td style={{ padding: "12px 16px", color: "#E8EDF3" }}>{Math.round(s.confidence * 100)}%</td>
+              <td style={{ padding: "12px 16px", color: "var(--ink)" }}>{Math.round(s.confidence * 100)}%</td>
               <td style={{ padding: "12px 16px" }}>
-                <Tag color={MODE_COLOR[s.boundary_mode] ?? "#7A8FA0"}>{s.boundary_mode}</Tag>
+                <Tag color={MODE_COLOR[s.boundary_mode] ?? "var(--dim)"}>{s.boundary_mode}</Tag>
               </td>
-              <td style={{ padding: "12px 16px", color: "#7A8FA0" }}>${s.risk?.stop_loss ?? "—"}</td>
-              <td style={{ padding: "12px 16px", color: "#7A8FA0" }}>${s.risk?.take_profit ?? "—"}</td>
-              <td style={{ padding: "12px 16px", color: "#3D5060" }}>{relTime(s.created_at)}</td>
+              <td style={{ padding: "12px 16px", color: "var(--dim)" }}>${s.risk?.stop_loss ?? "—"}</td>
+              <td style={{ padding: "12px 16px", color: "var(--dim)" }}>${s.risk?.take_profit ?? "—"}</td>
+              <td style={{ padding: "12px 16px", color: "var(--ghost)" }}>{relTime(s.created_at)}</td>
             </tr>
           ))}
         </tbody>
@@ -152,7 +154,7 @@ function SignalsTable({ signals, loading }: { signals: Signal[]; loading: boolea
 
 function RunPipelinePanel({ onRan }: { onRan: () => void }) {
   const [ticker, setTicker]     = useState("AAPL");
-  const [mode, setMode]         = useState("conditional");
+  const [mode, setMode]         = useState("autonomous_guardrail");
   const [running, setRunning]   = useState(false);
   const [result, setResult]     = useState<{ action: string; confidence: number; ticker: string; trace_id: string } | null>(null);
   const [error, setError]       = useState<string | null>(null);
@@ -194,11 +196,11 @@ function RunPipelinePanel({ onRan }: { onRan: () => void }) {
   }
 
   const inputStyle: React.CSSProperties = {
-    background: "#0C1016",
-    border: "1px solid #1C2B3A",
+    background: "var(--deep)",
+    border: "1px solid var(--line)",
     borderRadius: 6,
     padding: "9px 12px",
-    color: "#E8EDF3",
+    color: "var(--ink)",
     fontSize: 13,
     fontFamily: "var(--font-jb)",
     outline: "none",
@@ -221,14 +223,14 @@ function RunPipelinePanel({ onRan }: { onRan: () => void }) {
           style={{ ...inputStyle, cursor: "pointer" }}
         >
           <option value="advisory">Advisory</option>
-          <option value="conditional">Conditional</option>
+          <option value="autonomous_guardrail">Autonomous + Guardrail</option>
           <option value="autonomous">Autonomous</option>
         </select>
         <button
           onClick={handleRun}
           disabled={running || !ticker.trim()}
           style={{
-            background: running ? "#1C2B3A" : "#C8102E",
+            background: running ? "var(--elevated)" : "var(--brand)",
             border: "none", borderRadius: 6,
             padding: "9px 18px",
             color: "#fff", fontSize: 12,
@@ -245,19 +247,19 @@ function RunPipelinePanel({ onRan }: { onRan: () => void }) {
       {result && (
         <div style={{
           marginTop: 14, padding: "12px 16px", borderRadius: 8,
-          background: "#0C1016", border: "1px solid #1C2B3A",
+          background: "var(--deep)", border: "1px solid var(--line)",
         }}>
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="font-display font-bold" style={{ color: "#E8EDF3", fontSize: 16 }}>{result.ticker}</span>
-            <Tag color={C[result.action as keyof typeof C] ?? "#7A8FA0"}>{result.action}</Tag>
-            <span style={{ color: "#7A8FA0", fontSize: 13 }}>{Math.round(result.confidence * 100)}% confidence</span>
-            <span style={{ color: "#3D5060", fontSize: 11 }}>trace: {result.trace_id.slice(0, 12)}…</span>
+            <span className="font-display font-bold" style={{ color: "var(--ink)", fontSize: 16 }}>{result.ticker}</span>
+            <Tag color={C[result.action as keyof typeof C] ?? "var(--dim)"}>{result.action}</Tag>
+            <span style={{ color: "var(--dim)", fontSize: 13 }}>{Math.round(result.confidence * 100)}% confidence</span>
+            <span style={{ color: "var(--ghost)", fontSize: 11 }}>trace: {result.trace_id.slice(0, 12)}…</span>
           </div>
         </div>
       )}
 
       {error && (
-        <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.2)", color: "#FF2D55", fontSize: 12, fontFamily: "var(--font-jb)" }}>
+        <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "var(--bear-bg)", border: "1px solid var(--bear)30", color: "var(--bear)", fontSize: 12, fontFamily: "var(--font-jb)" }}>
           {error}
         </div>
       )}
@@ -309,7 +311,7 @@ function SchedulerPanel() {
     }
   }
 
-  const dotColor = status?.enabled ? "#00C896" : "#3D5060";
+  const dotColor = status?.enabled ? "var(--bull)" : "var(--ghost)";
 
   return (
     <div className="flex flex-col gap-6">
@@ -320,7 +322,7 @@ function SchedulerPanel() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
-              <span style={{ color: "#E8EDF3", fontSize: 15, fontFamily: "var(--font-jb)", fontWeight: 600 }}>
+              <span style={{ color: "var(--ink)", fontSize: 15, fontFamily: "var(--font-jb)", fontWeight: 600 }}>
                 Daily Scheduler — {loading ? "…" : status?.enabled ? "ENABLED" : "DISABLED"}
               </span>
             </div>
@@ -328,30 +330,30 @@ function SchedulerPanel() {
             {status && (
               <div className="flex flex-col gap-1.5" style={{ fontSize: 12, fontFamily: "var(--font-jb)" }}>
                 <div className="flex gap-3">
-                  <span style={{ color: "#3D5060", width: 140 }}>Next market open</span>
-                  <span style={{ color: "#7A8FA0" }}>{status.next_market_open_et}</span>
+                  <span style={{ color: "var(--ghost)", width: 140 }}>Next market open</span>
+                  <span style={{ color: "var(--dim)" }}>{status.next_market_open_et}</span>
                 </div>
                 <div className="flex gap-3">
-                  <span style={{ color: "#3D5060", width: 140 }}>Current time (ET)</span>
-                  <span style={{ color: "#7A8FA0" }}>{status.current_time_et}</span>
+                  <span style={{ color: "var(--ghost)", width: 140 }}>Current time (ET)</span>
+                  <span style={{ color: "var(--dim)" }}>{status.current_time_et}</span>
                 </div>
                 <div className="flex gap-3">
-                  <span style={{ color: "#3D5060", width: 140 }}>Last run</span>
-                  <span style={{ color: "#7A8FA0" }}>{status.last_run_utc ? relTime(status.last_run_utc) : "Never"}</span>
+                  <span style={{ color: "var(--ghost)", width: 140 }}>Last run</span>
+                  <span style={{ color: "var(--dim)" }}>{status.last_run_utc ? relTime(status.last_run_utc) : "Never"}</span>
                 </div>
                 <div className="flex gap-3">
-                  <span style={{ color: "#3D5060", width: 140 }}>Active users</span>
-                  <span style={{ color: status.active_users > 0 ? "#00C896" : "#7A8FA0" }}>{status.active_users}</span>
+                  <span style={{ color: "var(--ghost)", width: 140 }}>Active users</span>
+                  <span style={{ color: status.active_users > 0 ? "var(--bull)" : "var(--dim)" }}>{status.active_users}</span>
                 </div>
                 <div className="flex gap-3">
-                  <span style={{ color: "#3D5060", width: 140 }}>Watchlist</span>
-                  <span style={{ color: "#7A8FA0" }}>{status.watchlist.join(", ") || "—"}</span>
+                  <span style={{ color: "var(--ghost)", width: 140 }}>Watchlist</span>
+                  <span style={{ color: "var(--dim)" }}>{status.watchlist.join(", ") || "—"}</span>
                 </div>
               </div>
             )}
 
             {!status?.enabled && !loading && (
-              <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "rgba(245,166,35,0.08)", border: "1px solid rgba(245,166,35,0.2)", color: "#F5A623", fontSize: 12, fontFamily: "var(--font-jb)" }}>
+              <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "var(--hold-bg)", border: "1px solid var(--hold)30", color: "var(--hold)", fontSize: 12, fontFamily: "var(--font-jb)" }}>
                 Set SCHEDULER_ENABLED=true in Render env vars to activate automatic daily runs.
               </div>
             )}
@@ -363,7 +365,7 @@ function SchedulerPanel() {
               onClick={handleRunNow}
               disabled={running}
               style={{
-                background: running ? "#1C2B3A" : "#C8102E",
+                background: running ? "var(--elevated)" : "var(--brand)",
                 border: "none", borderRadius: 8,
                 padding: "11px 20px",
                 color: "#fff", fontSize: 13,
@@ -375,7 +377,7 @@ function SchedulerPanel() {
             >
               {running ? "Running watchlist…" : "▶ Run Watchlist Now"}
             </button>
-            <p style={{ color: "#3D5060", fontSize: 11, fontFamily: "var(--font-jb)", textAlign: "center" }}>
+            <p style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", textAlign: "center" }}>
               Runs all tickers for your account
             </p>
           </div>
@@ -384,7 +386,7 @@ function SchedulerPanel() {
 
       {/* Error */}
       {error && (
-        <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(255,45,85,0.08)", border: "1px solid rgba(255,45,85,0.2)", color: "#FF2D55", fontSize: 12, fontFamily: "var(--font-jb)" }}>
+        <div style={{ padding: "12px 16px", borderRadius: 8, background: "var(--bear-bg)", border: "1px solid var(--bear)30", color: "var(--bear)", fontSize: 12, fontFamily: "var(--font-jb)" }}>
           {error}
         </div>
       )}
@@ -396,9 +398,9 @@ function SchedulerPanel() {
           <Card>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, fontFamily: "var(--font-jb)" }}>
               <thead>
-                <tr style={{ borderBottom: "1px solid #1C2B3A", background: "#0C1016" }}>
+                <tr style={{ borderBottom: "1px solid var(--line)", background: "var(--deep)" }}>
                   {["Ticker", "Action", "Confidence", "Status", "Trace"].map((h) => (
-                    <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "#3D5060", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                    <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "var(--ghost)", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
                       {h}
                     </th>
                   ))}
@@ -406,22 +408,22 @@ function SchedulerPanel() {
               </thead>
               <tbody>
                 {results.map((r, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #1C2B3A" }}>
+                  <tr key={i} style={{ borderBottom: "1px solid var(--line)" }}>
                     <td style={{ padding: "12px 16px" }}>
-                      <span className="font-display font-bold" style={{ color: "#E8EDF3", fontSize: 14 }}>{r.ticker}</span>
+                      <span className="font-display font-bold" style={{ color: "var(--ink)", fontSize: 14 }}>{r.ticker}</span>
                     </td>
                     <td style={{ padding: "12px 16px" }}>
-                      {r.action ? <Tag color={C[r.action as keyof typeof C] ?? "#7A8FA0"}>{r.action}</Tag> : <span style={{ color: "#3D5060" }}>—</span>}
+                      {r.action ? <Tag color={C[r.action as keyof typeof C] ?? "var(--dim)"}>{r.action}</Tag> : <span style={{ color: "var(--ghost)" }}>—</span>}
                     </td>
-                    <td style={{ padding: "12px 16px", color: "#E8EDF3" }}>
+                    <td style={{ padding: "12px 16px", color: "var(--ink)" }}>
                       {r.confidence != null ? `${Math.round(r.confidence * 100)}%` : "—"}
                     </td>
                     <td style={{ padding: "12px 16px" }}>
                       {r.status === "ok"
-                        ? <Tag color="#00C896">OK</Tag>
-                        : <Tag color="#FF2D55">ERROR</Tag>}
+                        ? <Tag color="var(--bull)">OK</Tag>
+                        : <Tag color="var(--bear)">ERROR</Tag>}
                     </td>
-                    <td style={{ padding: "12px 16px", color: "#3D5060", fontSize: 11 }}>
+                    <td style={{ padding: "12px 16px", color: "var(--ghost)", fontSize: 11 }}>
                       {r.error ?? (r.trace_id ? `${r.trace_id.slice(0, 12)}…` : "—")}
                     </td>
                   </tr>
@@ -439,9 +441,9 @@ function SchedulerPanel() {
           <Card>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, fontFamily: "var(--font-jb)" }}>
               <thead>
-                <tr style={{ borderBottom: "1px solid #1C2B3A", background: "#0C1016" }}>
+                <tr style={{ borderBottom: "1px solid var(--line)", background: "var(--deep)" }}>
                   {["Ticker", "Action", "Confidence", "Status"].map((h) => (
-                    <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "#3D5060", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                    <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "var(--ghost)", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>
                       {h}
                     </th>
                   ))}
@@ -449,18 +451,18 @@ function SchedulerPanel() {
               </thead>
               <tbody>
                 {status.last_run_results.map((r, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #1C2B3A" }}>
+                  <tr key={i} style={{ borderBottom: "1px solid var(--line)" }}>
                     <td style={{ padding: "12px 16px" }}>
-                      <span className="font-display font-bold" style={{ color: "#E8EDF3", fontSize: 14 }}>{r.ticker}</span>
+                      <span className="font-display font-bold" style={{ color: "var(--ink)", fontSize: 14 }}>{r.ticker}</span>
                     </td>
                     <td style={{ padding: "12px 16px" }}>
-                      {r.action ? <Tag color={C[r.action as keyof typeof C] ?? "#7A8FA0"}>{r.action}</Tag> : <span style={{ color: "#3D5060" }}>—</span>}
+                      {r.action ? <Tag color={C[r.action as keyof typeof C] ?? "var(--dim)"}>{r.action}</Tag> : <span style={{ color: "var(--ghost)" }}>—</span>}
                     </td>
-                    <td style={{ padding: "12px 16px", color: "#E8EDF3" }}>
+                    <td style={{ padding: "12px 16px", color: "var(--ink)" }}>
                       {r.confidence != null ? `${Math.round(r.confidence * 100)}%` : "—"}
                     </td>
                     <td style={{ padding: "12px 16px" }}>
-                      {r.status === "ok" ? <Tag color="#00C896">OK</Tag> : <Tag color="#FF2D55">ERROR</Tag>}
+                      {r.status === "ok" ? <Tag color="var(--bull)">OK</Tag> : <Tag color="var(--bear)">ERROR</Tag>}
                     </td>
                   </tr>
                 ))}
@@ -496,7 +498,7 @@ function SystemPanel() {
   ];
 
   const statusColor = (s: string) =>
-    s === "online" ? "#00C896" : s === "checking" ? "#F5A623" : "#FF2D55";
+    s === "online" ? "var(--bull)" : s === "checking" ? "var(--hold)" : "var(--bear)";
 
   const config = [
     ["API Endpoint",     API],
@@ -515,11 +517,11 @@ function SystemPanel() {
           {services.map((s, i) => (
             <div key={s.name} className="flex items-center justify-between" style={{
               padding: "14px 20px",
-              borderBottom: i < services.length - 1 ? "1px solid #1C2B3A" : "none",
+              borderBottom: i < services.length - 1 ? "1px solid var(--line)" : "none",
             }}>
               <div className="flex items-center gap-3">
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: statusColor(s.status), flexShrink: 0 }} />
-                <span style={{ color: "#E8EDF3", fontSize: 14, fontFamily: "var(--font-jb)" }}>{s.name}</span>
+                <span style={{ color: "var(--ink)", fontSize: 14, fontFamily: "var(--font-jb)" }}>{s.name}</span>
               </div>
               <span style={{ fontSize: 11, fontFamily: "var(--font-jb)", color: statusColor(s.status), textTransform: "uppercase", letterSpacing: "0.06em" }}>
                 {s.status}
@@ -535,10 +537,10 @@ function SystemPanel() {
           {config.map(([k, v], i) => (
             <div key={k} className="flex items-center justify-between" style={{
               padding: "12px 20px",
-              borderBottom: i < config.length - 1 ? "1px solid #1C2B3A" : "none",
+              borderBottom: i < config.length - 1 ? "1px solid var(--line)" : "none",
             }}>
-              <span style={{ color: "#3D5060", fontSize: 12, fontFamily: "var(--font-jb)" }}>{k}</span>
-              <span style={{ color: "#7A8FA0", fontSize: 12, fontFamily: "var(--font-jb)" }}>{v}</span>
+              <span style={{ color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-jb)" }}>{k}</span>
+              <span style={{ color: "var(--dim)", fontSize: 12, fontFamily: "var(--font-jb)" }}>{v}</span>
             </div>
           ))}
         </Card>
@@ -560,20 +562,20 @@ function OverviewTab({ signals, signalsLoading }: { signals: Signal[]; signalsLo
   const holds = signals.filter(s => s.action === "HOLD").length;
 
   const metrics = [
-    { label: "Signals Today",   value: signalsLoading ? "…" : String(todayCount),        color: "#E8EDF3" },
-    { label: "Total Signals",   value: signalsLoading ? "…" : String(signals.length),     color: "#E8EDF3" },
-    { label: "Avg Confidence",  value: signalsLoading ? "…" : `${avgConf}%`,              color: avgConf >= 70 ? "#00C896" : "#F5A623" },
-    { label: "BUY Signals",     value: signalsLoading ? "…" : String(buys),               color: "#00C896" },
-    { label: "SELL Signals",    value: signalsLoading ? "…" : String(sells),              color: "#FF2D55" },
-    { label: "HOLD Signals",    value: signalsLoading ? "…" : String(holds),              color: "#F5A623" },
+    { label: "Signals Today",   value: signalsLoading ? "…" : String(todayCount),        color: "var(--ink)" },
+    { label: "Total Signals",   value: signalsLoading ? "…" : String(signals.length),     color: "var(--ink)" },
+    { label: "Avg Confidence",  value: signalsLoading ? "…" : `${avgConf}%`,              color: avgConf >= 70 ? "var(--bull)" : "var(--hold)" },
+    { label: "BUY Signals",     value: signalsLoading ? "…" : String(buys),               color: "var(--bull)" },
+    { label: "SELL Signals",    value: signalsLoading ? "…" : String(sells),              color: "var(--bear)" },
+    { label: "HOLD Signals",    value: signalsLoading ? "…" : String(holds),              color: "var(--hold)" },
   ];
 
   return (
     <div className="flex flex-col gap-8">
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {metrics.map((m) => (
-          <div key={m.label} style={{ background: "#111820", border: "1px solid #1C2B3A", borderRadius: 8, padding: "14px 16px" }}>
-            <div style={{ color: "#3D5060", fontSize: 10, fontFamily: "var(--font-jb)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          <div key={m.label} style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "14px 16px" }}>
+            <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.04em" }}>
               {m.label}
             </div>
             <div className="num font-display font-bold" style={{ fontSize: 24, color: m.color, lineHeight: 1 }}>
@@ -639,7 +641,7 @@ export default function AdminDashboard() {
 
   if (roleLoading) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#07080B", color: "#3D5060", fontFamily: "var(--font-jb)", fontSize: 13 }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", color: "var(--ghost)", fontFamily: "var(--font-jb)", fontSize: 13 }}>
         Verifying access…
       </div>
     );
@@ -650,26 +652,26 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: "#07080B", fontFamily: "var(--font-nunito)" }}>
+    <div className="min-h-screen flex" style={{ background: "var(--bg)", fontFamily: "var(--font-nunito)" }}>
 
       {/* ── Sidebar ── */}
       <aside className="flex-shrink-0 flex flex-col" style={{
         width: sidebarOpen ? 220 : 60,
-        background: "#0C1016",
-        borderRight: "1px solid #1C2B3A",
+        background: "var(--deep)",
+        borderRight: "1px solid var(--line)",
         transition: "width 0.25s ease",
         overflow: "hidden",
         position: "sticky",
         top: 0,
         height: "100vh",
       }}>
-        <div className="flex items-center gap-2.5 px-4 py-5" style={{ borderBottom: "1px solid #1C2B3A", minHeight: 65 }}>
+        <div className="flex items-center gap-2.5 px-4 py-5" style={{ borderBottom: "1px solid var(--line)", minHeight: 65 }}>
           <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: 22, height: 22 }}>
             <div style={{ position: "absolute", width: 2, height: 18, background: "#C8102E", transform: "skewX(-14deg) translateX(2px)", borderRadius: 1 }} />
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#C8102E", position: "relative", zIndex: 1, marginLeft: 3 }} />
           </div>
-          {sidebarOpen && <span className="font-display font-bold" style={{ fontSize: 16, color: "#E8EDF3", letterSpacing: "-0.02em", whiteSpace: "nowrap" }}>ATLAS</span>}
-          {sidebarOpen && <span style={{ marginLeft: "auto", fontSize: 9, fontFamily: "var(--font-jb)", color: "#3D5060", border: "1px solid #1C2B3A", padding: "1px 6px", borderRadius: 3, whiteSpace: "nowrap" }}>ADMIN</span>}
+          {sidebarOpen && <span className="font-display font-bold" style={{ fontSize: 16, color: "var(--ink)", letterSpacing: "-0.02em", whiteSpace: "nowrap" }}>ATLAS</span>}
+          {sidebarOpen && <span style={{ marginLeft: "auto", fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)", border: "1px solid var(--line)", padding: "1px 6px", borderRadius: 3, whiteSpace: "nowrap" }}>ADMIN</span>}
         </div>
 
         <nav className="flex flex-col gap-1 px-2 py-4 flex-1">
@@ -680,9 +682,9 @@ export default function AdminDashboard() {
                 className="flex items-center gap-3 rounded-lg transition-colors text-left"
                 style={{
                   padding: sidebarOpen ? "10px 12px" : "10px",
-                  background: active ? "rgba(200,16,46,0.1)" : "transparent",
-                  border: active ? "1px solid rgba(200,16,46,0.25)" : "1px solid transparent",
-                  color: active ? "#C8102E" : "#3D5060",
+                  background: active ? "var(--brand)18" : "transparent",
+                  border: active ? "1px solid var(--brand)30" : "1px solid transparent",
+                  color: active ? "var(--brand)" : "var(--ghost)",
                   cursor: "pointer",
                   justifyContent: sidebarOpen ? "flex-start" : "center",
                 }}
@@ -695,11 +697,8 @@ export default function AdminDashboard() {
           })}
         </nav>
 
-        <div className="px-2 pb-4 flex flex-col gap-1" style={{ borderTop: "1px solid #1C2B3A", paddingTop: 12 }}>
-          <Link href="/dashboard" className="flex items-center gap-2 rounded-lg px-3 py-2 transition-colors" style={{ color: "#3D5060", fontSize: 12, fontFamily: "var(--font-jb)" }}>
-            {sidebarOpen ? "← User View" : "←"}
-          </Link>
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ color: "#3D5060", fontSize: 12, fontFamily: "var(--font-jb)", background: "transparent", border: "none", cursor: "pointer" }}>
+        <div className="px-2 pb-4 flex flex-col gap-1" style={{ borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-jb)", background: "transparent", border: "none", cursor: "pointer" }}>
             {sidebarOpen ? "← Collapse" : "→"}
           </button>
         </div>
@@ -707,18 +706,21 @@ export default function AdminDashboard() {
 
       {/* ── Main ── */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="flex items-center justify-between px-8 py-4" style={{ borderBottom: "1px solid #1C2B3A", background: "rgba(7,8,11,0.8)" }}>
+        <header className="flex items-center justify-between px-8 py-4" style={{ borderBottom: "1px solid var(--line)", background: "var(--header-bg)", backdropFilter: "blur(12px)" }}>
           <div>
-            <h1 className="font-display font-bold" style={{ fontSize: 20, color: "#E8EDF3", letterSpacing: "-0.02em" }}>
+            <h1 className="font-display font-bold" style={{ fontSize: 20, color: "var(--ink)", letterSpacing: "-0.02em" }}>
               {NAV_ITEMS.find(n => n.id === tab)?.label}
             </h1>
-            <div style={{ color: "#3D5060", fontSize: 11, fontFamily: "var(--font-jb)", marginTop: 2 }}>
+            <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginTop: 2 }}>
               Atlas Admin · {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#00C896" }} />
-            <span style={{ color: "#3D5060", fontSize: 11, fontFamily: "var(--font-jb)" }}>live</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5">
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--bull)" }} />
+              <span style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)" }}>live</span>
+            </div>
+            <AccountDropdown role={role} />
           </div>
         </header>
 

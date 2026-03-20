@@ -4,9 +4,12 @@ Execution Boundary Controller (EBC) — Atlas's core differentiator.
 Takes an AgentSignal and a configured mode, routes to the correct
 execution path, and returns an ExecutionResult.
 
-Advisory:    No execution. Returns signal for display.
-Conditional: Returns awaiting_approval. Execution only on user approval.
-Autonomous:  Places order via broker immediately. Override window open.
+Advisory:              No execution. Returns signal for display.
+Conditional:           Returns awaiting_approval. Execution only on user approval.
+Autonomous:            Places order via broker immediately. Override window open.
+AutonomousGuardrail:   Confidence >= 65%: executes immediately (same as autonomous).
+                       Confidence < 65%: returns awaiting_approval for human review.
+                       Circuit breaker fields tracked in guardrail_triggered.
 """
 from __future__ import annotations
 
@@ -33,6 +36,7 @@ class ExecutionResult:
     order_id: str | None = None
     override_window_s: int = 0
     message: str = ""
+    guardrail_triggered: bool = False
     extra: dict = field(default_factory=dict)
 
 
@@ -54,7 +58,7 @@ class EBC:
 
         Args:
             signal: AgentSignal from orchestrator
-            mode:   "advisory" | "conditional" | "autonomous"
+            mode:   "advisory" | "conditional" | "autonomous" | "autonomous_guardrail"
         """
         bmode = BoundaryMode(mode)
         config = MODE_CONFIG[bmode]
@@ -77,7 +81,23 @@ class EBC:
                 message="Signal generated. No execution in advisory mode.",
             )
 
-        if signal.confidence < config["min_confidence"]:
+        if bmode == BoundaryMode.AUTONOMOUS_GUARDRAIL:
+            # Low-confidence signals are queued for human review rather than skipped
+            if signal.confidence < config["min_confidence"]:
+                return ExecutionResult(
+                    **base,
+                    executed=False,
+                    status="awaiting_approval",
+                    guardrail_triggered=True,
+                    message=(
+                        f"Confidence {signal.confidence:.0%} below guardrail threshold "
+                        f"{config['min_confidence']:.0%}. Signal queued for human review."
+                    ),
+                )
+            # High-confidence signals fall through to autonomous execution below
+
+        elif signal.confidence < config["min_confidence"]:
+            # For all other non-advisory modes: skip low-confidence signals
             return ExecutionResult(
                 **base,
                 executed=False,
@@ -96,7 +116,7 @@ class EBC:
                 message="Signal pending user approval. POST /v1/signals/{id}/approve to execute.",
             )
 
-        # Autonomous — execute immediately
+        # Autonomous / Autonomous Guardrail (high confidence) — execute immediately
         if self._broker is None:
             return ExecutionResult(
                 **base,

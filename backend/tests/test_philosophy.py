@@ -32,27 +32,27 @@ def client():
 # ── Unit tests: get_philosophy_prefix ─────────────────────────────────────────
 
 class TestGetPhilosophyPrefix:
-    def test_get_philosophy_prefix_value_returns_nonempty_string(self):
+    def test_get_philosophy_prefix_buffett_returns_nonempty_string(self):
         from agents.philosophy import get_philosophy_prefix
 
-        result = get_philosophy_prefix("value")
+        result = get_philosophy_prefix("buffett")
 
         assert isinstance(result, str)
         assert len(result) > 0
-        assert "value" in result.lower() or "intrinsic" in result.lower() or "margin" in result.lower()
+        assert "buffett" in result.lower() or "intrinsic" in result.lower() or "margin" in result.lower()
 
-    def test_get_philosophy_prefix_momentum_returns_nonempty_string(self):
+    def test_get_philosophy_prefix_soros_returns_nonempty_string(self):
         from agents.philosophy import get_philosophy_prefix
 
-        result = get_philosophy_prefix("momentum")
+        result = get_philosophy_prefix("soros")
 
         assert isinstance(result, str)
         assert len(result) > 0
 
-    def test_get_philosophy_prefix_macro_returns_nonempty_string(self):
+    def test_get_philosophy_prefix_lynch_returns_nonempty_string(self):
         from agents.philosophy import get_philosophy_prefix
 
-        result = get_philosophy_prefix("macro")
+        result = get_philosophy_prefix("lynch")
 
         assert isinstance(result, str)
         assert len(result) > 0
@@ -78,19 +78,19 @@ class TestGetPhilosophyPrefix:
 
         assert result == ""
 
-    def test_get_philosophy_prefix_value_includes_header(self):
+    def test_get_philosophy_prefix_buffett_includes_header(self):
         from agents.philosophy import get_philosophy_prefix
 
-        result = get_philosophy_prefix("value")
+        result = get_philosophy_prefix("buffett")
 
         assert "[Investment Philosophy:" in result
 
     def test_philosophy_prompts_has_all_required_keys(self):
         from agents.philosophy import PHILOSOPHY_PROMPTS
 
-        assert "value" in PHILOSOPHY_PROMPTS
-        assert "momentum" in PHILOSOPHY_PROMPTS
-        assert "macro" in PHILOSOPHY_PROMPTS
+        assert "buffett" in PHILOSOPHY_PROMPTS
+        assert "soros" in PHILOSOPHY_PROMPTS
+        assert "lynch" in PHILOSOPHY_PROMPTS
         assert "balanced" in PHILOSOPHY_PROMPTS
 
     def test_philosophy_prompts_balanced_is_empty(self):
@@ -131,7 +131,7 @@ class TestPipelineRunPhilosophyMode:
             },
         }
 
-    def test_pipeline_run_accepts_philosophy_mode_value(self, client):
+    def test_pipeline_run_accepts_philosophy_mode_buffett(self, client):
         with patch(
             "api.routes.pipeline.run_pipeline_with_ebc",
             return_value=self._mock_pipeline_result(),
@@ -141,13 +141,13 @@ class TestPipelineRunPhilosophyMode:
                 json={
                     "ticker": "AAPL",
                     "boundary_mode": "advisory",
-                    "philosophy_mode": "value",
+                    "philosophy_mode": "buffett",
                 },
                 headers={"Authorization": "Bearer fake"},
             )
         assert resp.status_code == 200
 
-    def test_pipeline_run_accepts_philosophy_mode_momentum(self, client):
+    def test_pipeline_run_accepts_philosophy_mode_soros(self, client):
         with patch(
             "api.routes.pipeline.run_pipeline_with_ebc",
             return_value=self._mock_pipeline_result(),
@@ -157,13 +157,13 @@ class TestPipelineRunPhilosophyMode:
                 json={
                     "ticker": "AAPL",
                     "boundary_mode": "advisory",
-                    "philosophy_mode": "momentum",
+                    "philosophy_mode": "soros",
                 },
                 headers={"Authorization": "Bearer fake"},
             )
         assert resp.status_code == 200
 
-    def test_pipeline_run_accepts_philosophy_mode_macro(self, client):
+    def test_pipeline_run_accepts_philosophy_mode_lynch(self, client):
         with patch(
             "api.routes.pipeline.run_pipeline_with_ebc",
             return_value=self._mock_pipeline_result(),
@@ -173,7 +173,7 @@ class TestPipelineRunPhilosophyMode:
                 json={
                     "ticker": "AAPL",
                     "boundary_mode": "advisory",
-                    "philosophy_mode": "macro",
+                    "philosophy_mode": "lynch",
                 },
                 headers={"Authorization": "Bearer fake"},
             )
@@ -245,7 +245,7 @@ class TestPipelineRunPhilosophyMode:
                 json={
                     "ticker": "TSLA",
                     "boundary_mode": "advisory",
-                    "philosophy_mode": "macro",
+                    "philosophy_mode": "soros",
                 },
                 headers={"Authorization": "Bearer fake"},
             )
@@ -253,5 +253,5 @@ class TestPipelineRunPhilosophyMode:
             ticker="TSLA",
             boundary_mode="advisory",
             user_id=_FAKE_USER,
-            philosophy_mode="macro",
+            philosophy_mode="soros",
         )

@@ -12,6 +12,7 @@ class BoundaryMode(str, Enum):
     ADVISORY = "advisory"
     CONDITIONAL = "conditional"
     AUTONOMOUS = "autonomous"
+    AUTONOMOUS_GUARDRAIL = "autonomous_guardrail"
 
 
 # Per-mode configuration
@@ -30,5 +31,12 @@ MODE_CONFIG = {
         "min_confidence": 0.65,   # only auto-execute high-confidence signals
         "notional_usd": 1000.0,
         "override_window_s": 300,  # 5-minute override window after execution
+    },
+    BoundaryMode.AUTONOMOUS_GUARDRAIL: {
+        "min_confidence": 0.65,    # auto-execute above; queue for review below
+        "notional_usd": 1000.0,
+        "override_window_s": 300,  # 5-min override same as autonomous
+        "circuit_breaker_losses": 3,   # pause after N consecutive losses
+        "circuit_breaker_drawdown": 0.15,  # pause if portfolio down 15%
     },
 }

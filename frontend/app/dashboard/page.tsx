@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useTheme } from "../components/ThemeProvider";
 import { fetchWithAuth, fetchMyProfile, type UserRole } from "@/lib/api";
-import { UserMenu } from "@/components/UserMenu";
+import { AccountDropdown } from "@/components/AccountDropdown";
 import { BacktestTab } from "./BacktestTab";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -144,9 +144,10 @@ function ConfBar({ value, color }: { value: number; color: string }) {
 
 function ModeBadge({ mode }: { mode: string }) {
   const colors: Record<string, string> = {
-    advisory:    "var(--dim)",
-    conditional: "var(--hold)",
-    autonomous:  "var(--bull)",
+    advisory:              "var(--dim)",
+    conditional:           "var(--hold)",   // kept for display of legacy signals
+    autonomous:            "var(--bull)",
+    autonomous_guardrail:  "var(--brand)",
   };
   return (
     <span style={{
@@ -180,7 +181,10 @@ export function SignalCard({
   const [rejecting, setRejecting] = useState(false);
   const [showTrace, setShowTrace] = useState(false);
   const s = ACTION_STYLE[signal.action];
-  const isConditional = signal.boundary_mode === "conditional";
+  const isConditional =
+    signal.boundary_mode === "conditional" ||
+    (signal.boundary_mode === "autonomous_guardrail" &&
+      signal.status === "awaiting_approval");
   const canApprove = isConditional && approved === null;
 
   async function handleApprove() {
@@ -808,7 +812,8 @@ function PositionsTab({
               </div>
               <ConfBar value={Math.min(Math.abs(pnl_pct) / 20, 1)} color={positive ? "var(--bull)" : "var(--bear)"} />
             </div>
-            {pos.trade_id && pos.executed_at && pos.boundary_mode === "autonomous" && (
+            {pos.trade_id && pos.executed_at &&
+              (pos.boundary_mode === "autonomous" || pos.boundary_mode === "autonomous_guardrail") && (
               <OverrideButton
                 tradeId={pos.trade_id}
                 executedAt={pos.executed_at}
@@ -1057,7 +1062,7 @@ function AlpacaConnectionSection() {
 
 // ─── Tab: Settings ────────────────────────────────────────────────────────────
 
-type PhilosophyMode = "balanced" | "value" | "momentum" | "macro";
+type PhilosophyMode = "balanced" | "buffett" | "soros" | "lynch";
 
 const PHILOSOPHY_OPTIONS: {
   id: PhilosophyMode;
@@ -1072,21 +1077,21 @@ const PHILOSOPHY_OPTIONS: {
     color: "var(--dim)",
   },
   {
-    id: "value",
-    label: "Value",
-    desc: "Intrinsic value, margin of safety, competitive moat.",
+    id: "buffett",
+    label: "Buffett",
+    desc: "Intrinsic value, margin of safety, durable competitive moat.",
     color: "var(--bull)",
   },
   {
-    id: "momentum",
-    label: "Momentum",
-    desc: "Price trend, relative strength, breakout patterns.",
+    id: "soros",
+    label: "Soros",
+    desc: "Reflexivity, macro trends, exploiting market misconceptions.",
     color: "var(--brand)",
   },
   {
-    id: "macro",
-    label: "Macro",
-    desc: "Interest rates, sector rotation, macro tailwinds.",
+    id: "lynch",
+    label: "Lynch",
+    desc: "GARP — growth at a reasonable price, sector rotation.",
     color: "var(--hold)",
   },
 ];
@@ -1095,7 +1100,7 @@ const PHILOSOPHY_LS_KEY = "atlas_philosophy_mode";
 
 export function SettingsTab() {
   const { dark, toggle } = useTheme();
-  const [mode, setMode] = useState<"advisory" | "conditional" | "autonomous">("conditional");
+  const [mode, setMode] = useState<"advisory" | "autonomous" | "autonomous_guardrail">("advisory");
   const [philosophy, setPhilosophy] = useState<PhilosophyMode>("balanced");
 
   // Hydrate philosophy from localStorage after mount (avoids SSR mismatch)
@@ -1112,9 +1117,24 @@ export function SettingsTab() {
   }
 
   const modes = [
-    { id: "advisory",    label: "Advisory",    color: "var(--dim)",  desc: "AI signals only. You execute." },
-    { id: "conditional", label: "Conditional", color: "var(--hold)", desc: "Approve each trade." },
-    { id: "autonomous",  label: "Autonomous",  color: "var(--bull)", desc: "AI executes. Override window." },
+    {
+      id: "advisory",
+      label: "Advisory",
+      color: "var(--dim)",
+      desc: "AI signals only. You review and execute every trade manually.",
+    },
+    {
+      id: "autonomous_guardrail",
+      label: "Autonomous + Guardrail",
+      color: "var(--brand)",
+      desc: "AI executes automatically. Signals below 65% confidence are held for your review.",
+    },
+    {
+      id: "autonomous",
+      label: "Autonomous",
+      color: "var(--bull)",
+      desc: "AI executes all signals automatically. 5-minute override window.",
+    },
   ] as const;
 
   useEffect(() => {
@@ -1130,7 +1150,7 @@ export function SettingsTab() {
       });
   }, []);
 
-  async function handleModeChange(newMode: "advisory" | "conditional" | "autonomous") {
+  async function handleModeChange(newMode: "advisory" | "autonomous" | "autonomous_guardrail") {
     setMode(newMode);
     try {
       await fetchWithAuth(`${API_URL}/v1/profile`, {
@@ -1338,7 +1358,11 @@ export default function UserDashboard() {
   }, [isLoaded, isSignedIn, router]);
 
   const primarySignal = signals[0] ?? null;
-  const hasPendingConditional = signals.some((s) => s.boundary_mode === "conditional");
+  const hasPendingConditional = signals.some(
+    (s) =>
+      s.status === "awaiting_approval" ||
+      s.boundary_mode === "conditional" // legacy backward compat
+  );
 
   return (
     <div className="flex flex-col min-h-screen" style={{ background: "var(--bg)", maxWidth: 520, margin: "0 auto" }}>
@@ -1362,23 +1386,10 @@ export default function UserDashboard() {
             <span className="live-dot" />
             <span style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)" }}>live</span>
           </div>
-          {(role === "admin" || role === "superadmin") && (
-            <Link
-              href="/admin"
-              style={{
-                fontSize: 11,
-                fontFamily: "var(--font-jb)",
-                color: "var(--ghost)",
-                border: "1px solid var(--line)",
-                borderRadius: 4,
-                padding: "2px 8px",
-                textDecoration: "none",
-              }}
-            >
-              Admin
-            </Link>
-          )}
-          <UserMenu />
+          <AccountDropdown
+            role={role}
+            onSettings={() => setTab("settings")}
+          />
         </div>
       </header>
 

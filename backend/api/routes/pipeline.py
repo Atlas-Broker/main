@@ -10,7 +10,7 @@ from services.pipeline_service import run_pipeline_with_ebc
 router = APIRouter(prefix="/v1", tags=["pipeline"])
 logger = logging.getLogger(__name__)
 
-_VALID_PHILOSOPHY_MODES = frozenset({"balanced", "value", "momentum", "macro"})
+_VALID_PHILOSOPHY_MODES = frozenset({"balanced", "buffett", "soros", "lynch"})
 
 
 class PipelineRequest(BaseModel):
@@ -40,9 +40,9 @@ def run_pipeline(req: PipelineRequest, user_id: str = Depends(get_current_user))
 
     Optional philosophy_mode overlays an investment lens on all analyst prompts:
     - balanced (default): No overlay. Current behaviour.
-    - value:     Buffett-style — intrinsic value, margin of safety, moat.
-    - momentum:  Trend-following — price action, relative strength, breakouts.
-    - macro:     Top-down — interest rates, sector rotation, macro environment.
+    - buffett:   Warren Buffett — intrinsic value, margin of safety, moat, long-term.
+    - soros:     George Soros — macro reflexivity, sentiment shifts, contrarian at inflections.
+    - lynch:     Peter Lynch — GARP, consumer-lens, identify trends early.
     """
     try:
         return run_pipeline_with_ebc(
