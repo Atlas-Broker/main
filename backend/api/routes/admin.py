@@ -280,10 +280,17 @@ async def get_system_status(_: str = Depends(require_admin)) -> dict:
         "detail": "Scheduled: 13:30 UTC",
     }
 
+    ibkr_status = {
+        "status": "offline",
+        "last_checked": now,
+        "detail": "Not configured (future phase)",
+    }
+
     return {
         "pipeline": pipeline_status,
         "scheduler": scheduler_status,
         "alpaca": alpaca_status,
+        "ibkr": ibkr_status,
         "mongodb": mongo_status,
         "supabase": supabase_status,
     }

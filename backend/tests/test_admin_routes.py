@@ -337,7 +337,7 @@ def test_patch_tier_user_not_found_returns_404(super_client):
 # ─── GET /v1/admin/system-status ─────────────────────────────────────────────
 
 
-EXPECTED_SERVICE_KEYS = {"pipeline", "scheduler", "alpaca", "mongodb", "supabase"}
+EXPECTED_SERVICE_KEYS = {"pipeline", "scheduler", "alpaca", "ibkr", "mongodb", "supabase"}
 
 
 def test_system_status_returns_expected_keys(admin_client):
