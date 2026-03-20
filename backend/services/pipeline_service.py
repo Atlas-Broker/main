@@ -3,6 +3,7 @@ Pipeline service — orchestrates the agent pipeline + EBC.
 
 Called by the pipeline route. Keeps the route thin.
 """
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -62,6 +63,22 @@ def run_pipeline_with_ebc(
 
     ebc = EBC(broker=broker)
     result = ebc.execute(signal, mode=boundary_mode)
+
+    # Fire-and-forget guardrail notification when a signal is held for human review
+    if result.guardrail_triggered:
+        from services.notification_service import send_guardrail_notification  # noqa: PLC0415
+        try:
+            asyncio.get_event_loop().create_task(
+                send_guardrail_notification(
+                    user_id=user_id,
+                    ticker=signal.ticker,
+                    action=signal.action,
+                    confidence=signal.confidence,
+                    reasoning=signal.reasoning,
+                )
+            )
+        except RuntimeError:
+            pass  # no running event loop in synchronous test context
 
     return {
         "signal": {
