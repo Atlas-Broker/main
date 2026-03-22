@@ -8,7 +8,7 @@ Add a `/pricing` page to the Atlas marketing site that communicates the Free / P
 
 - Atlas uses Next.js 16 App Router with TypeScript and Tailwind CSS v4
 - Design system: midnight navy dark mode with CSS custom properties (`--bg: #0A0E1A`, `--surface: #0F1829`, etc.)
-- Tier colours: `--tier-pro: #7B61FF` (purple), `--tier-max: #F5A623` (amber)
+- Tier colours: `--tier-pro: #7B61FF` (purple), `--tier-max: #F5A623` (amber), `--bull: #00C896` (green — used for the "Save 20%" badge)
 - Auth: Clerk at `/login` — all CTA buttons link there
 - No billing integration in this phase; prices are informational only
 - `frontend/app/page.tsx` (landing page) still references retired `conditional` mode and `"Premium"` tier label — fix those as part of this work
@@ -28,7 +28,8 @@ Centred pill toggle, annual selected by default.
 
 ### 3. Pricing cards (3 columns)
 One card per tier: Free, Pro, Max.
-- **Pro card** elevated 6px, purple border, "Most popular" badge dropping from top edge
+- **Pro card** raised via `transform: translateY(-6px)` so it sits 6px higher than the Free and Max cards; purple border; `overflow: visible` so the "Most popular" badge can overhang the top edge
+- **"Most popular" badge**: `position: absolute`, horizontally centred on the Pro card, overhanging the top border by ~50% of its own height (achieved with a negative `top` value, e.g. `top: -13px`)
 - **Max card** amber border, amber CTA button
 - Each card: tier name, price (monthly equivalent), billing note, CTA button
 - All CTA buttons link to `/login`
@@ -68,13 +69,13 @@ Directly below the cards, same width, visually connected (no gap, shared border-
 
 `frontend/app/page.tsx` — two updates:
 1. In the `MODES` array (top of file): remove `conditional` mode entry, rename `"Premium"` tier label to `"Max"`
-2. In the signal preview panel (around line 385): update the hardcoded `["Advisory","Conditional","Autonomous"]` array to `["Advisory","Autonomous"]` to match the retired modes
+2. In the signal preview panel: find the hardcoded `["Advisory","Conditional","Autonomous"]` array and update it to `["Advisory","Autonomous"]`
 
 ## Implementation notes
 
 - Route: `frontend/app/pricing/page.tsx` — server component
 - Extract toggle interactivity into a separate `<BillingToggle>` client component (`frontend/app/pricing/BillingToggle.tsx`) to keep the page as a server component and avoid adding the full page to the client bundle
-- `BillingToggle` receives `monthlyPrices` and `annualPrices` props and renders the pill + updated card prices
+- `BillingToggle` renders the entire toggle pill **and** the three pricing cards as one client component, so price values update reactively on toggle. The server component (`page.tsx`) renders the hero, the `<BillingToggle>` island, and the feature table below it.
 - CSS variables `--tier-pro` and `--tier-max` are already declared in `globals.css` — do not redeclare them
 - No new API calls; page is fully static
 - **Responsive**: cards collapse to a single column below 640px; comparison table scrolls horizontally on mobile (`overflow-x: auto` wrapper)
