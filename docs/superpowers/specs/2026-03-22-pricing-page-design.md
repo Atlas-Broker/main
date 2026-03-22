@@ -66,16 +66,23 @@ Directly below the cards, same width, visually connected (no gap, shared border-
 
 ## Landing page fix (in scope)
 
-`frontend/app/page.tsx` — update the `MODES` array:
-- Remove `conditional` mode entry
-- Rename `"Premium"` tier label to `"Max"`
+`frontend/app/page.tsx` — two updates:
+1. In the `MODES` array (top of file): remove `conditional` mode entry, rename `"Premium"` tier label to `"Max"`
+2. In the signal preview panel (around line 385): update the hardcoded `["Advisory","Conditional","Autonomous"]` array to `["Advisory","Autonomous"]` to match the retired modes
 
 ## Implementation notes
 
-- Route: `frontend/app/pricing/page.tsx`
-- Needs `"use client"` for the annual/monthly toggle state
-- Follow existing CSS variable pattern from `globals.css` — no new Tailwind classes needed
+- Route: `frontend/app/pricing/page.tsx` — server component
+- Extract toggle interactivity into a separate `<BillingToggle>` client component (`frontend/app/pricing/BillingToggle.tsx`) to keep the page as a server component and avoid adding the full page to the client bundle
+- `BillingToggle` receives `monthlyPrices` and `annualPrices` props and renders the pill + updated card prices
+- CSS variables `--tier-pro` and `--tier-max` are already declared in `globals.css` — do not redeclare them
 - No new API calls; page is fully static
+- **Responsive**: cards collapse to a single column below 640px; comparison table scrolls horizontally on mobile (`overflow-x: auto` wrapper)
+- **Pro column tint**: implement using per-cell `background` on each `td` in the Pro column (no `<colgroup>` background — browser support is inconsistent). Apply a shared CSS class `.col-pro` with `background: rgba(123,97,255,0.04)`
+
+## Navigation
+
+Adding a "Pricing" nav link to the landing page (`frontend/app/page.tsx`) is **out of scope** for this task.
 
 ## Out of scope
 
