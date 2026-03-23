@@ -15,12 +15,25 @@ const LABEL_TO_BILLING: Record<"Monthly" | "Annual", Billing> = {
   Annual: "annual",
 };
 
+const fmtAnnual = (monthly: number): string =>
+  `$${(monthly * 12).toLocaleString("en-US")} billed annually`;
+
 export function BillingToggle() {
   const [billing, setBilling] = useState<Billing>("annual");
   const p = PRICES[billing];
 
   return (
     <>
+      <style>{`
+        @media (max-width: 639px) {
+          .pr-cards-wrap { grid-template-columns: 1fr !important; }
+          .pr-cards-wrap > * {
+            border-radius: 14px !important;
+            border: 1px solid var(--line) !important;
+            transform: none !important;
+          }
+        }
+      `}</style>
       {/* ── Toggle row ── */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -134,7 +147,7 @@ export function BillingToggle() {
             <sub style={{ fontSize: 13, fontWeight: 400, color: "var(--ghost)", verticalAlign: "baseline" }}>/mo</sub>
           </div>
           <div style={{ fontSize: 11, color: "var(--ghost)", marginBottom: 20 }}>
-            {billing === "annual" ? "$468 billed annually" : "Switch to annual to save 20%"}
+            {billing === "annual" ? fmtAnnual(PRICES.annual.pro) : "Switch to annual to save 20%"}
           </div>
           <Link href="/login" style={{
             display: "block", width: "100%", padding: "10px 16px",
@@ -168,7 +181,7 @@ export function BillingToggle() {
             <sub style={{ fontSize: 13, fontWeight: 400, color: "var(--ghost)", verticalAlign: "baseline" }}>/mo</sub>
           </div>
           <div style={{ fontSize: 11, color: "var(--ghost)", marginBottom: 20 }}>
-            {billing === "annual" ? "$1,428 billed annually" : "Switch to annual to save 20%"}
+            {billing === "annual" ? fmtAnnual(PRICES.annual.max) : "Switch to annual to save 20%"}
           </div>
           <Link href="/login" style={{
             display: "block", width: "100%", padding: "10px 16px",

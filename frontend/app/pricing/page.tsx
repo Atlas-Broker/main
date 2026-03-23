@@ -3,7 +3,7 @@ import { BillingToggle } from "./BillingToggle";
 
 // ─── Feature data ──────────────────────────────────────────────────────────────
 
-type Cell = "✓" | "—" | string;
+type Cell = "✓" | "—" | (string & {});
 
 interface Feature {
   name: string;
@@ -88,14 +88,6 @@ export default function PricingPage() {
         .pr-feat-row:last-child td    { border-bottom: none; }
         .pr-feat-row td.pr-pro-col    { background: rgba(123,97,255,0.04); }
 
-        @media (max-width: 639px) {
-          .pr-cards-wrap { grid-template-columns: 1fr !important; }
-          .pr-cards-wrap > * {
-            border-radius: 14px !important;
-            border: 1px solid var(--line) !important;
-            transform: none !important;
-          }
-        }
       `}</style>
 
       <div style={{ background: "var(--bg)", minHeight: "100vh", color: "var(--ink)" }}>
