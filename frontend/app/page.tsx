@@ -274,7 +274,7 @@ export default function LandingPage() {
                 {[
                   { value:"8 agents",  label:"run in parallel"       },
                   { value:"47 ms",     label:"signal to execution"    },
-                  { value:"3 modes",   label:"you choose the control" },
+                  { value:"2 modes",   label:"you choose the control" },
                   { value:"100%",      label:"reasoning shown"        },
                 ].map((s) => (
                   <div key={s.label} style={{
