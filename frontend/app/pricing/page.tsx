@@ -87,7 +87,6 @@ export default function PricingPage() {
         .pr-feat-row td               { background: var(--surface); border-bottom: 1px solid rgba(255,255,255,0.04); }
         .pr-feat-row:last-child td    { border-bottom: none; }
         .pr-feat-row td.pr-pro-col    { background: rgba(123,97,255,0.04); }
-
       `}</style>
 
       <div style={{ background: "var(--bg)", minHeight: "100vh", color: "var(--ink)" }}>
