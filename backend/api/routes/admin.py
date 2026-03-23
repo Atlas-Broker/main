@@ -3,10 +3,11 @@
 Admin API routes — require admin or superadmin role.
 
 Endpoints:
-  GET  /v1/admin/stats                  - platform usage stats
-  GET  /v1/admin/users                  - all users with Clerk email enrichment
-  PATCH /v1/admin/users/{user_id}/tier  - update a user's tier (superadmin only)
-  GET  /v1/admin/system-status          - health check for all services
+  GET  /v1/admin/stats                   - platform usage stats
+  GET  /v1/admin/users                   - all users with Clerk email enrichment
+  PATCH /v1/admin/users/{user_id}/tier   - update a user's tier (superadmin only)
+  PATCH /v1/admin/users/{user_id}/role   - update a user's role (superadmin only)
+  GET  /v1/admin/system-status           - health check for all services
 """
 import logging
 import os
@@ -31,6 +32,10 @@ CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY", "")
 
 class TierUpdate(BaseModel):
     tier: Literal["free", "pro", "max"]
+
+
+class RoleUpdate(BaseModel):
+    role: Literal["user", "admin", "superadmin"]
 
 
 # ─── Clerk helpers ────────────────────────────────────────────────────────────
@@ -186,14 +191,14 @@ async def list_users(_: str = Depends(require_admin)) -> list[dict]:
     try:
         result = (
             sb.table("profiles")
-            .select("id, display_name, tier, role, created_at")
+            .select("*")
             .execute()
         )
         if result and result.data:
             profiles = result.data
     except Exception:
         logger.exception("Failed to query profiles for user list")
-        return []
+        raise HTTPException(status_code=500, detail="Failed to fetch user list")
 
     user_ids = [p["id"] for p in profiles]
 
@@ -248,6 +253,26 @@ async def update_user_tier(
     if not result.data:
         raise HTTPException(status_code=404, detail="User not found")
     logger.info("Tier updated for user_id=%s → tier=%s", user_id, body.tier)
+    return result.data[0]
+
+
+@router.patch("/users/{user_id}/role")
+async def update_user_role(
+    user_id: str,
+    body: RoleUpdate,
+    _: str = Depends(require_superadmin),
+) -> dict:
+    """Update the RBAC role for a given user. Requires superadmin."""
+    sb = get_supabase()
+    result = (
+        sb.table("profiles")
+        .update({"role": body.role})
+        .eq("id", user_id)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="User not found")
+    logger.info("Role updated for user_id=%s → role=%s", user_id, body.role)
     return result.data[0]
 
 

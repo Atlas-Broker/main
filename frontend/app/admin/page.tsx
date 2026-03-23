@@ -583,8 +583,12 @@ export default function AdminDashboard() {
   const loadUsers = useCallback(async () => {
     try {
       const res = await fetchWithAuth(`${API}/v1/admin/users`);
-      if (res?.ok) setUsers(await res.json());
-    } catch { /* non-fatal */ } finally { setUsersLoading(false); }
+      if (res?.ok) {
+        setUsers(await res.json());
+      } else {
+        console.error("loadUsers failed:", res?.status, await res?.text());
+      }
+    } catch (err) { console.error("loadUsers error:", err); } finally { setUsersLoading(false); }
   }, []);
 
   const loadSystemStatus = useCallback(async () => {
