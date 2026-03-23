@@ -13,19 +13,10 @@ const MODES = [
     featured: false,
   },
   {
-    id: "conditional",
-    icon: "◑",
-    label: "Conditional",
-    tier: "Pro",
-    desc: "Atlas proposes each trade and shows its reasoning. You approve with one tap.",
-    accent: "var(--brand)",
-    featured: true,
-  },
-  {
     id: "autonomous",
     icon: "●",
     label: "Autonomous",
-    tier: "Premium",
+    tier: "Max",
     desc: "Atlas executes automatically within your risk limits. 5-minute override window on every order.",
     accent: "var(--bull)",
     featured: false,
@@ -181,7 +172,7 @@ export default function LandingPage() {
           .hp-hero-grid     { flex-direction:row; align-items:flex-start; gap:64px; }
           .hp-hero-left     { flex:0 0 52%; }
           .hp-hero-right    { flex:1; }
-          .hp-modes-grid    { grid-template-columns:repeat(3,1fr); }
+          .hp-modes-grid    { grid-template-columns:repeat(2,1fr); }
           .hp-features-grid { grid-template-columns:repeat(3,1fr); }
         }
 
@@ -382,7 +373,7 @@ export default function LandingPage() {
                   color:"var(--ghost)", marginBottom:10,
                 }}>Execution mode</div>
                 <div style={{ display:"flex", gap:6 }}>
-                  {["Advisory","Conditional","Autonomous"].map((m, i) => (
+                  {["Advisory","Autonomous"].map((m, i) => (
                     <div key={m} style={{
                       flex:1, padding:"7px 4px", borderRadius:4, textAlign:"center",
                       fontFamily:"var(--font-body)", fontSize:12, fontWeight: i===1 ? 700 : 500,
