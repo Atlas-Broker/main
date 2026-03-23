@@ -47,4 +47,19 @@ describe("BillingToggle", () => {
       expect(link).toHaveAttribute("href", "/login");
     });
   });
+
+  it("sets aria-pressed correctly on toggle buttons", () => {
+    render(<BillingToggle />);
+    const annualBtn = screen.getByText("Annual");
+    const monthlyBtn = screen.getByText("Monthly");
+
+    // Default: annual active
+    expect(annualBtn).toHaveAttribute("aria-pressed", "true");
+    expect(monthlyBtn).toHaveAttribute("aria-pressed", "false");
+
+    // After clicking Monthly
+    fireEvent.click(monthlyBtn);
+    expect(monthlyBtn).toHaveAttribute("aria-pressed", "true");
+    expect(annualBtn).toHaveAttribute("aria-pressed", "false");
+  });
 });
