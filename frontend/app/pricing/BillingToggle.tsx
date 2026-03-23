@@ -10,6 +10,11 @@ const PRICES = {
 
 type Billing = keyof typeof PRICES;
 
+const LABEL_TO_BILLING: Record<"Monthly" | "Annual", Billing> = {
+  Monthly: "monthly",
+  Annual: "annual",
+};
+
 export function BillingToggle() {
   const [billing, setBilling] = useState<Billing>("annual");
   const p = PRICES[billing];
@@ -22,15 +27,17 @@ export function BillingToggle() {
         gap: 12, marginBottom: 40,
       }}>
         <div style={{
-          display: "flex", background: "#162033", borderRadius: 24,
+          display: "flex", background: "var(--elevated)", borderRadius: 24,
           padding: 4, border: "1px solid var(--line)", gap: 2,
         }}>
           {(["Monthly", "Annual"] as const).map((label) => {
-            const val: Billing = label.toLowerCase() as Billing;
+            const val = LABEL_TO_BILLING[label];
             const active = billing === val;
             return (
               <button
                 key={label}
+                type="button"
+                aria-pressed={active}
                 onClick={() => setBilling(val)}
                 style={{
                   padding: "6px 18px", borderRadius: 20,
@@ -59,8 +66,8 @@ export function BillingToggle() {
       </div>
 
       {/* ── Pricing cards ── */}
-      <div style={{
-        display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
+      <div className="pr-cards-wrap" style={{
+        display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
         maxWidth: 780, margin: "0 auto",
       }}>
 
@@ -94,7 +101,7 @@ export function BillingToggle() {
 
         {/* Pro */}
         <div style={{
-          background: "#162033",
+          background: "var(--elevated)",
           border: "1px solid #7B61FF",
           borderRadius: "14px 14px 0 0",
           padding: "28px 24px 24px",
