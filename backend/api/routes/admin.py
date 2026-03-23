@@ -138,7 +138,7 @@ async def get_stats(_: str = Depends(require_admin)) -> dict:
 
     try:
         sb = get_supabase()
-        profiles_result = sb.table("profiles").select("tier").execute()
+        profiles_result = sb.table("profiles").select("id, tier").execute()
         if profiles_result and profiles_result.data:
             rows = profiles_result.data
             total_users = len(rows)
