@@ -16,10 +16,13 @@ Next.js 16 dashboard for the Atlas AI trading assistant. Deployed on Vercel (UAT
 ## Pages
 
 ### `/` — Landing
-Mobile-first marketing page. Ticker tape animation, execution mode explainer (advisory / conditional / autonomous), CTA to sign in.
+Mobile-first marketing page. Ticker tape animation, execution mode explainer (Advisory vs Autonomous), feature callouts, CTA to sign in. Signal preview panel visible on desktop only.
+
+### `/pricing` — Pricing
+Server component showing Free/Pro/Max tiers with annual/monthly toggle. Feature comparison table with 4 sections: Signal Engine, Portfolio, Broker & Integrations, Support. Annual billing includes 20% discount badge. All CTA buttons link to `/login`.
 
 ### `/login` — Authentication
-Light-theme, mobile-first Clerk sign-in. Desktop: split-screen — left panel shows an animated signal preview table; right panel has the Clerk `<SignIn />` widget. Mobile: single centered column. Google OAuth only; the email/password form and divider are hidden via Clerk appearance API. `position: fixed; inset: 0` on the root element bypasses Next.js App Router's height propagation issues.
+Light-theme, mobile-first Clerk sign-in. Desktop: split-screen — left panel shows an animated signal preview table showing 2 modes (Advisory/Autonomous); right panel has the Clerk `<SignIn />` widget. Mobile: single centered column. Google OAuth only; the email/password form and divider are hidden via Clerk appearance API. `position: fixed; inset: 0` on the root element bypasses Next.js App Router's height propagation issues.
 
 ### `/dashboard` — User Dashboard
 Auth-gated. Five-tab layout. Calls live backend APIs on mount. All requests include a Clerk JWT via `Authorization: Bearer <token>`.

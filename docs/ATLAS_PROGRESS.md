@@ -1,6 +1,6 @@
 # Atlas — Progress Log
 
-> What has been built and validated as of 19 March 2026.
+> What has been built and validated as of 23 March 2026.
 
 ---
 
@@ -34,13 +34,12 @@ Agents implemented:
 
 ## Execution Boundary Controller
 
-**Status: All three modes operational, override window wired.**
+**Status: Both modes operational, override window wired.**
 
 | Mode | Confidence Threshold | Behaviour |
 |------|---------------------|-----------|
 | Advisory | N/A | Returns signal only — human executes manually |
-| Conditional | ≥ 60% | Marks signal `awaiting_approval` — human must approve |
-| Autonomous | ≥ 65% | Executes immediately — user has override window to cancel |
+| Autonomous | ≥ 65% | Executes immediately — user has 5-minute override window to cancel |
 
 The override window calls `POST /v1/trades/{id}/override`, which:
 1. Cancels the Alpaca order via `broker.cancel_order(order_id)`
@@ -217,8 +216,9 @@ Three views in the 5th dashboard tab:
 **Status: Fully functional, auth-gated, mobile-first.**
 
 Pages:
-- `/` — Mobile-first marketing landing page. Conveys Atlas's value proposition: AI-driven signals, configurable execution authority, full reasoning transparency. Ticker tape, mode explainer, CTA.
-- `/login` — Light-theme, mobile-first Clerk sign-in. Desktop: split-screen (signal table left, Clerk widget right). Mobile: single centered column. Google OAuth only — email/password form hidden. `position: fixed; inset: 0` bypasses Next.js App Router height propagation.
+- `/` — Mobile-first marketing landing page. Conveys Atlas's value proposition: AI-driven signals, configurable execution authority (Advisory vs Autonomous), full reasoning transparency. Ticker tape, mode explainer, 4-stat proof grid, feature cards, CTA.
+- `/pricing` — Server component pricing page. Hero section, annual/monthly toggle, Free/Pro/Max pricing cards, 4-section feature comparison table (Signal Engine, Portfolio, Broker & Integrations, Support). All CTAs link to `/login`.
+- `/login` — Light-theme, mobile-first Clerk sign-in. Desktop: split-screen (signal table left showing 2 modes, Clerk widget right). Mobile: single centered column. Google OAuth only — email/password form hidden. `position: fixed; inset: 0` bypasses Next.js App Router height propagation.
 - `/dashboard` — 5-tab auth-gated dashboard. Portfolio overview, signal feed with approve/reject, positions table, backtest job management, settings with mode persistence.
 - `/admin` — Manual pipeline trigger, system status, env display.
 - `/design-system` — Living component library: colour tokens, typography, spacing, all button/badge/card variants, signal rows, motion specs, responsive breakpoints.
@@ -268,4 +268,20 @@ Schema deployed 13 March 2026. All 6 tables live with RLS. Backend reads and wri
 
 ---
 
-*Last updated: 19 March 2026*
+## Pricing Page
+
+**Status: Fully operational.**
+
+Server component at `/pricing` with:
+- Hero section ("Invest with intelligence")
+- BillingToggle client island with annual/monthly toggle and "Save 20%" badge
+- Free/Pro/Max pricing cards with annual/monthly pricing and cost estimates
+- Feature comparison table with 4 sections: Signal Engine, Portfolio, Broker & Integrations, Support
+- All pricing cards link to `/login`
+
+Pricing structure:
+- Free: $0, 5-ticker limit, Advisory mode only
+- Pro: $39/month (annual) or $49/month (monthly) — unlimited tickers, Autonomous mode, backtesting, decision log
+- Max: $119/month (annual) or $149/month (monthly) — Pro features plus IBKR integration and onboarding call
+
+*Last updated: 23 March 2026*

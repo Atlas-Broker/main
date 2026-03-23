@@ -12,11 +12,10 @@ Most retail AI trading tools are black boxes. Atlas shows its reasoning at every
 
 | Mode | Behaviour |
 |------|-----------|
-| **Advisory** | AI generates a signal — you execute manually |
-| **Conditional** | AI proposes a trade — you approve before execution |
-| **Autonomous** | AI executes automatically — you have an override window |
+| **Advisory** | AI generates signals — you execute manually. Full reasoning on every signal. |
+| **Autonomous** | AI executes automatically within your risk limits. 5-minute override window on every trade. |
 
-The trading logic is identical across all three modes. Only the execution authority changes.
+The trading logic is identical across both modes. Only the execution authority changes.
 
 ## What's Built
 
@@ -50,6 +49,7 @@ Login at `/login` via Clerk. The backend validates every request with `ClerkAuth
 
 | Endpoint | Status | Description |
 |----------|--------|-------------|
+| `GET /health` | ✅ Live | Health check — returns status, version, env |
 | `POST /v1/pipeline/run` | ✅ Live | Full pipeline execution |
 | `GET /v1/portfolio` | ✅ Live | Real Alpaca account data |
 | `GET /v1/signals` | ✅ Live | Recent signals from MongoDB traces |
@@ -76,7 +76,7 @@ Metrics computed: cumulative return, Sharpe ratio (annualised, risk-free=0), max
 
 ### Frontend Dashboard — authenticated
 
-Five pages: landing (`/`), login (`/login`), user dashboard (`/dashboard`, 5 tabs), admin panel (`/admin`), and design system (`/design-system`). Auth gated via Clerk. Light theme throughout; manual dark mode toggle. Login is mobile-first with Google OAuth only.
+Six pages: landing (`/`), pricing (`/pricing`), login (`/login`), user dashboard (`/dashboard`, 5 tabs), admin panel (`/admin`), and design system (`/design-system`). Auth gated via Clerk. Light theme throughout; manual dark mode toggle. Login is mobile-first with Google OAuth only. Pricing page shows Free/Pro/Max tiers with annual/monthly toggle and feature comparison table.
 
 ### Databases — both active
 

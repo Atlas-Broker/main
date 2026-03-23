@@ -12,7 +12,7 @@ Relational data with Row Level Security enforced on every table. Every table has
 
 | Table | Description | Status |
 |-------|-------------|--------|
-| `profiles` | One row per user — stores `boundary_mode` preference (`advisory`, `conditional`, `autonomous`) | ✅ Active |
+| `profiles` | One row per user — stores `boundary_mode` preference (`advisory`, `autonomous`) | ✅ Active |
 | `portfolios` | Paper portfolio record — tracks cash balance | ✅ Active |
 | `positions` | Open positions — ticker, shares, average cost. Synced from Alpaca on trade execution | ✅ Active |
 | `trades` | Trade history — action, quantity, price, execution status, boundary mode used | ✅ Active |

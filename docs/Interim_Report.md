@@ -141,15 +141,14 @@ All three analyst agents execute in parallel via LangGraph's fan-out mechanism. 
 
 ### 3.3 Execution Boundary Controller
 
-The EBC sits between the Portfolio Decision Agent and the broker adapter. Its behaviour is governed by the user's configured mode, persisted in the `profiles.boundary_mode` column.
+The EBC sits between the Portfolio Decision Agent and the broker adapter. Its behaviour is governed by the user's configured mode, persisted in the `profiles.boundary_mode` column. Two modes are implemented and deployed:
 
 | Mode | Behaviour | Threshold | Override Window |
 |------|-----------|-----------|-----------------|
 | **Advisory** | AI generates signals. All signals queue for human review. No automated execution. | N/A | N/A |
-| **Conditional** | AI proposes a trade. Signal is marked `awaiting_approval`. Human must explicitly approve before the order is placed via the broker. | ≥ 60% confidence | N/A |
 | **Autonomous** | AI executes automatically when confidence exceeds threshold. Human retains a post-execution override window to cancel the order, logged to the `override_log` audit table. | ≥ 65% confidence | 5 minutes |
 
-The trading logic is identical across all three modes. Only the execution authority changes.
+The trading logic is identical across both modes. Only the execution authority changes.
 
 ### 3.4 Backtesting Engine
 
@@ -171,12 +170,13 @@ Key design decisions: `as_of_date` parameter constrains yfinance OHLCV and funda
 
 ### 4.1 Build Progress
 
-The system is ahead of the original project timeline. Broker integration (originally Phase 4) and backtesting (Phase 3) were both completed within Phase 2. As of the reporting date:
+The system is ahead of the original project timeline. Broker integration (originally Phase 4) and backtesting (Phase 3) were both completed within Phase 2. A pricing page was added in Phase 2. As of the reporting date:
 
-- **11 API endpoints live** — pipeline execution, signal management (approve/reject), portfolio data, trade history, override handling, and full backtesting CRUD. No stubs remain.
+- **12 API endpoints live** — health check, pipeline execution, signal management (approve/reject), portfolio data, trade history, override handling, and full backtesting CRUD. No stubs remain.
 - **Authentication integrated end-to-end** — Clerk JWT verification on every route, AuthSync component syncs Clerk users to Supabase on sign-in.
 - **5-tab dashboard** — Overview, Signals (with approve/reject), Positions, Backtest (job management + equity curve), Settings (mode persistence).
 - **Backtesting engine shipped** — async runner, real Gemini pipeline replay, virtual portfolio, metrics computation (Sharpe, drawdown, win rate).
+- **Pricing page deployed** — Server component with Free/Pro/Max tiers, annual/monthly toggle, feature comparison table. Free tier limited to Advisory mode; Pro/Max unlock Autonomous trading.
 
 ### 4.2 Pipeline Execution Flow
 
@@ -257,7 +257,7 @@ Where α, β, γ, δ are weighting coefficients determined empirically from UAT 
 
 ### 6.4 Three Experimental Axes
 
-**Axis 1 — EBC Mode** (primary): Advisory vs. Conditional vs. Autonomous. Central research axis. Hypothesis: an intermediate mode (Conditional) achieves higher composite score than either extreme.
+**Axis 1 — EBC Mode** (primary): Advisory vs. Autonomous. Central research axis. Hypothesis: a carefully designed autonomous mode with an override window achieves comparable performance to advisory mode while reducing friction.
 
 **Axis 2 — Orchestration Architecture**: v2 parallel fan-out (current) vs. v3 Adaptive Conductor (planned). The v3 conductor selectively spawns analysts based on market context, reducing latency and improving signal quality when data quality is uneven.
 
@@ -278,7 +278,7 @@ As of the reporting date, the backtesting engine is fully operational and initia
 
 ### 7.2 Advisory Mode as Baseline
 
-Advisory mode backtests establish a signal quality baseline. In Advisory mode, all signals are recorded but no trades are executed (`total_trades = 0`). This produces a clean dataset of AI-generated signals against known subsequent price movements, allowing measurement of directional accuracy independent of position sizing or execution timing effects.
+Advisory mode backtests establish a signal quality baseline. In Advisory mode, all signals are recorded but no trades are executed (`total_trades = 0`). This produces a clean dataset of AI-generated signals against known subsequent price movements, allowing measurement of directional accuracy independent of position sizing or execution timing effects. Both backtest and live pipeline operations track this metric as a key component of AI decision quality evaluation.
 
 ### 7.3 Live Pipeline Operation
 
@@ -318,6 +318,12 @@ The live agent pipeline has been operating in paper trading mode via the schedul
 **Philosophy Skills Implementation**: Apply named investment philosophy overlays (Value/Momentum/Macro/Balanced) at the analyst prompt level. Creates the third experimental axis.
 
 **Circuit Breaker for Autonomous Mode**: Pause auto-execution on consecutive losses or high drawdown. Notification via Telegram or email on trigger.
+
+**Pricing Tier Integration**: Wire pricing page to Stripe/billing backend. Enforce Free tier limits (5-ticker max, Advisory mode only) at API level. Pro/Max unlock Autonomous mode and unlimited tickers.
+
+**OAuth Broker Connect**: One-click authentication flow for Interactive Brokers. Replaces manual API key entry with OAuth login.
+
+**Scheduler Production Hardening**: Extend scheduler to support multi-user cron runs (user per job, not single SCHEDULER_USER_ID). Integrate with pricing tiers.
 
 **User Acceptance Testing (Phase 5)**: UAT with supervisors and recruited retail investors. Results feed into the qualitative dimension of the composite Optimal Boundary Score.
 
