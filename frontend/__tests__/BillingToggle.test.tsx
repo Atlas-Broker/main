@@ -48,6 +48,19 @@ describe("BillingToggle", () => {
     });
   });
 
+  it("shows annual billing totals in annual mode", () => {
+    render(<BillingToggle />);
+    expect(screen.getByText("$468 billed annually")).toBeInTheDocument();
+    expect(screen.getByText("$1,428 billed annually")).toBeInTheDocument();
+  });
+
+  it("shows save-20% prompt in monthly mode", () => {
+    render(<BillingToggle />);
+    fireEvent.click(screen.getByText("Monthly"));
+    const prompts = screen.getAllByText("Switch to annual to save 20%");
+    expect(prompts).toHaveLength(2);
+  });
+
   it("sets aria-pressed correctly on toggle buttons", () => {
     render(<BillingToggle />);
     const annualBtn = screen.getByText("Annual");

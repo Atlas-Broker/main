@@ -56,7 +56,7 @@ export function BillingToggle() {
                   padding: "6px 18px", borderRadius: 20,
                   border: "none", cursor: "pointer",
                   fontFamily: "var(--font-body)", fontSize: 13, fontWeight: 600,
-                  background: active ? "#7B61FF" : "transparent",
+                  background: active ? "var(--tier-pro)" : "transparent",
                   color: active ? "#fff" : "var(--ghost)",
                   transition: "background 0.15s, color 0.15s",
                 }}
@@ -115,19 +115,19 @@ export function BillingToggle() {
         {/* Pro */}
         <div style={{
           background: "var(--elevated)",
-          border: "1px solid #7B61FF",
+          border: "1px solid var(--tier-pro)",
           borderRadius: "14px 14px 0 0",
           padding: "28px 24px 24px",
           position: "relative",
           transform: "translateY(-6px)",
           overflow: "visible",
-          boxShadow: "0 0 0 1px #7B61FF, 0 8px 32px rgba(123,97,255,0.15)",
+          boxShadow: "0 0 0 1px var(--tier-pro), 0 8px 32px rgba(123,97,255,0.15)",
           zIndex: 1,
         }}>
           <div style={{
             position: "absolute", top: -13, left: "50%",
             transform: "translateX(-50%)",
-            background: "#7B61FF", color: "#fff",
+            background: "var(--tier-pro)", color: "#fff",
             fontSize: 10, fontWeight: 700, letterSpacing: "0.8px",
             textTransform: "uppercase", padding: "4px 14px",
             borderRadius: "0 0 8px 8px", whiteSpace: "nowrap",
@@ -136,7 +136,7 @@ export function BillingToggle() {
           </div>
           <div style={{
             fontSize: 11, fontWeight: 700, textTransform: "uppercase",
-            letterSpacing: "1.5px", color: "#7B61FF", marginBottom: 14,
+            letterSpacing: "1.5px", color: "var(--tier-pro)", marginBottom: 14,
           }}>Pro</div>
           <div style={{
             fontSize: 34, fontWeight: 800, letterSpacing: "-1.5px",
@@ -152,7 +152,7 @@ export function BillingToggle() {
           <Link href="/login" style={{
             display: "block", width: "100%", padding: "10px 16px",
             borderRadius: 8, textAlign: "center",
-            background: "#7B61FF", color: "#fff",
+            background: "var(--tier-pro)", color: "#fff",
             fontSize: 13, fontWeight: 600, textDecoration: "none",
             boxShadow: "0 2px 12px rgba(123,97,255,0.3)",
             boxSizing: "border-box",
@@ -170,7 +170,7 @@ export function BillingToggle() {
         }}>
           <div style={{
             fontSize: 11, fontWeight: 700, textTransform: "uppercase",
-            letterSpacing: "1.5px", color: "#F5A623", marginBottom: 14,
+            letterSpacing: "1.5px", color: "var(--tier-max)", marginBottom: 14,
           }}>Max</div>
           <div style={{
             fontSize: 34, fontWeight: 800, letterSpacing: "-1.5px",
@@ -186,7 +186,7 @@ export function BillingToggle() {
           <Link href="/login" style={{
             display: "block", width: "100%", padding: "10px 16px",
             borderRadius: 8, textAlign: "center",
-            background: "#F5A623", color: "#0A0E1A",
+            background: "var(--tier-max)", color: "var(--bg)",
             fontSize: 13, fontWeight: 600, textDecoration: "none",
             boxSizing: "border-box",
           }}>

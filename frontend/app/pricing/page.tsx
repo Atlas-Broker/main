@@ -58,10 +58,10 @@ const SECTIONS: Section[] = [
 
 function CellValue({ value, col }: { value: Cell; col: "free" | "pro" | "max" }) {
   const color =
-    value === "✓" ? (col === "free" ? "var(--bull)" : col === "pro" ? "#7B61FF" : "#F5A623") :
+    value === "✓" ? (col === "free" ? "var(--bull)" : col === "pro" ? "var(--tier-pro)" : "var(--tier-max)") :
     value === "—" ? "#2a3a50" :
-    col === "pro"  ? "#7B61FF" :
-    col === "max"  ? "#F5A623" :
+    col === "pro"  ? "var(--tier-pro)" :
+    col === "max"  ? "var(--tier-max)" :
     "var(--ghost)";
 
   return (
@@ -95,7 +95,7 @@ export default function PricingPage() {
         <section style={{ padding: "72px 20px 0", textAlign: "center" }}>
           <div style={{
             fontSize: 11, letterSpacing: "2px", textTransform: "uppercase",
-            color: "#7B61FF", marginBottom: 14, fontWeight: 600,
+            color: "var(--tier-pro)", marginBottom: 14, fontWeight: 600,
             fontFamily: "var(--font-body)",
           }}>
             Simple, transparent pricing
@@ -146,7 +146,7 @@ export default function PricingPage() {
                         width: "18%", padding: "14px 16px", textAlign: "center",
                         fontSize: 11, fontWeight: 700, textTransform: "uppercase",
                         letterSpacing: "1px",
-                        color: tier === "Pro" ? "#7B61FF" : tier === "Max" ? "#F5A623" : "var(--ghost)",
+                        color: tier === "Pro" ? "var(--tier-pro)" : tier === "Max" ? "var(--tier-max)" : "var(--ghost)",
                         background: tier === "Pro" ? "rgba(123,97,255,0.06)" : "var(--surface)",
                       }}
                     >{tier}</th>
