@@ -257,8 +257,8 @@ function UsersPage({ users, usersLoading, isSuperadmin, onAction, onRefresh }: {
   useEffect(() => {
     if (!openMenu) return;
     const close = () => setOpenMenu(null);
-    document.addEventListener("click", close, { capture: true, once: true });
-    return () => document.removeEventListener("click", close, { capture: true });
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
   }, [openMenu]);
 
   const filtered = users.filter((u) => {
@@ -377,7 +377,7 @@ function UsersPage({ users, usersLoading, isSuperadmin, onAction, onRefresh }: {
                           ···
                         </button>
                         {openMenu?.id === u.id && (
-                          <div style={{ position: "fixed", top: openMenu.top, right: openMenu.right, zIndex: 1000, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.3)", minWidth: 180, padding: "4px 0" }}>
+                          <div onClick={(e) => e.stopPropagation()} style={{ position: "fixed", top: openMenu.top, right: openMenu.right, zIndex: 1000, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.3)", minWidth: 180, padding: "4px 0" }}>
                             <div style={{ padding: "6px 12px 4px", color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-jb)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Change Tier</div>
                             {(["free", "pro", "max"] as const).filter(t => t !== u.tier).map(t => (
                               <button key={t} onClick={() => handleTierChange(u, t)} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: "transparent", border: "none", color: "var(--ink)", fontSize: 13, fontFamily: "var(--font-jb)", cursor: "pointer" }}>
