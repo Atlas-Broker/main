@@ -251,7 +251,15 @@ function UsersPage({ users, usersLoading, isSuperadmin, onAction, onRefresh }: {
 }) {
   const [search, setSearch] = useState("");
   const [tierFilter, setTierFilter] = useState<"all" | "free" | "pro" | "max">("all");
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [openMenu, setOpenMenu] = useState<{ id: string; top: number; right: number } | null>(null);
+  const openMenuId = openMenu?.id ?? null;
+
+  useEffect(() => {
+    if (!openMenu) return;
+    const close = () => setOpenMenu(null);
+    document.addEventListener("click", close, { capture: true, once: true });
+    return () => document.removeEventListener("click", close, { capture: true });
+  }, [openMenu]);
 
   const filtered = users.filter((u) => {
     const matchSearch = !search || u.email.toLowerCase().includes(search.toLowerCase()) || (u.display_name ?? "").toLowerCase().includes(search.toLowerCase());
@@ -260,7 +268,7 @@ function UsersPage({ users, usersLoading, isSuperadmin, onAction, onRefresh }: {
   });
 
   function handleTierChange(user: AdminUser, tier: "free" | "pro" | "max") {
-    setOpenMenuId(null);
+    setOpenMenu(null);
     onAction({
       title: `Change tier for ${user.display_name ?? user.email}`,
       body: `You are changing this user's tier from ${user.tier.toUpperCase()} to ${tier.toUpperCase()}. This takes effect immediately.`,
@@ -276,7 +284,7 @@ function UsersPage({ users, usersLoading, isSuperadmin, onAction, onRefresh }: {
   }
 
   function handleRoleChange(user: AdminUser, role: "user" | "admin" | "superadmin") {
-    setOpenMenuId(null);
+    setOpenMenu(null);
     onAction({
       title: `Change role for ${user.display_name ?? user.email}`,
       body: `You are changing this user's role from ${user.role.toUpperCase()} to ${role.toUpperCase()}. This takes effect immediately.`,
@@ -357,15 +365,19 @@ function UsersPage({ users, usersLoading, isSuperadmin, onAction, onRefresh }: {
                       </span>
                     </td>
                     {isSuperadmin && (
-                      <td style={{ padding: "12px 16px", position: "relative" }}>
+                      <td style={{ padding: "12px 16px" }}>
                         <button
-                          onClick={() => setOpenMenuId(openMenuId === u.id ? null : u.id)}
+                          onClick={(e) => {
+                            if (openMenu?.id === u.id) { setOpenMenu(null); return; }
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            setOpenMenu({ id: u.id, top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                          }}
                           style={{ background: "transparent", border: "1px solid var(--line)", borderRadius: 5, padding: "4px 10px", color: "var(--ghost)", fontSize: 12, cursor: "pointer" }}
                         >
                           ···
                         </button>
-                        {openMenuId === u.id && (
-                          <div style={{ position: "absolute", right: 16, top: "100%", zIndex: 50, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.3)", minWidth: 180, padding: "4px 0" }}>
+                        {openMenu?.id === u.id && (
+                          <div style={{ position: "fixed", top: openMenu.top, right: openMenu.right, zIndex: 1000, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.3)", minWidth: 180, padding: "4px 0" }}>
                             <div style={{ padding: "6px 12px 4px", color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-jb)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Change Tier</div>
                             {(["free", "pro", "max"] as const).filter(t => t !== u.tier).map(t => (
                               <button key={t} onClick={() => handleTierChange(u, t)} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: "transparent", border: "none", color: "var(--ink)", fontSize: 13, fontFamily: "var(--font-jb)", cursor: "pointer" }}>
