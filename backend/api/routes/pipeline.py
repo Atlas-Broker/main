@@ -4,14 +4,13 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 
+from agents.philosophy import VALID_PHILOSOPHY_MODES
 from api.dependencies import get_current_user
 from db.supabase import get_user_philosophy
 from services.pipeline_service import run_pipeline_with_ebc
 
 router = APIRouter(prefix="/v1", tags=["pipeline"])
 logger = logging.getLogger(__name__)
-
-_VALID_PHILOSOPHY_MODES = frozenset({"balanced", "buffett", "soros", "lynch"})
 
 
 class PipelineRequest(BaseModel):
@@ -22,10 +21,10 @@ class PipelineRequest(BaseModel):
     @field_validator("philosophy_mode")
     @classmethod
     def validate_philosophy_mode(cls, v: str | None) -> str | None:
-        if v is not None and v not in _VALID_PHILOSOPHY_MODES:
+        if v is not None and v not in VALID_PHILOSOPHY_MODES:
             raise ValueError(
                 f"Invalid philosophy_mode '{v}'. "
-                f"Must be one of: {sorted(_VALID_PHILOSOPHY_MODES)} or null."
+                f"Must be one of: {sorted(VALID_PHILOSOPHY_MODES)} or null."
             )
         return v
 

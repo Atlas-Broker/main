@@ -1,7 +1,7 @@
 # backend/api/routes/profile.py
 """
 GET  /v1/profile  — return the current user's profile
-PATCH /v1/profile — update boundary_mode or display_name
+PATCH /v1/profile — update boundary_mode, display_name, or investment_philosophy
 """
 import logging
 from typing import Literal

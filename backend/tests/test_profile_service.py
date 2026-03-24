@@ -134,7 +134,7 @@ def test_get_profile_defaults_investment_philosophy_when_missing():
     importlib.reload(profile_service)
     with patch("services.profile_service.get_supabase", return_value=mock_sb):
         result = profile_service.get_profile("u5")
-    assert result.get("investment_philosophy", "balanced") == "balanced"
+    assert result["investment_philosophy"] == "balanced"
 
 
 def test_update_profile_saves_investment_philosophy():

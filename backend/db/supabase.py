@@ -3,8 +3,11 @@ Supabase service-key client singleton.
 Uses the service key — RLS is bypassed.
 Every query on user data MUST include .eq("user_id", user_id).
 """
+import logging
 import os
 from supabase import Client, create_client
+
+logger = logging.getLogger(__name__)
 
 _client: Client | None = None
 
@@ -51,7 +54,7 @@ def get_user_philosophy(user_id: str) -> str:
         if result and result.data:
             return result.data.get("investment_philosophy", "balanced") or "balanced"
     except Exception:
-        pass
+        logger.exception("Failed to fetch investment_philosophy for user_id=%s", user_id)
     return "balanced"
 
 

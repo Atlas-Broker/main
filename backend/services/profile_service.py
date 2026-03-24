@@ -15,6 +15,7 @@ _DEFAULTS = {
     "display_name": None,
     "onboarding_completed": False,
     "tier": "free",
+    "investment_philosophy": "balanced",
 }
 
 
@@ -50,7 +51,11 @@ def get_profile(user_id: str) -> dict:
     )
     if result and result.data:
         data = result.data
-        return {**data, "tier": data.get("tier", "free")}
+        return {
+            **data,
+            "tier": data.get("tier", "free"),
+            "investment_philosophy": data.get("investment_philosophy", "balanced"),
+        }
     logger.warning(
         "Profile not found for user_id %r — Clerk webhook may have missed this user. "
         "Auto-creating with advisory defaults.",
