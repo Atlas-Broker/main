@@ -37,6 +37,24 @@ def get_user_tier(user_id: str) -> str:
     return "free"
 
 
+def get_user_philosophy(user_id: str) -> str:
+    """Return the user's investment_philosophy. Defaults to 'balanced' on error."""
+    try:
+        sb = get_supabase()
+        result = (
+            sb.table("profiles")
+            .select("investment_philosophy")
+            .eq("id", user_id)
+            .maybe_single()
+            .execute()
+        )
+        if result and result.data:
+            return result.data.get("investment_philosophy", "balanced") or "balanced"
+    except Exception:
+        pass
+    return "balanced"
+
+
 def get_user_role(user_id: str) -> str:
     """
     Return the RBAC role for the given user_id.

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 class ProfileUpdate(BaseModel):
     boundary_mode: Literal["advisory", "autonomous_guardrail", "autonomous"] | None = None
     display_name: str | None = None
+    investment_philosophy: Literal["balanced", "buffett", "soros", "lynch"] | None = None
 
 
 @router.get("/profile/me")
@@ -41,7 +42,7 @@ def patch_profile(body: ProfileUpdate, user_id: str = Depends(get_current_user))
     if not updates:
         raise HTTPException(
             status_code=422,
-            detail="No valid fields provided. Writable fields: boundary_mode, display_name.",
+            detail="No valid fields provided. Writable fields: boundary_mode, display_name, investment_philosophy.",
         )
     update_profile(user_id, updates)
     return get_profile(user_id)

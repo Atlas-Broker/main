@@ -103,3 +103,97 @@ def test_create_profile_upserts_with_correct_fields():
     assert upsert_call["email"] == "u3@example.com"
     assert upsert_call["display_name"] == "User Three"
     assert upsert_call["boundary_mode"] == "advisory"
+
+
+# --- investment_philosophy tests ---
+
+
+def test_get_profile_returns_saved_investment_philosophy():
+    mock_sb = _make_sb_mock(
+        profile_data={
+            "id": "u4",
+            "boundary_mode": "advisory",
+            "display_name": "Dana",
+            "investment_philosophy": "buffett",
+        }
+    )
+    import importlib
+    from services import profile_service
+    importlib.reload(profile_service)
+    with patch("services.profile_service.get_supabase", return_value=mock_sb):
+        result = profile_service.get_profile("u4")
+    assert result["investment_philosophy"] == "buffett"
+
+
+def test_get_profile_defaults_investment_philosophy_when_missing():
+    mock_sb = _make_sb_mock(
+        profile_data={"id": "u5", "boundary_mode": "advisory", "display_name": "Eve"}
+    )
+    import importlib
+    from services import profile_service
+    importlib.reload(profile_service)
+    with patch("services.profile_service.get_supabase", return_value=mock_sb):
+        result = profile_service.get_profile("u5")
+    assert result.get("investment_philosophy", "balanced") == "balanced"
+
+
+def test_update_profile_saves_investment_philosophy():
+    mock_sb = _make_sb_mock(
+        profile_data={
+            "id": "u6",
+            "boundary_mode": "advisory",
+            "display_name": "Frank",
+            "investment_philosophy": "soros",
+        }
+    )
+    import importlib
+    from services import profile_service
+    importlib.reload(profile_service)
+    with patch("services.profile_service.get_supabase", return_value=mock_sb):
+        profile_service.update_profile("u6", {"investment_philosophy": "soros"})
+    update_call = mock_sb.table.return_value.update.call_args[0][0]
+    assert update_call == {"investment_philosophy": "soros"}
+    eq_call = mock_sb.table.return_value.update.return_value.eq.call_args
+    assert eq_call[0] == ("id", "u6")
+
+
+def test_get_user_philosophy_returns_saved_value():
+    mock_sb = MagicMock()
+    result = MagicMock()
+    result.data = {"investment_philosophy": "lynch"}
+    mock_sb.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = result
+    with patch("db.supabase.get_supabase", return_value=mock_sb):
+        import importlib
+        import db.supabase as supabase_mod
+        importlib.reload(supabase_mod)
+        with patch("db.supabase.get_supabase", return_value=mock_sb):
+            philosophy = supabase_mod.get_user_philosophy("u7")
+    assert philosophy == "lynch"
+
+
+def test_get_user_philosophy_defaults_to_balanced_when_row_missing():
+    mock_sb = MagicMock()
+    result = MagicMock()
+    result.data = None
+    mock_sb.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = result
+    with patch("db.supabase.get_supabase", return_value=mock_sb):
+        import importlib
+        import db.supabase as supabase_mod
+        importlib.reload(supabase_mod)
+        with patch("db.supabase.get_supabase", return_value=mock_sb):
+            philosophy = supabase_mod.get_user_philosophy("u_missing")
+    assert philosophy == "balanced"
+
+
+def test_get_user_philosophy_defaults_to_balanced_on_exception():
+    mock_sb = MagicMock()
+    mock_sb.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.side_effect = Exception(
+        "DB error"
+    )
+    with patch("db.supabase.get_supabase", return_value=mock_sb):
+        import importlib
+        import db.supabase as supabase_mod
+        importlib.reload(supabase_mod)
+        with patch("db.supabase.get_supabase", return_value=mock_sb):
+            philosophy = supabase_mod.get_user_philosophy("u_err")
+    assert philosophy == "balanced"

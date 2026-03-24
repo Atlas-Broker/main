@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 
 from api.dependencies import get_current_user
+from db.supabase import get_user_philosophy
 from services.pipeline_service import run_pipeline_with_ebc
 
 router = APIRouter(prefix="/v1", tags=["pipeline"])
@@ -44,12 +45,13 @@ def run_pipeline(req: PipelineRequest, user_id: str = Depends(get_current_user))
     - soros:     George Soros — macro reflexivity, sentiment shifts, contrarian at inflections.
     - lynch:     Peter Lynch — GARP, consumer-lens, identify trends early.
     """
+    resolved_philosophy = req.philosophy_mode or get_user_philosophy(user_id)
     try:
         return run_pipeline_with_ebc(
             ticker=req.ticker,
             boundary_mode=req.boundary_mode,
             user_id=user_id,
-            philosophy_mode=req.philosophy_mode,
+            philosophy_mode=resolved_philosophy,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
