@@ -36,7 +36,7 @@ def get_user_tier(user_id: str) -> str:
         if result and result.data:
             return result.data.get("tier", "free") or "free"
     except Exception:
-        pass
+        logger.exception("Failed to fetch tier for user_id=%s", user_id)
     return "free"
 
 
@@ -76,5 +76,5 @@ def get_user_role(user_id: str) -> str:
         if result and result.data and result.data.get("role"):
             return result.data["role"]
     except Exception:
-        pass
+        logger.exception("Failed to fetch role for user_id=%s", user_id)
     return "user"

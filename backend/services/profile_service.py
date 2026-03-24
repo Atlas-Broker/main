@@ -29,6 +29,7 @@ def create_profile(user_id: str, email: str, display_name: str) -> None:
             "display_name": display_name,
             "boundary_mode": "advisory",
             "onboarding_completed": False,
+            "investment_philosophy": "balanced",
         }).execute()
         logger.info("Profile upserted for user_id=%s", user_id)
     except Exception as exc:
@@ -66,6 +67,7 @@ def get_profile(user_id: str) -> dict:
         "email": "",
         "boundary_mode": "advisory",
         "onboarding_completed": False,
+        "investment_philosophy": "balanced",
     }).execute()
     return {"id": user_id, **_DEFAULTS}
 
