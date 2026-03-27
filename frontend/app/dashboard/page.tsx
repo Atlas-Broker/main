@@ -1110,24 +1110,36 @@ const PHILOSOPHY_OPTIONS: {
   },
 ];
 
-const PHILOSOPHY_LS_KEY = "atlas_philosophy_mode";
-
-export function SettingsTab({ tier }: { tier: "free" | "pro" | "max" }) {
+export function SettingsTab({
+  tier,
+  initialPhilosophy = "balanced",
+  onPhilosophyChange,
+}: {
+  tier: "free" | "pro" | "max";
+  initialPhilosophy?: PhilosophyMode;
+  onPhilosophyChange?: (philosophy: PhilosophyMode) => void;
+}) {
   const { dark, toggle } = useTheme();
   const [mode, setMode] = useState<"advisory" | "autonomous" | "autonomous_guardrail">("advisory");
-  const [philosophy, setPhilosophy] = useState<PhilosophyMode>("balanced");
+  const [philosophy, setPhilosophy] = useState<PhilosophyMode>(initialPhilosophy);
 
-  // Hydrate philosophy from localStorage after mount (avoids SSR mismatch)
+  // Keep local state in sync if the prop changes (e.g. profile loaded after render)
   useEffect(() => {
-    const stored = localStorage.getItem(PHILOSOPHY_LS_KEY) as PhilosophyMode | null;
-    if (stored && PHILOSOPHY_OPTIONS.some((o) => o.id === stored)) {
-      setPhilosophy(stored);
-    }
-  }, []);
+    setPhilosophy(initialPhilosophy);
+  }, [initialPhilosophy]);
 
-  function handlePhilosophyChange(newPhilosophy: PhilosophyMode) {
+  async function handlePhilosophyChange(newPhilosophy: PhilosophyMode) {
     setPhilosophy(newPhilosophy);
-    localStorage.setItem(PHILOSOPHY_LS_KEY, newPhilosophy);
+    onPhilosophyChange?.(newPhilosophy);
+    try {
+      await fetchWithAuth(`${API_URL}/v1/profile`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ investment_philosophy: newPhilosophy }),
+      });
+    } catch (err) {
+      console.error("Failed to save investment philosophy:", err);
+    }
   }
 
   const modes = [
@@ -1403,7 +1415,7 @@ export default function UserDashboard() {
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<UserRole | null>(null);
   const [tier, setTier] = useState<"free" | "pro" | "max">("free");
-  const [philosophy, setPhilosophy] = useState<string>("balanced");
+  const [philosophy, setPhilosophy] = useState<PhilosophyMode>("balanced");
   const [boundaryMode, setBoundaryMode] = useState<string>("advisory");
   const router = useRouter();
   const { isLoaded, isSignedIn } = useAuth();
@@ -1448,12 +1460,8 @@ export default function UserDashboard() {
           setTier(profile.tier as typeof VALID_TIERS[number]);
         }
         if (profile.boundary_mode) setBoundaryMode(profile.boundary_mode);
+        if (profile.investment_philosophy) setPhilosophy(profile.investment_philosophy);
       }
-      // philosophy is stored in localStorage (not yet on the profile API)
-      const storedPhilosophy = typeof window !== "undefined"
-        ? localStorage.getItem("atlas_philosophy") ?? localStorage.getItem("atlas_philosophy_mode")
-        : null;
-      if (storedPhilosophy) setPhilosophy(storedPhilosophy);
 
       // null means network error or backend down — don't redirect, just show empty state
       try {
@@ -1544,7 +1552,13 @@ export default function UserDashboard() {
               />
             )}
             {tab === "signals"   && <SignalsTab signals={signals} loading={loading} />}
-            {tab === "settings"  && <SettingsTab tier={tier} />}
+            {tab === "settings"  && (
+              <SettingsTab
+                tier={tier}
+                initialPhilosophy={philosophy}
+                onPhilosophyChange={(p) => setPhilosophy(p)}
+              />
+            )}
             {tab === "backtest"  && <BacktestTab role={role ?? undefined} />}
           </>
         )}
