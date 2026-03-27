@@ -46,20 +46,21 @@ def run_pipeline_with_ebc(
         signal.action, ticker, signal.confidence * 100,
     )
 
-    # Only initialise broker for autonomous mode — avoids unnecessary DB calls in advisory/conditional
+    # Initialise broker for any autonomous mode (full or guardrail) — avoids unnecessary DB calls in advisory
     broker = None
-    if bmode == BoundaryMode.AUTONOMOUS:
+    if bmode in (BoundaryMode.AUTONOMOUS, BoundaryMode.AUTONOMOUS_GUARDRAIL):
         try:
             from broker.factory import get_broker_for_user
             broker = get_broker_for_user(user_id)
             if broker is None:
                 logger.warning(
-                    "Autonomous mode requested for user %s but no broker connection found. "
+                    "Autonomous mode (%s) requested for user %s but no broker connection found. "
                     "Signal will be skipped.",
+                    boundary_mode,
                     user_id,
                 )
         except Exception as exc:
-            logger.warning("Could not initialise broker for autonomous mode: %s", exc)
+            logger.warning("Could not initialise broker for autonomous mode (%s): %s", boundary_mode, exc)
 
     ebc = EBC(broker=broker)
     result = ebc.execute(signal, mode=boundary_mode)
