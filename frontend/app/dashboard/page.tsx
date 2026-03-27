@@ -7,6 +7,7 @@ import { useAuth } from "@clerk/nextjs";
 import { fetchWithAuth, fetchMyProfile, type UserRole } from "@/lib/api";
 import { AccountDropdown } from "@/components/AccountDropdown";
 import { BacktestTab } from "./BacktestTab";
+import { AgentTab } from "./AgentTab";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -1586,7 +1587,7 @@ export function SettingsTab({
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "portfolio", label: "Portfolio", icon: "◈" },
-  { id: "signals",   label: "Signals",   icon: "◎" },
+  { id: "signals",   label: "Agent",     icon: "◉" },
   { id: "backtest",  label: "Backtest",  icon: "⏮" },
   { id: "settings",  label: "Settings",  icon: "⊙" },
 ];
@@ -1734,7 +1735,7 @@ export default function UserDashboard() {
                 onPositionClick={handlePositionClick}
               />
             )}
-            {tab === "signals"   && <SignalsTab signals={signals} loading={loading} />}
+            {tab === "signals"   && <AgentTab signals={signals} loading={loading} />}
             {tab === "settings"  && (
               <SettingsTab
                 tier={tier}
