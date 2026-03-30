@@ -30,14 +30,29 @@ export function AuthSync() {
         const displayName =
           user!.fullName ?? user!.firstName ?? email.split("@")[0] ?? "";
 
-        // Insert profile for new users; on conflict, refresh identity fields from Clerk
-        // (email + display_name) without overwriting user settings like boundary_mode
-        const { error: insertError } = await supabase
+        // Check if profile exists first, then insert or update identity fields only.
+        // We use select+insert/update to avoid overwriting user settings (boundary_mode, etc.)
+        // on subsequent sign-ins.
+        const { data: existing, error: selectError } = await supabase
           .from("profiles")
-          .insert({ id: userId, email, display_name: displayName, boundary_mode: "advisory", onboarding_completed: false });
+          .select("id")
+          .eq("id", userId)
+          .maybeSingle();
 
-        if (insertError?.code === "23505") {
-          // Row exists — only update the Clerk-sourced identity fields
+        if (selectError) {
+          console.error("[AuthSync] profile lookup failed:", selectError.message);
+          return;
+        }
+
+        if (!existing) {
+          const { error: insertError } = await supabase
+            .from("profiles")
+            .insert({ id: userId, email, display_name: displayName, boundary_mode: "advisory", onboarding_completed: false });
+          if (insertError) {
+            console.error("[AuthSync] profile insert failed:", insertError.message);
+            return;
+          }
+        } else {
           const { error: updateError } = await supabase
             .from("profiles")
             .update({ email, display_name: displayName })
@@ -46,9 +61,6 @@ export function AuthSync() {
             console.error("[AuthSync] profile update failed:", updateError.message);
             return;
           }
-        } else if (insertError) {
-          console.error("[AuthSync] profile insert failed:", insertError.message);
-          return;
         }
 
         // Create portfolio if it doesn't exist
