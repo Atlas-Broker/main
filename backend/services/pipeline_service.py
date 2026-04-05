@@ -62,6 +62,19 @@ def run_pipeline_with_ebc(
         except Exception as exc:
             logger.warning("Could not initialise broker for autonomous mode (%s): %s", boundary_mode, exc)
 
+    # Cancel any stale open orders for this ticker before placing a new one
+    if broker is not None:
+        try:
+            open_orders = broker.get_open_orders(ticker=ticker.upper())
+            for o in open_orders:
+                cancelled = broker.cancel_order(o["order_id"])
+                logger.info(
+                    "[EBC] Cancelled stale %s order %s for %s (was: %s)",
+                    o.get("action"), o["order_id"], ticker, o.get("status"),
+                )
+        except Exception as exc:
+            logger.warning("[EBC] Could not cancel open orders for %s: %s", ticker, exc)
+
     ebc = EBC(broker=broker)
     result = ebc.execute(signal, mode=boundary_mode)
 

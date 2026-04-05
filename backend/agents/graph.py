@@ -87,12 +87,15 @@ async def run_synthesis(state: AgentState) -> dict:
 
 
 async def run_risk(state: AgentState) -> dict:
+    account_info = state.get("account_info") or {}
     result = await asyncio.to_thread(
         risk_agent.assess,
         state["ticker"],
         state["current_price"],
         state["synthesis"]["verdict"],
         state["analyst_outputs"].get("technical", {}),
+        portfolio_value=account_info.get("portfolio_value", 100_000.0),
+        buying_power=account_info.get("buying_power"),
     )
     return {"risk": result}
 
@@ -104,8 +107,10 @@ def _fetch_current_positions(user_id: str) -> dict | None:
     if positions cannot be fetched (broker unavailable, backtest context, etc.).
     """
     try:
-        from broker.factory import get_broker
-        broker = get_broker()
+        from broker.factory import get_broker_for_user
+        broker = get_broker_for_user(user_id)
+        if broker is None:
+            return None
         raw_positions = broker.get_positions()
         return {
             p["ticker"]: {"shares": p["qty"], "avg_cost": p["avg_cost"]}
@@ -114,6 +119,29 @@ def _fetch_current_positions(user_id: str) -> dict | None:
     except Exception as exc:
         logger.debug("Could not fetch current positions for portfolio context: %r", exc)
         return None
+
+
+def _fetch_account_info(user_id: str) -> dict | None:
+    """Fetch live account balance from the user's broker. Returns None if unavailable."""
+    try:
+        from broker.factory import get_broker_for_user
+        broker = get_broker_for_user(user_id)
+        if broker is None:
+            return None
+        acct = broker.get_account()
+        return {
+            "portfolio_value": float(acct.get("portfolio_value", 100_000.0)),
+            "buying_power": float(acct.get("buying_power", 100_000.0)),
+            "equity": float(acct.get("equity", 100_000.0)),
+        }
+    except Exception as exc:
+        logger.debug("Could not fetch account info for risk sizing: %r", exc)
+        return None
+
+
+async def fetch_account(state: AgentState) -> dict:
+    account_info = await asyncio.to_thread(_fetch_account_info, state["user_id"])
+    return {"account_info": account_info}
 
 
 async def run_portfolio(state: AgentState) -> dict:
@@ -157,6 +185,7 @@ def build_graph():
     builder.add_node("fundamental_analyst", run_fundamental)
     builder.add_node("sentiment_analyst", run_sentiment)
     builder.add_node("synthesis", run_synthesis)
+    builder.add_node("fetch_account", fetch_account)
     builder.add_node("risk", run_risk)
     builder.add_node("portfolio", run_portfolio)
     builder.add_node("save_trace", save_trace)
@@ -173,7 +202,8 @@ def build_graph():
     builder.add_edge("sentiment_analyst", "synthesis")
 
     # Sequential tail
-    builder.add_edge("synthesis", "risk")
+    builder.add_edge("synthesis", "fetch_account")
+    builder.add_edge("fetch_account", "risk")
     builder.add_edge("risk", "portfolio")
     builder.add_edge("portfolio", "save_trace")
     builder.add_edge("save_trace", END)

@@ -19,8 +19,9 @@ async def _mock_dispatch(self, request, call_next):
 @pytest.fixture
 def client():
     from main import app
-    from api.dependencies import get_current_user
+    from api.dependencies import get_current_user, require_admin
     app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
+    app.dependency_overrides[require_admin] = lambda: _FAKE_USER
     with patch("api.middleware.auth.ClerkAuthMiddleware.dispatch", _mock_dispatch):
         yield TestClient(app)
     app.dependency_overrides.clear()

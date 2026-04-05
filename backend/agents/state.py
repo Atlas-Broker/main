@@ -32,6 +32,9 @@ class AgentState(TypedDict):
     # Current live positions — fetched before portfolio node, None if unavailable
     current_positions: dict | None
 
+    # Account info — fetched in fetch_account node (after synthesis, before risk)
+    account_info: dict | None   # fetched before risk node; keys: portfolio_value, buying_power, equity
+
     # Sequential stage outputs
     synthesis: dict | None
     risk: dict | None

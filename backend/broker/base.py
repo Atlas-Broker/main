@@ -34,3 +34,10 @@ class BrokerAdapter(Protocol):
     def cancel_order(self, order_id: str) -> bool:
         """Cancels an open order. Returns True if successful."""
         ...
+
+    def get_open_orders(self, ticker: str | None = None) -> list[dict]:
+        """
+        Return open (unfilled/pending) orders, optionally filtered by ticker.
+        Each dict must contain at minimum: {"order_id": str, "ticker": str, "action": str, "status": str}
+        """
+        ...

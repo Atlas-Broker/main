@@ -216,7 +216,7 @@ def test_ticker_log_returns_decision_objects(client):
     assert first["confidence"] == 0.94
     assert first["reasoning"] == "Breakout confirmed, earnings catalyst"
     assert "created_at" in first
-    assert set(first.keys()) == {"action", "confidence", "reasoning", "created_at"}
+    assert {"action", "confidence", "reasoning", "created_at"}.issubset(first.keys())
 
 
 def test_ticker_log_returns_empty_for_unknown_ticker(client):

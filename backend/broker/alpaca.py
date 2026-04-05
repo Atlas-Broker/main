@@ -8,8 +8,8 @@ Set ALPACA_PAPER=true (default) for paper trading.
 import os
 
 from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest
-from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.trading.requests import MarketOrderRequest, GetOrdersRequest
+from alpaca.trading.enums import OrderSide, TimeInForce, QueryOrderStatus
 
 
 class AlpacaAdapter:
@@ -77,3 +77,24 @@ class AlpacaAdapter:
             return True
         except Exception:
             return False
+
+    def get_open_orders(self, ticker: str | None = None) -> list[dict]:
+        try:
+            orders = self._client.get_orders(
+                filter=GetOrdersRequest(status=QueryOrderStatus.OPEN)
+            )
+            if ticker is not None:
+                orders = [o for o in orders if o.symbol == ticker.upper()]
+            return [
+                {
+                    "order_id": str(o.id),
+                    "ticker": o.symbol,
+                    "action": "BUY" if o.side == OrderSide.BUY else "SELL",
+                    "status": str(o.status),
+                    "notional": float(o.notional) if o.notional is not None else None,
+                    "qty": float(o.qty) if o.qty is not None else None,
+                }
+                for o in orders
+            ]
+        except Exception:
+            return []
