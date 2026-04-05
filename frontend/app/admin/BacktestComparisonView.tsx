@@ -913,15 +913,15 @@ function CreateExperimentSection({ type, title, subtitle, onCreated }: {
 type VariantRow = { id: number; philosophy: string; threshold: number | null };
 
 let _variantId = 0;
-function makeVariant(philosophy = "balanced", threshold: number | null = null): VariantRow {
+function makeVariant(philosophy = "balanced", threshold: number | null = 0.65): VariantRow {
   return { id: ++_variantId, philosophy, threshold };
 }
 
 const PHILOSOPHY_TEMPLATE: VariantRow[] = [
-  makeVariant("lynch", null),
-  makeVariant("soros", null),
-  makeVariant("buffett", null),
-  makeVariant("balanced", null),
+  makeVariant("lynch", 0.65),
+  makeVariant("soros", 0.65),
+  makeVariant("buffett", 0.65),
+  makeVariant("balanced", 0.65),
 ];
 
 const THRESHOLD_TEMPLATE: VariantRow[] = [
