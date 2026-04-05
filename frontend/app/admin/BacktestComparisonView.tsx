@@ -466,8 +466,10 @@ function JobCard({ job, expType, onCancel, onResume }: {
         onClick={() => setShowLogs((v) => !v)}
         style={{
           background: "var(--surface)",
-          border: `1px solid ${showLogs ? "var(--brand)50" : isActive ? "var(--hold)40" : "var(--line)"}`,
-          borderLeft: `3px solid ${accent}`,
+          borderTop:    `1px solid ${showLogs ? "var(--brand)50" : isActive ? "var(--hold)40" : "var(--line)"}`,
+          borderRight:  `1px solid ${showLogs ? "var(--brand)50" : isActive ? "var(--hold)40" : "var(--line)"}`,
+          borderBottom: `1px solid ${showLogs ? "var(--brand)50" : isActive ? "var(--hold)40" : "var(--line)"}`,
+          borderLeft:   `3px solid ${accent}`,
           borderRadius: 8,
           padding: "12px 14px",
           cursor: "pointer",
