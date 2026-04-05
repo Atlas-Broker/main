@@ -9,6 +9,9 @@ from fastapi import FastAPI
 
 from api.middleware.cors import add_cors
 from api.middleware.auth import ClerkAuthMiddleware
+import inngest.fast_api
+from inngest_client import inngest_client
+from inngest_functions import run_backtest_fn
 from api.routes import signals, portfolio, trades, pipeline, webhooks, profile, scheduler as scheduler_router, broker as broker_router, backtest as backtest_router, users as users_router, admin as admin_router, watchlist as watchlist_router, experiments as experiments_router
 
 load_dotenv()
@@ -77,6 +80,10 @@ app.include_router(users_router.router)
 app.include_router(admin_router.router)
 app.include_router(watchlist_router.router)
 app.include_router(experiments_router.router)
+
+# Inngest serve — mounts at /api/inngest, handles step execution and event delivery.
+# ClerkAuthMiddleware skips /api/inngest (see api/middleware/auth.py).
+inngest.fast_api.serve(app, inngest_client, [run_backtest_fn])
 
 
 @app.get("/health")

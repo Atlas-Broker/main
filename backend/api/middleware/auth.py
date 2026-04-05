@@ -55,7 +55,7 @@ def _derive_jwks_url() -> str:
     return "https://api.clerk.com/v1/jwks"
 
 
-_ALWAYS_PUBLIC = {"/health", "/webhooks/clerk", "/favicon.ico"}
+_ALWAYS_PUBLIC = {"/health", "/webhooks/clerk", "/favicon.ico", "/api/inngest"}
 _DEV_PUBLIC = {"/docs", "/openapi.json", "/redoc"}
 
 

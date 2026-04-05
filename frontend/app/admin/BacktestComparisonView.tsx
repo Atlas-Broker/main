@@ -627,7 +627,6 @@ function ExperimentCard({ experiment, defaultOpen, onJobsChanged }: {
   onJobsChanged: () => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(defaultOpen ?? false);
 
   const activeCount    = experiment.jobs.filter((j) => j.status === "running" || j.status === "queued").length;
   const completedCount = experiment.jobs.filter((j) => j.status === "completed").length;
@@ -636,15 +635,6 @@ function ExperimentCard({ experiment, defaultOpen, onJobsChanged }: {
   const hasStale       = experiment.jobs.some(
     (j) => (j.status === "running" || j.status === "queued") && Date.now() - new Date(j.created_at).getTime() > STALE_MS
   );
-
-  async function cancelJob(jobId: string) {
-    await fetchWithAuth(`${API}/v1/backtest/${jobId}/cancel`, { method: "POST" });
-    onJobsChanged();
-  }
-  async function resumeJob(jobId: string) {
-    await fetchWithAuth(`${API}/v1/backtest/${jobId}/resume`, { method: "POST" });
-    onJobsChanged();
-  }
 
   const typeColor: Record<ExperimentType, string> = {
     philosophy: philosophyColors.lynch,
@@ -692,17 +682,38 @@ function ExperimentCard({ experiment, defaultOpen, onJobsChanged }: {
     );
   }
 
-  // Legacy/orphan experiments: keep accordion expand
+  // Legacy/orphan experiments: adopt on click then navigate
+  const [adopting, setAdopting] = useState(false);
+  async function handleOrphanClick() {
+    setAdopting(true);
+    const res = await fetchWithAuth(`${API}/v1/experiments/adopt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job_ids: experiment.jobs.map((j) => j.id) }),
+    });
+    if (res?.ok) {
+      const { experiment_id } = await res.json();
+      router.push(`/admin/experiments/${experiment_id}`);
+    } else {
+      setAdopting(false);
+    }
+  }
+
   return (
-    <div style={{ background: "var(--surface)", border: `1px solid ${open ? "var(--brand)30" : "var(--line)"}`, borderRadius: 10, overflow: "hidden", transition: "border-color 0.2s" }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
-      >
+    <div
+      onClick={handleOrphanClick}
+      style={{
+        background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10,
+        overflow: "hidden", cursor: adopting ? "wait" : "pointer", transition: "border-color 0.15s, box-shadow 0.15s", opacity: adopting ? 0.6 : 1,
+      }}
+      onMouseEnter={(e) => { if (!adopting) { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--line)"; (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 8px rgba(0,0,0,0.06)"; } }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = "none"; }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px" }}>
         <div style={{ width: 3, height: 36, borderRadius: 2, background: accent, flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-            <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{experiment.label}</span>
+            <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{adopting ? "Opening…" : experiment.label}</span>
             <Pill label={`${experiment.jobs.length} runs`} color={accent} />
             <Pill label="legacy" color="var(--dim)" />
             {activeCount > 0 && <PulsingDot color="var(--hold)" />}
@@ -716,28 +727,12 @@ function ExperimentCard({ experiment, defaultOpen, onJobsChanged }: {
           {activeCount > 0 && <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--hold)" }}>{activeCount} running</span>}
           {completedCount > 0 && <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--bull)" }}>{completedCount} done</span>}
           {errorCount > 0 && <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--bear)" }}>{errorCount} failed</span>}
-          <span style={{ fontFamily: "var(--font-jb)", fontSize: 12, color: "var(--ghost)", marginLeft: 4 }}>{open ? "▴" : "▾"}</span>
+          <span style={{ fontFamily: "var(--font-jb)", fontSize: 12, color: "var(--ghost)" }}>→</span>
         </div>
-      </button>
-
-      {open && (
-        <div style={{ padding: "4px 18px 18px", borderTop: "1px solid var(--line)" }} className="bcv-fade-in">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10, marginTop: 14 }}>
-            {experiment.jobs.map((job) => (
-              <JobCard
-                key={job.id}
-                job={job}
-                expType={experiment.type}
-                onCancel={() => cancelJob(job.id)}
-                onResume={() => resumeJob(job.id)}
-              />
-            ))}
-          </div>
-          <ComparisonTable experiment={experiment} />
-        </div>
-      )}
+      </div>
     </div>
   );
+
 }
 
 // ── New experiment creation ────────────────────────────────────────────────────
@@ -755,6 +750,7 @@ function CreateExperimentSection({ type, title, subtitle, onCreated }: {
   const [ebcMode, setEbcMode]         = useState("autonomous");
   const [confThreshold, setConf]      = useState(0.65);
   const [philosophy, setPhilosophy]   = useState("balanced");
+  const [initialCapital, setInitialCapital] = useState(100_000);
   const [submitting, setSubmitting]   = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const [success, setSuccess]         = useState(false);
@@ -784,6 +780,7 @@ function CreateExperimentSection({ type, title, subtitle, onCreated }: {
       ebc_mode: ebcMode,
       philosophy_mode: philosophy,
       confidence_threshold: type === "philosophy" ? confThreshold : type === "single" ? confThreshold : null,
+      initial_capital: initialCapital,
     };
 
     const res = await fetchWithAuth(`${API}/v1/experiments`, {
@@ -837,6 +834,17 @@ function CreateExperimentSection({ type, title, subtitle, onCreated }: {
                   }}>{m}</button>
                 ))}
               </div>
+            </Field>
+
+            <Field label="STARTING CAPITAL">
+              <input
+                type="number"
+                min={1000}
+                step={1000}
+                value={initialCapital}
+                onChange={(e) => setInitialCapital(parseFloat(e.target.value) || 100_000)}
+                style={inputStyle}
+              />
             </Field>
 
             {/* Philosophy fixed param — show for threshold + single experiments */}
@@ -900,6 +908,258 @@ function CreateExperimentSection({ type, title, subtitle, onCreated }: {
   );
 }
 
+// ── New Experiment Modal ──────────────────────────────────────────────────────
+
+type VariantRow = { id: number; philosophy: string; threshold: number | null };
+
+let _variantId = 0;
+function makeVariant(philosophy = "balanced", threshold: number | null = null): VariantRow {
+  return { id: ++_variantId, philosophy, threshold };
+}
+
+const PHILOSOPHY_TEMPLATE: VariantRow[] = [
+  makeVariant("lynch", null),
+  makeVariant("soros", null),
+  makeVariant("buffett", null),
+  makeVariant("balanced", null),
+];
+
+const THRESHOLD_TEMPLATE: VariantRow[] = [
+  makeVariant("balanced", 0.50),
+  makeVariant("balanced", 0.65),
+  makeVariant("balanced", 0.80),
+  makeVariant("balanced", 0.95),
+];
+
+function NewExperimentModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [tickers, setTickers]         = useState(DEFAULT_TICKERS);
+  const [startDate, setStartDate]     = useState(DEFAULT_START);
+  const [endDate, setEndDate]         = useState(DEFAULT_END);
+  const [ebcMode, setEbcMode]         = useState("autonomous");
+  const [initialCapital, setInitialCapital] = useState(100_000);
+  const [variants, setVariants]       = useState<VariantRow[]>([]);
+  const [submitting, setSubmitting]   = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+
+  const tickerList = tickers.split(",").map((t) => t.trim().toUpperCase()).filter(Boolean);
+  const days = tradingDayEst(startDate, endDate);
+  const calls = days * tickerList.length * (variants.length || 1);
+
+  function applyTemplate(rows: VariantRow[]) {
+    setVariants(rows.map((r) => makeVariant(r.philosophy, r.threshold)));
+  }
+
+  function addVariant() {
+    setVariants((prev) => [...prev, makeVariant()]);
+  }
+
+  function removeVariant(id: number) {
+    setVariants((prev) => prev.filter((v) => v.id !== id));
+  }
+
+  function updateVariant(id: number, field: "philosophy" | "threshold", value: string | number | null) {
+    setVariants((prev) => prev.map((v) => v.id === id ? { ...v, [field]: value } : v));
+  }
+
+  async function handleLaunch() {
+    if (variants.length === 0) { setError("Add at least one job variant."); return; }
+    setSubmitting(true); setError(null);
+
+    const expType = (() => {
+      const philosophies = new Set(variants.map((v) => v.philosophy));
+      const thresholds   = new Set(variants.map((v) => v.threshold));
+      if (philosophies.size > 1 && thresholds.size <= 1) return "philosophy";
+      if (thresholds.size > 1 && philosophies.size <= 1) return "threshold";
+      return "custom";
+    })();
+
+    const autoName = expType === "philosophy"
+      ? `Philosophy Comparison · ${tickerList.join(",")} · ${startDate}–${endDate}`
+      : expType === "threshold"
+      ? `Threshold Comparison · ${tickerList.join(",")} · ${startDate}–${endDate}`
+      : `Custom Experiment · ${tickerList.join(",")} · ${startDate}–${endDate}`;
+
+    const body = {
+      experiment_type: expType,
+      name: autoName,
+      tickers: tickerList,
+      start_date: startDate,
+      end_date: endDate,
+      ebc_mode: ebcMode,
+      initial_capital: initialCapital,
+      custom_variants: variants.map((v) => ({ philosophy_mode: v.philosophy, confidence_threshold: v.threshold })),
+    };
+
+    const res = await fetchWithAuth(`${API}/v1/experiments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!res?.ok) {
+      const detail = await res?.json().catch(() => ({}));
+      setError(detail?.detail ?? "Failed to launch experiment.");
+      setSubmitting(false);
+    } else {
+      onCreated();
+      onClose();
+    }
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12, width: "100%", maxWidth: 600, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 16px 48px rgba(0,0,0,0.2)" }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: "1px solid var(--line)" }}>
+          <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>New Experiment</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ghost)", fontSize: 20, lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: 18 }}>
+          {/* Shared settings */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Field label="TICKERS" hint="comma-separated">
+                <input value={tickers} onChange={(e) => setTickers(e.target.value)} style={inputStyle} />
+              </Field>
+            </div>
+            <Field label="START DATE">
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inputStyle} />
+            </Field>
+            <Field label="END DATE">
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={inputStyle} />
+            </Field>
+            <Field label="EBC MODE">
+              <div style={{ display: "flex", gap: 6, height: 38, alignItems: "center" }}>
+                {EBC_MODES.map((m) => (
+                  <button key={m} onClick={() => setEbcMode(m)} style={{
+                    flex: 1, height: "100%", borderRadius: 6, fontFamily: "var(--font-nunito)", fontSize: 12, fontWeight: ebcMode === m ? 700 : 400,
+                    border: `1px solid ${ebcMode === m ? modeColor[m] : "var(--line)"}`, color: ebcMode === m ? modeColor[m] : "var(--ghost)",
+                    background: ebcMode === m ? `${modeColor[m]}12` : "transparent", cursor: "pointer",
+                  }}>{m}</button>
+                ))}
+              </div>
+            </Field>
+            <Field label="STARTING CAPITAL">
+              <input
+                type="number"
+                min={1000}
+                step={1000}
+                value={initialCapital}
+                onChange={(e) => setInitialCapital(parseFloat(e.target.value) || 100_000)}
+                style={inputStyle}
+              />
+            </Field>
+          </div>
+
+          {/* Templates */}
+          <div>
+            <div style={{ fontFamily: "var(--font-jb)", fontSize: 9, color: "var(--ghost)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Quick Templates</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {[
+                { label: "Philosophy Comparison", desc: "Lynch · Soros · Buffett · Balanced", rows: PHILOSOPHY_TEMPLATE },
+                { label: "Confidence Threshold", desc: "50% · 65% · 80% · 95%", rows: THRESHOLD_TEMPLATE },
+              ].map((t) => (
+                <button
+                  key={t.label}
+                  onClick={() => applyTemplate(t.rows)}
+                  style={{
+                    background: "var(--elevated)", border: "1px solid var(--line)", borderRadius: 8,
+                    padding: "10px 14px", cursor: "pointer", textAlign: "left", transition: "border-color 0.15s",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--brand)50")}
+                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--line)")}
+                >
+                  <div style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 11, color: "var(--ink)", marginBottom: 3 }}>{t.label}</div>
+                  <div style={{ fontFamily: "var(--font-nunito)", fontSize: 11, color: "var(--ghost)" }}>{t.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Variant builder */}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <div style={{ fontFamily: "var(--font-jb)", fontSize: 9, color: "var(--ghost)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Jobs{variants.length > 0 ? ` (${variants.length})` : ""}
+              </div>
+              <button onClick={addVariant} style={{ fontFamily: "var(--font-jb)", fontSize: 10, background: "none", border: "1px solid var(--line)", color: "var(--brand)", padding: "3px 10px", borderRadius: 5, cursor: "pointer" }}>
+                + Add job
+              </button>
+            </div>
+
+            {variants.length === 0 && (
+              <div style={{ textAlign: "center", padding: "16px 0", color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-nunito)", border: "1px dashed var(--line)", borderRadius: 8 }}>
+                Select a template above or add jobs manually
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {variants.map((v, i) => (
+                <div key={v.id} style={{ display: "flex", gap: 8, alignItems: "center", background: "var(--elevated)", borderRadius: 7, padding: "8px 10px" }}>
+                  <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", minWidth: 18 }}>#{i + 1}</span>
+
+                  {/* Philosophy select */}
+                  <select
+                    value={v.philosophy}
+                    onChange={(e) => updateVariant(v.id, "philosophy", e.target.value)}
+                    style={{ ...inputStyle, padding: "5px 8px", fontSize: 11, flex: 1 }}
+                  >
+                    {PHILOSOPHIES.map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+                  </select>
+
+                  {/* Threshold select */}
+                  <select
+                    value={v.threshold ?? ""}
+                    onChange={(e) => updateVariant(v.id, "threshold", e.target.value === "" ? null : parseFloat(e.target.value))}
+                    style={{ ...inputStyle, padding: "5px 8px", fontSize: 11, flex: 1 }}
+                  >
+                    <option value="">No threshold</option>
+                    {THRESHOLDS.map((t) => <option key={t} value={t}>{(t * 100).toFixed(0)}% confidence</option>)}
+                  </select>
+
+                  <button onClick={() => removeVariant(v.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ghost)", fontSize: 16, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}>×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Cost estimate */}
+          {variants.length > 0 && (
+            <div style={{ background: "var(--elevated)", border: "1px solid var(--line)", borderRadius: 6, padding: "8px 12px", fontSize: 12, fontFamily: "var(--font-nunito)", color: "var(--dim)" }}>
+              {variants.length} job{variants.length > 1 ? "s" : ""} × {days} trading days × {tickerList.length} tickers = ~{calls} AI calls
+            </div>
+          )}
+
+          {error && (
+            <div style={{ color: "var(--bear)", fontSize: 12, fontFamily: "var(--font-nunito)", background: "var(--bear-bg)", border: "1px solid var(--bear)", borderRadius: 6, padding: "8px 12px" }}>
+              {error}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={onClose} style={{ flex: 1, padding: "11px 0", background: "none", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ghost)", fontFamily: "var(--font-nunito)", fontSize: 13, cursor: "pointer" }}>
+              Cancel
+            </button>
+            <button
+              onClick={handleLaunch}
+              disabled={submitting || variants.length === 0}
+              style={{
+                flex: 2, padding: "11px 0", background: submitting ? "var(--line)" : "var(--brand)", color: "#fff",
+                border: "none", borderRadius: 8, fontFamily: "var(--font-nunito)", fontWeight: 700, fontSize: 13,
+                cursor: submitting || variants.length === 0 ? "not-allowed" : "pointer", opacity: variants.length === 0 ? 0.5 : 1,
+              }}
+            >
+              {submitting ? "Launching…" : `Launch Experiment (${variants.length} run${variants.length !== 1 ? "s" : ""})`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function BacktestComparisonView() {
@@ -907,6 +1167,7 @@ export function BacktestComparisonView() {
   const [experiments, setExperiments]         = useState<Experiment[]>([]);
   const [loading, setLoading]                 = useState(true);
   const [cancellingStale, setCancellingStale] = useState(false);
+  const [showModal, setShowModal]             = useState(false);
 
   const loadAll = useCallback(async () => {
     // Fetch backend experiments + all jobs in parallel
@@ -997,6 +1258,12 @@ export function BacktestComparisonView() {
             >
               ↺ Refresh
             </button>
+            <button
+              onClick={() => setShowModal(true)}
+              style={{ fontSize: 11, fontFamily: "var(--font-jb)", background: "var(--brand)", border: "none", color: "#fff", padding: "4px 12px", borderRadius: 5, cursor: "pointer", fontWeight: 700 }}
+            >
+              + New Experiment
+            </button>
           </div>
         </div>
 
@@ -1013,7 +1280,7 @@ export function BacktestComparisonView() {
               <div style={{ textAlign: "center", padding: "32px 24px", color: "var(--ghost)", fontFamily: "var(--font-nunito)", fontSize: 13 }}>
                 <div style={{ fontSize: 24, marginBottom: 10 }}>◈</div>
                 <div style={{ fontWeight: 600, color: "var(--dim)", marginBottom: 6 }}>No experiments yet</div>
-                <div>Use the forms below to launch a philosophy or threshold comparison.</div>
+                <div>Click <strong>+ New Experiment</strong> to launch a philosophy or threshold comparison.</div>
               </div>
             ) : (
               experiments.map((exp, i) => (
@@ -1026,34 +1293,12 @@ export function BacktestComparisonView() {
               ))
             )}
 
-            {/* Launch section */}
-            <div style={{ borderTop: "1px solid var(--line)", margin: "8px 0", paddingTop: 12 }}>
-              <div style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
-                Launch New Experiment
-              </div>
-            </div>
-            <CreateExperimentSection
-              type="philosophy"
-              title="Philosophy Comparison"
-              subtitle="Run Lynch · Soros · Buffett · Balanced with the same settings"
-              onCreated={loadAll}
-            />
-            <CreateExperimentSection
-              type="threshold"
-              title="Confidence Threshold Comparison"
-              subtitle="Run 50% · 65% · 80% · 95% confidence thresholds with the same settings"
-              onCreated={loadAll}
-            />
-            <CreateExperimentSection
-              type="single"
-              title="Single Run"
-              subtitle="Run one backtest with custom settings"
-              onCreated={loadAll}
-            />
           </>
         )}
 
       </div>
+
+      {showModal && <NewExperimentModal onClose={() => setShowModal(false)} onCreated={loadAll} />}
     </>
   );
 }

@@ -35,6 +35,7 @@ def create_job(
     philosophy_mode: str = "balanced",
     confidence_threshold: Optional[float] = None,
     experiment_id: Optional[str] = None,
+    initial_capital: float = 100_000.0,
 ) -> str:
     job_id = str(uuid.uuid4())
     row: dict = {
@@ -47,7 +48,7 @@ def create_job(
         "ebc_mode":             ebc_mode,
         "philosophy_mode":      philosophy_mode,
         "confidence_threshold": confidence_threshold,
-        "initial_capital":      10000.0,
+        "initial_capital":      initial_capital,
         "progress":             0,
     }
     if experiment_id is not None:
@@ -153,6 +154,7 @@ def create_results_doc(
     ebc_mode: str,
     philosophy_mode: str = "balanced",
     confidence_threshold: Optional[float] = None,
+    initial_capital: float = 100_000.0,
 ) -> str:
     doc = {
         "job_id":               job_id,
@@ -163,7 +165,7 @@ def create_results_doc(
         "ebc_mode":             ebc_mode,
         "philosophy_mode":      philosophy_mode,
         "confidence_threshold": confidence_threshold,
-        "initial_capital":      10000.0,
+        "initial_capital":      initial_capital,
         "daily_runs":           [],
         "equity_curve":         [],
         "metrics":              {},

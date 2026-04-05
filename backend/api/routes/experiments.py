@@ -2,11 +2,13 @@
 from datetime import date, timedelta
 from typing import Literal, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator, model_validator
 
+import inngest as inngest_sdk
+from inngest_client import inngest_client
 from api.dependencies import require_admin
-from backtesting.runner import run_backtest_job
+from db.supabase import get_supabase
 from services.backtest_service import create_job, list_jobs
 from services.experiment_service import (
     create_experiment,
@@ -21,8 +23,13 @@ _PHILOSOPHIES = ["lynch", "soros", "buffett", "balanced"]
 _THRESHOLDS   = [0.50, 0.65, 0.80, 0.95]
 
 
+class VariantSpec(BaseModel):
+    philosophy_mode: str = "balanced"
+    confidence_threshold: Optional[float] = None
+
+
 class ExperimentRequest(BaseModel):
-    experiment_type: Literal["philosophy", "threshold", "single"]
+    experiment_type: Literal["philosophy", "threshold", "single", "custom"]
     name: str
     tickers: list[str]
     start_date: date
@@ -31,6 +38,9 @@ class ExperimentRequest(BaseModel):
     # Base settings (fixed dimension for multi-variant experiments)
     philosophy_mode: str = "balanced"
     confidence_threshold: Optional[float] = None
+    initial_capital: float = 100_000.0
+    # For custom experiments: explicit list of variants
+    custom_variants: Optional[list[VariantSpec]] = None
 
     @field_validator("tickers")
     @classmethod
@@ -70,14 +80,15 @@ def _build_variants(req: ExperimentRequest) -> list[dict]:
             {"philosophy_mode": req.philosophy_mode, "confidence_threshold": t}
             for t in _THRESHOLDS
         ]
+    if req.experiment_type == "custom" and req.custom_variants:
+        return [{"philosophy_mode": v.philosophy_mode, "confidence_threshold": v.confidence_threshold} for v in req.custom_variants]
     # single
     return [{"philosophy_mode": req.philosophy_mode, "confidence_threshold": req.confidence_threshold}]
 
 
 @router.post("")
-async def create_experiment_endpoint(
+def create_experiment_endpoint(
     req: ExperimentRequest,
-    background_tasks: BackgroundTasks,
     user_id: str = Depends(require_admin),
 ):
     variants = _build_variants(req)
@@ -103,21 +114,62 @@ async def create_experiment_endpoint(
             philosophy_mode=v["philosophy_mode"],
             confidence_threshold=v["confidence_threshold"],
             experiment_id=exp_id,
-        )
-        background_tasks.add_task(
-            run_backtest_job,
-            job_id=job_id,
-            user_id=user_id,
-            tickers=req.tickers,
-            start_date=req.start_date.isoformat(),
-            end_date=req.end_date.isoformat(),
-            ebc_mode=req.ebc_mode,
-            philosophy_mode=v["philosophy_mode"],
-            confidence_threshold=v["confidence_threshold"],
+            initial_capital=req.initial_capital,
         )
         job_ids.append(job_id)
+        inngest_client.send_sync(inngest_sdk.Event(
+            name="atlas/backtest.run",
+            data={
+                "job_id": job_id,
+                "user_id": user_id,
+                "tickers": req.tickers,
+                "start_date": req.start_date.isoformat(),
+                "end_date": req.end_date.isoformat(),
+                "ebc_mode": req.ebc_mode,
+                "philosophy_mode": v["philosophy_mode"],
+                "confidence_threshold": v["confidence_threshold"],
+                "initial_capital": req.initial_capital,
+            },
+        ))
 
     return {"experiment_id": exp_id, "job_ids": job_ids, "status": "launched"}
+
+
+class AdoptRequest(BaseModel):
+    job_ids: list[str]
+    name: str = "Unknown"
+    experiment_type: str = "multi"
+
+
+@router.post("/adopt")
+def adopt_orphan_jobs(req: AdoptRequest, user_id: str = Depends(require_admin)):
+    """Create an experiment record for existing orphan jobs and link them to it."""
+    # Fetch the jobs to get tickers/dates/ebc_mode from the first one
+    result = (
+        get_supabase()
+        .table("backtest_jobs")
+        .select("*")
+        .in_("id", req.job_ids)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    jobs = result.data or []
+    if not jobs:
+        raise HTTPException(status_code=404, detail="No matching jobs found")
+
+    first = jobs[0]
+    exp_id = create_experiment(
+        user_id=user_id,
+        name=req.name,
+        experiment_type=req.experiment_type,
+        tickers=first["tickers"],
+        start_date=first["start_date"],
+        end_date=first["end_date"],
+        ebc_mode=first["ebc_mode"],
+    )
+    # Link all jobs to the new experiment
+    get_supabase().table("backtest_jobs").update({"experiment_id": exp_id}).in_("id", req.job_ids).eq("user_id", user_id).execute()
+    return {"experiment_id": exp_id}
 
 
 @router.get("")

@@ -1,14 +1,15 @@
 # backend/api/routes/backtest.py
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator, model_validator
 
 from api.dependencies import require_admin
 from db.supabase import get_user_role
 from agents.philosophy import VALID_PHILOSOPHY_MODES
-from backtesting.runner import run_backtest_job, request_cancellation
+import inngest as inngest_sdk
+from inngest_client import inngest_client
 from services.backtest_service import create_job, delete_job, get_job, list_jobs, update_job_status
 
 router = APIRouter(prefix="/v1/backtest", tags=["backtest"])
@@ -21,6 +22,7 @@ class BacktestRequest(BaseModel):
     ebc_mode: str
     philosophy_mode: str = "balanced"
     confidence_threshold: Optional[float] = None
+    initial_capital: float = 100_000.0
 
     @field_validator("tickers")
     @classmethod
@@ -63,9 +65,8 @@ class BacktestRequest(BaseModel):
 
 
 @router.post("")
-async def create_backtest(
+def create_backtest(
     req: BacktestRequest,
-    background_tasks: BackgroundTasks,
     user_id: str = Depends(require_admin),
 ):
     jobs = list_jobs(user_id)
@@ -85,18 +86,22 @@ async def create_backtest(
         ebc_mode=req.ebc_mode,
         philosophy_mode=req.philosophy_mode,
         confidence_threshold=req.confidence_threshold,
+        initial_capital=req.initial_capital,
     )
-    background_tasks.add_task(
-        run_backtest_job,
-        job_id=job_id,
-        user_id=user_id,
-        tickers=req.tickers,
-        start_date=req.start_date.isoformat(),
-        end_date=req.end_date.isoformat(),
-        ebc_mode=req.ebc_mode,
-        philosophy_mode=req.philosophy_mode,
-        confidence_threshold=req.confidence_threshold,
-    )
+    inngest_client.send_sync(inngest_sdk.Event(
+        name="atlas/backtest.run",
+        data={
+            "job_id": job_id,
+            "user_id": user_id,
+            "tickers": req.tickers,
+            "start_date": req.start_date.isoformat(),
+            "end_date": req.end_date.isoformat(),
+            "ebc_mode": req.ebc_mode,
+            "philosophy_mode": req.philosophy_mode,
+            "confidence_threshold": req.confidence_threshold,
+            "initial_capital": req.initial_capital,
+        },
+    ))
     return {"job_id": job_id, "status": "queued"}
 
 
@@ -132,41 +137,23 @@ def delete_backtest_job(job_id: str, user_id: str = Depends(require_admin)):
 
 @router.post("/{job_id}/cancel")
 def cancel_backtest_job(job_id: str, user_id: str = Depends(require_admin)):
-    """Cancel a queued or running backtest job."""
+    """Cancel a queued or running backtest job.
+
+    With Inngest, we set the DB status to 'cancelled'. The Inngest function
+    checks this at the start of each day step and stops processing.
+    """
     job = get_job(job_id, user_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     if job["status"] not in ("running", "queued"):
         raise HTTPException(status_code=409, detail=f"Cannot cancel job with status '{job['status']}'")
-    if job["status"] == "queued":
-        # Queued jobs haven't started the runner yet — cancel immediately
-        update_job_status(job_id, "cancelled")
-    else:
-        # Running jobs: check whether the job is stale (runner process likely dead)
-        STALE_THRESHOLD_HOURS = 2
-        created_at_str = job.get("created_at", "")
-        is_stale = False
-        if created_at_str:
-            created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
-            age = datetime.now(timezone.utc) - created_at
-            is_stale = age.total_seconds() > STALE_THRESHOLD_HOURS * 3600
-        if is_stale:
-            # Zombie job — no runner is reading the flag, force-cancel directly
-            update_job_status(job_id, "cancelled")
-        else:
-            # Fresh running job — signal the in-process runner to stop gracefully
-            request_cancellation(job_id)
+    update_job_status(job_id, "cancelled")
     return {"cancelling": True}
 
 
 @router.post("/{job_id}/resume")
-async def resume_backtest_job_endpoint(
-    job_id: str,
-    background_tasks: BackgroundTasks,
-    user_id: str = Depends(require_admin),
-):
-    """Resume a failed or cancelled backtest job from its last checkpoint."""
-    from backtesting.runner import resume_backtest_job
+def resume_backtest_job_endpoint(job_id: str, user_id: str = Depends(require_admin)):
+    """Resume a failed or cancelled backtest job from its last checkpoint via Inngest."""
     job = get_job(job_id, user_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -175,16 +162,20 @@ async def resume_backtest_job_endpoint(
     mongo_id = job.get("mongo_id")
     if not mongo_id:
         raise HTTPException(status_code=409, detail="Job has no results document — cannot resume. Create a new job instead.")
-    background_tasks.add_task(
-        resume_backtest_job,
-        job_id=job_id,
-        user_id=user_id,
-        tickers=job["tickers"],
-        start_date=job["start_date"],
-        end_date=job["end_date"],
-        ebc_mode=job["ebc_mode"],
-        mongo_id=mongo_id,
-        philosophy_mode=job.get("philosophy_mode", "balanced"),
-        confidence_threshold=job.get("confidence_threshold"),
-    )
+    update_job_status(job_id, "queued")
+    inngest_client.send_sync(inngest_sdk.Event(
+        name="atlas/backtest.run",
+        data={
+            "job_id": job_id,
+            "user_id": user_id,
+            "tickers": job["tickers"],
+            "start_date": job["start_date"],
+            "end_date": job["end_date"],
+            "ebc_mode": job["ebc_mode"],
+            "philosophy_mode": job.get("philosophy_mode", "balanced"),
+            "confidence_threshold": job.get("confidence_threshold"),
+            "initial_capital": job.get("initial_capital", 100_000.0),
+            "mongo_id": mongo_id,
+        },
+    ))
     return {"resuming": True, "job_id": job_id}

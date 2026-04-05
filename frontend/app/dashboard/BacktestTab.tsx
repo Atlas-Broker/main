@@ -3,6 +3,19 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+} from "chart.js";
+import { Line } from "react-chartjs-2";
+import { businessDays } from "@/lib/bdays";
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -18,6 +31,7 @@ type BacktestJob = {
   end_date: string;
   ebc_mode: string;
   progress: number;
+  initial_capital?: number | null;
   total_return: number | null;
   sharpe_ratio: number | null;
   max_drawdown: number | null;
@@ -199,12 +213,15 @@ function ActionBadge({ action }: { action: string }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+const STALE_MS = 2 * 60 * 60 * 1000; // 2h — matches job detail page
+
 export function BacktestTab({ role }: { role?: string }) {
   const router = useRouter();
   const [view, setView] = useState<View>("list");
   const [jobs, setJobs] = useState<BacktestJob[]>([]);
   const [selected, setSelected] = useState<BacktestJob | null>(null);
   const [loadingJobs, setLoadingJobs] = useState(true);
+  const [cancellingStale, setCancellingStale] = useState(false);
 
   async function loadJobs() {
     const res = await fetchWithAuth(`${API}/v1/backtest`);
@@ -242,6 +259,20 @@ export function BacktestTab({ role }: { role?: string }) {
     await loadJobs();
   }
 
+  async function cancelAllStale() {
+    const stale = jobs.filter(
+      (j) => (j.status === "running" || j.status === "queued") &&
+              Date.now() - new Date(j.created_at).getTime() > STALE_MS
+    );
+    if (stale.length === 0) return;
+    setCancellingStale(true);
+    await Promise.allSettled(
+      stale.map((j) => fetchWithAuth(`${API}/v1/backtest/${j.id}/cancel`, { method: "POST" }))
+    );
+    await loadJobs();
+    setCancellingStale(false);
+  }
+
   async function resumeJob(jobId: string) {
     await fetchWithAuth(`${API}/v1/backtest/${jobId}/resume`, { method: "POST" });
     await loadJobs();
@@ -273,6 +304,10 @@ export function BacktestTab({ role }: { role?: string }) {
   }
 
   const runningCount = jobs.filter((j) => j.status === "running").length;
+  const staleCount   = jobs.filter(
+    (j) => (j.status === "running" || j.status === "queued") &&
+            Date.now() - new Date(j.created_at).getTime() > STALE_MS
+  ).length;
 
   return (
     <>
@@ -293,16 +328,34 @@ export function BacktestTab({ role }: { role?: string }) {
               </div>
             )}
           </div>
-          <button
-            onClick={() => setView("new")}
-            style={{
-              background: "var(--brand)", color: "#fff",
-              fontFamily: "var(--font-nunito)", fontWeight: 700, fontSize: 13,
-              padding: "7px 14px", borderRadius: 6, border: "none", cursor: "pointer",
-            }}
-          >
-            + New Backtest
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {staleCount > 0 && (
+              <button
+                onClick={cancelAllStale}
+                disabled={cancellingStale}
+                style={{
+                  background: "none", color: "var(--bear)",
+                  fontFamily: "var(--font-nunito)", fontWeight: 600, fontSize: 12,
+                  padding: "7px 12px", borderRadius: 6,
+                  border: "1px solid var(--bear)40",
+                  cursor: cancellingStale ? "not-allowed" : "pointer",
+                  opacity: cancellingStale ? 0.6 : 1,
+                }}
+              >
+                {cancellingStale ? "Cancelling…" : `Cancel ${staleCount} stale`}
+              </button>
+            )}
+            <button
+              onClick={() => setView("new")}
+              style={{
+                background: "var(--brand)", color: "#fff",
+                fontFamily: "var(--font-nunito)", fontWeight: 700, fontSize: 13,
+                padding: "7px 14px", borderRadius: 6, border: "none", cursor: "pointer",
+              }}
+            >
+              + New Backtest
+            </button>
+          </div>
         </div>
 
         {loadingJobs && (
@@ -713,7 +766,12 @@ function ResultsDetail({
 
       {/* Live equity curve — updates as days complete */}
       {(isLive || job.status === "completed" || job.status === "cancelled") && (job.results?.equity_curve?.length ?? 0) >= 2 && (
-        <EquityCurve points={job.results!.equity_curve} />
+        <EquityCurve
+          points={job.results!.equity_curve}
+          startDate={job.start_date}
+          endDate={job.end_date}
+          initialCapital={job.initial_capital ?? 100_000}
+        />
       )}
 
       {/* Live decision feed */}
@@ -888,99 +946,108 @@ function ResultsDetail({
 
 // ── Equity Curve ──────────────────────────────────────────────────────────────
 
-function EquityCurve({ points, initialCapital = 10000 }: {
+function EquityCurve({ points, startDate, endDate, initialCapital = 100_000 }: {
   points: { date: string; value: number; cash?: number }[];
+  startDate: string;
+  endDate: string;
   initialCapital?: number;
 }) {
   if (points.length < 2) return null;
 
-  const W = 320, H = 140, PAD_X = 48, PAD_TOP = 16, PAD_BOT = 24;
-  const innerW = W - PAD_X;
-  const innerH = H - PAD_TOP - PAD_BOT;
+  const labels = businessDays(startDate, endDate);
+  const byDate = new Map(points.map((p) => [p.date, p.value]));
+  const data = labels.map((d) => byDate.get(d) ?? null);
 
-  const vals = points.map((p) => p.value);
-  const allVals = [initialCapital, ...vals];
-  const minV = Math.min(...allVals) * 0.995;
-  const maxV = Math.max(...allVals) * 1.005;
-  const range = maxV - minV || 1;
+  const finalVal = points[points.length - 1].value;
+  const pnlPct = ((finalVal - initialCapital) / initialCapital) * 100;
+  const positive = pnlPct >= 0;
+  const lineColor = positive ? "#22c55e" : "#ef4444";
+  const areaColor = positive ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)";
 
-  const toX = (i: number) => PAD_X + (innerW * i) / (points.length - 1);
-  const toY = (v: number) => PAD_TOP + innerH * (1 - (v - minV) / range);
-
-  const linePoints = points.map((p, i) => `${toX(i)},${toY(p.value)}`).join(" ");
-  const fillPoints = `${toX(0)},${toY(minV)} ` + linePoints + ` ${toX(points.length - 1)},${toY(minV)}`;
-
-  const baselineY = toY(initialCapital);
-  const finalVal = vals[vals.length - 1];
-  const positive = finalVal >= initialCapital;
-  const color = positive ? "var(--bull)" : "var(--bear)";
-  const colorHex = positive ? "#22c55e" : "#ef4444";
-
-  // Y-axis labels (3 ticks)
-  const yTicks = [minV, (minV + maxV) / 2, maxV].map((v) => ({
-    y: toY(v),
-    label: v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${Math.round(v)}`,
-  }));
-
-  // Dot at last point
-  const lastX = toX(points.length - 1);
-  const lastY = toY(finalVal);
+  const fmtVal = (v: number) =>
+    v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(2)}M`
+    : v >= 1_000   ? `$${(v / 1_000).toFixed(1)}K`
+    : `$${v.toFixed(0)}`;
 
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "12px 16px" }}>
       <div className="flex items-center justify-between mb-2">
-        <span style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)" }}>EQUITY CURVE</span>
-        <span style={{ fontFamily: "var(--font-jb)", fontSize: 12, fontWeight: 700, color }}>
-          ${finalVal.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+        <span style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Equity Curve
         </span>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)" }}>
+            Start {fmtVal(initialCapital)}
+          </span>
+          <span style={{ fontFamily: "var(--font-jb)", fontSize: 12, fontWeight: 700, color: lineColor }}>
+            {positive ? "+" : ""}{pnlPct.toFixed(2)}% · {fmtVal(finalVal)}
+          </span>
+        </div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: H, display: "block", overflow: "visible" }}>
-        <defs>
-          <linearGradient id="eq-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={colorHex} stopOpacity="0.2" />
-            <stop offset="100%" stopColor={colorHex} stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
-
-        {/* Y-axis ticks */}
-        {yTicks.map((t, i) => (
-          <g key={i}>
-            <line x1={PAD_X} y1={t.y} x2={W} y2={t.y} stroke="var(--line)" strokeWidth="0.5" strokeDasharray="3,3" />
-            <text x={PAD_X - 4} y={t.y + 3.5} textAnchor="end" fill="var(--ghost)" fontSize="8" fontFamily="var(--font-jb)">
-              {t.label}
-            </text>
-          </g>
-        ))}
-
-        {/* Baseline at initial capital */}
-        {baselineY > PAD_TOP && baselineY < H - PAD_BOT && (
-          <line x1={PAD_X} y1={baselineY} x2={W} y2={baselineY} stroke="var(--ghost)" strokeWidth="0.75" strokeDasharray="4,4" opacity="0.5" />
-        )}
-
-        {/* Fill area */}
-        <polygon points={fillPoints} fill="url(#eq-grad)" />
-
-        {/* Main line */}
-        <polyline
-          points={linePoints}
-          fill="none"
-          stroke={color}
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-
-        {/* Terminal dot */}
-        <circle cx={lastX} cy={lastY} r="3" fill={color} />
-        <circle cx={lastX} cy={lastY} r="5" fill={color} opacity="0.2" />
-      </svg>
-      <div className="flex justify-between" style={{ marginTop: 2, fontFamily: "var(--font-jb)", fontSize: 9, color: "var(--ghost)" }}>
-        <span>{points[0].date}</span>
-        <span style={{ color: "var(--ghost)", fontSize: 9 }}>
-          {positive ? "+" : ""}{(((finalVal - initialCapital) / initialCapital) * 100).toFixed(2)}%
-        </span>
-        <span>{points[points.length - 1].date}</span>
-      </div>
+      <Line
+        data={{
+          labels,
+          datasets: [
+            {
+              data,
+              borderColor: lineColor,
+              backgroundColor: areaColor,
+              fill: true,
+              borderWidth: 1.5,
+              pointRadius: 0,
+              pointHoverRadius: 4,
+              pointHoverBackgroundColor: lineColor,
+              spanGaps: false,
+              tension: 0.2,
+            },
+          ],
+        }}
+        options={{
+          responsive: true,
+          maintainAspectRatio: true,
+          aspectRatio: 4,
+          animation: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              mode: "index",
+              intersect: false,
+              callbacks: {
+                title: (items) => items[0]?.label ?? "",
+                label: (item) => item.raw != null ? fmtVal(item.raw as number) : "",
+              },
+              backgroundColor: "rgba(15,15,20,0.9)",
+              titleFont: { family: "monospace", size: 11 },
+              bodyFont: { family: "monospace", size: 12 },
+              padding: 8,
+              borderColor: "rgba(255,255,255,0.1)",
+              borderWidth: 1,
+            },
+          },
+          scales: {
+            x: {
+              ticks: {
+                maxTicksLimit: 6,
+                color: "rgba(150,150,160,0.8)",
+                font: { family: "monospace", size: 9 },
+                maxRotation: 0,
+              },
+              grid: { color: "rgba(255,255,255,0.04)" },
+            },
+            y: {
+              min: 0,
+              suggestedMax: initialCapital * 1.1,
+              ticks: {
+                color: "rgba(150,150,160,0.8)",
+                font: { family: "monospace", size: 9 },
+                callback: (v) => fmtVal(v as number),
+                maxTicksLimit: 5,
+              },
+              grid: { color: "rgba(255,255,255,0.04)" },
+            },
+          },
+        }}
+      />
     </div>
   );
 }

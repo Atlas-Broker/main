@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
+import { ComparisonChart, jobColor, type ChartSeries } from "@/app/admin/_components/ComparisonChart";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -199,112 +200,6 @@ function ActionBadge({ action }: { action: string }) {
   );
 }
 
-// ── Daily Logs Panel ──────────────────────────────────────────────────────────
-
-function DailyLogsPanel({ job, onClose }: { job: BacktestJob; onClose: () => void }) {
-  const [fullJob, setFullJob] = useState<BacktestJob | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<number | null>(null);
-
-  useEffect(() => {
-    fetchWithAuth(`${API}/v1/backtest/${job.id}`)
-      .then(async (r) => { if (r?.ok) setFullJob(await r.json()); })
-      .finally(() => setLoading(false));
-  }, [job.id]);
-
-  const runs = fullJob?.results?.daily_runs ?? [];
-  const executed = runs.filter((r) => r.executed).length;
-  const errors   = runs.filter((r) => r.action === "ERROR").length;
-
-  function exportCSV() {
-    const header = "date,ticker,action,confidence,executed,price,pnl,reason\n";
-    const rows = runs.map((r) =>
-      [r.date, r.ticker, r.action, r.confidence ?? "", r.executed, r.simulated_price ?? "", r.pnl ?? "",
-       `"${(r.skipped_reason ?? r.reasoning ?? "").replace(/"/g, "'")}"`].join(",")
-    ).join("\n");
-    const blob = new Blob([header + rows], { type: "text/csv" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `job-${job.id.slice(0, 8)}-runs.csv`;
-    a.click();
-  }
-
-  return (
-    <div style={{ background: "var(--deep)", border: "1px solid var(--line)", borderRadius: 10, padding: "16px 18px", marginTop: 12 }} className="exp-fade">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div>
-          <div style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>
-            Daily Runs — {job.id.slice(0, 8)}
-          </div>
-          {!loading && runs.length > 0 && (
-            <div style={{ display: "flex", gap: 12, fontSize: 11, color: "var(--dim)", fontFamily: "var(--font-nunito)" }}>
-              <span style={{ color: "var(--bull)", fontWeight: 700 }}>{executed}</span> executed
-              {errors > 0 && <><span style={{ color: "var(--bear)", fontWeight: 700 }}>{errors}</span> errors</>}
-              · {runs.length} total
-            </div>
-          )}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {runs.length > 0 && (
-            <button onClick={exportCSV} style={{ background: "none", border: "1px solid var(--line)", borderRadius: 5, padding: "4px 10px", color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", cursor: "pointer" }}>
-              ↓ CSV
-            </button>
-          )}
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ghost)", fontSize: 18, lineHeight: 1 }}>×</button>
-        </div>
-      </div>
-
-      {loading && <div style={{ textAlign: "center", padding: "16px 0", color: "var(--ghost)", fontSize: 12 }}>Loading…</div>}
-      {!loading && runs.length === 0 && <div style={{ textAlign: "center", padding: "16px 0", color: "var(--ghost)", fontSize: 12 }}>No runs yet.</div>}
-
-      {!loading && runs.length > 0 && (
-        <div style={{ maxHeight: 400, overflowY: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "var(--font-jb)" }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--line)", position: "sticky", top: 0, background: "var(--deep)" }}>
-                {["Date", "Ticker", "Action", "Conf.", "Executed", "Price", "PnL", ""].map((h) => (
-                  <th key={h} style={{ padding: "6px 10px", textAlign: "left", color: "var(--ghost)", fontSize: 9, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((r, i) => (
-                <React.Fragment key={i}>
-                  <tr
-                    onClick={() => setExpanded(expanded === i ? null : i)}
-                    style={{ borderBottom: expanded === i ? "none" : "1px solid var(--line)", opacity: r.action === "ERROR" ? 0.5 : r.executed ? 1 : 0.65, cursor: "pointer" }}
-                  >
-                    <td style={{ padding: "7px 10px", color: "var(--dim)", whiteSpace: "nowrap" }}>{r.date}</td>
-                    <td style={{ padding: "7px 10px", color: "var(--ink)", fontWeight: 700 }}>{r.ticker}</td>
-                    <td style={{ padding: "7px 10px" }}><ActionBadge action={r.action} /></td>
-                    <td style={{ padding: "7px 10px", color: "var(--dim)" }}>{conf(r.confidence)}</td>
-                    <td style={{ padding: "7px 10px", color: r.executed ? "var(--bull)" : "var(--ghost)" }}>{r.executed ? "✓" : "—"}</td>
-                    <td style={{ padding: "7px 10px", color: "var(--dim)" }}>{r.simulated_price != null ? `$${r.simulated_price.toFixed(2)}` : "—"}</td>
-                    <td style={{ padding: "7px 10px", color: r.pnl == null ? "var(--ghost)" : r.pnl >= 0 ? "var(--bull)" : "var(--bear)" }}>
-                      {r.pnl == null ? "—" : `${r.pnl >= 0 ? "+" : ""}$${r.pnl.toFixed(2)}`}
-                    </td>
-                    <td style={{ padding: "7px 10px", color: "var(--ghost)", fontSize: 9 }}>{r.reasoning || r.skipped_reason ? "▸" : ""}</td>
-                  </tr>
-                  {expanded === i && (r.reasoning || r.skipped_reason || r.error) && (
-                    <tr style={{ borderBottom: "1px solid var(--line)", background: "var(--elevated)" }}>
-                      <td colSpan={8} style={{ padding: "8px 10px 10px 32px" }}>
-                        {r.error && <div style={{ color: "var(--bear)", fontSize: 11, marginBottom: 4 }}>Error: {r.error}</div>}
-                        {r.skipped_reason && <div style={{ color: "var(--dim)", fontSize: 11, marginBottom: 4 }}>Skipped: {r.skipped_reason}</div>}
-                        {r.reasoning && <div style={{ color: "var(--dim)", fontSize: 11, lineHeight: 1.5 }}>{r.reasoning}</div>}
-                        {r.trace_id && <div style={{ marginTop: 6, fontSize: 9, color: "var(--ghost)" }}>trace {r.trace_id.slice(0, 16)}…</div>}
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Job Card ──────────────────────────────────────────────────────────────────
 
 function JobCard({ job, type, onCancel, onResume }: {
@@ -313,7 +208,7 @@ function JobCard({ job, type, onCancel, onResume }: {
   onCancel: () => void;
   onResume: () => void;
 }) {
-  const [showLogs, setShowLogs] = useState(false);
+  const router   = useRouter();
   const isActive = job.status === "running" || job.status === "queued";
   const isStale  = isActive && Date.now() - new Date(job.created_at).getTime() > STALE_MS;
   const accent   = jobAccent(job, type);
@@ -323,12 +218,12 @@ function JobCard({ job, type, onCancel, onResume }: {
     <div className="exp-fade">
       <div
         className="exp-job-card"
-        onClick={() => setShowLogs((v) => !v)}
+        onClick={() => router.push(`/admin/jobs/${job.id}`)}
         style={{
           background: "var(--surface)",
-          borderTop:    `1px solid ${showLogs ? `${accent}40` : "var(--line)"}`,
-          borderRight:  `1px solid ${showLogs ? `${accent}40` : "var(--line)"}`,
-          borderBottom: `1px solid ${showLogs ? `${accent}40` : "var(--line)"}`,
+          borderTop:    "1px solid var(--line)",
+          borderRight:  "1px solid var(--line)",
+          borderBottom: "1px solid var(--line)",
           borderLeft:   `4px solid ${accent}`,
           borderRadius: 10,
           padding: "16px 18px",
@@ -406,12 +301,10 @@ function JobCard({ job, type, onCancel, onResume }: {
             )}
           </div>
           <span style={{ fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)", opacity: 0.7 }}>
-            {showLogs ? "hide runs ▴" : "view runs ▾"}
+            view detail →
           </span>
         </div>
       </div>
-
-      {showLogs && <DailyLogsPanel job={job} onClose={() => setShowLogs(false)} />}
     </div>
   );
 }
@@ -502,9 +395,10 @@ function ComparisonTable({ experiment }: { experiment: Experiment }) {
 export default function ExperimentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router  = useRouter();
-  const [exp, setExp]       = useState<Experiment | null>(null);
+  const [exp, setExp]         = useState<Experiment | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState<string | null>(null);
+  const [error, setError]     = useState<string | null>(null);
+  const [chartSeries, setChartSeries] = useState<ChartSeries[]>([]);
 
   const load = useCallback(async () => {
     const res = await fetchWithAuth(`${API}/v1/experiments/${id}`);
@@ -524,6 +418,35 @@ export default function ExperimentDetailPage() {
     const timer = setInterval(load, 5000);
     return () => clearInterval(timer);
   }, [exp, load]);
+
+  // Fetch equity curves for all jobs that have results (completed or partial)
+  useEffect(() => {
+    if (!exp) return;
+    const jobsWithData = exp.jobs.filter(
+      (j) => j.status === "completed" || j.status === "running" || j.status === "cancelled" || j.status === "failed"
+    );
+    if (jobsWithData.length === 0) return;
+
+    Promise.all(
+      jobsWithData.map((j, idx) =>
+        fetchWithAuth(`${API}/v1/backtest/${j.id}`)
+          .then(async (res) => {
+            if (!res?.ok) return null;
+            const full = await res.json();
+            const curve: { date: string; value: number }[] = full.results?.equity_curve ?? [];
+            if (curve.length === 0) return null;
+            return {
+              label: jobLabel(j, exp.experiment_type),
+              color: jobColor(j.philosophy_mode, j.confidence_threshold, idx),
+              curve,
+            } as ChartSeries;
+          })
+          .catch(() => null)
+      )
+    ).then((results) => {
+      setChartSeries(results.filter(Boolean) as ChartSeries[]);
+    });
+  }, [exp]);
 
   async function cancelJob(jobId: string) {
     await fetchWithAuth(`${API}/v1/backtest/${jobId}/cancel`, { method: "POST" });
@@ -546,10 +469,10 @@ export default function ExperimentDetailPage() {
 
           {/* Nav */}
           <button
-            onClick={() => router.push("/admin")}
+            onClick={() => router.push("/admin/backtesting")}
             style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "var(--ghost)", fontFamily: "var(--font-jb)", fontSize: 11, marginBottom: 24, padding: 0 }}
           >
-            ← Back to Admin
+            ← Back to Backtesting
           </button>
 
           {loading && (
@@ -611,11 +534,22 @@ export default function ExperimentDetailPage() {
                 </div>
               </div>
 
-              {/* Comparison table */}
-              <div style={{ background: "var(--surface)", borderRadius: 10, border: "1px solid var(--line)", padding: "20px 24px" }}>
-                <div style={{ fontFamily: "var(--font-jb)", fontSize: 11, fontWeight: 700, color: "var(--ink)", marginBottom: 16, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+              {/* Comparison chart + table */}
+              <div style={{ background: "var(--surface)", borderRadius: 10, border: "1px solid var(--line)", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+                <div style={{ fontFamily: "var(--font-jb)", fontSize: 11, fontWeight: 700, color: "var(--ink)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
                   Summary
                 </div>
+
+                {/* Multi-series equity chart */}
+                {chartSeries.length > 0 && (
+                  <ComparisonChart
+                    series={chartSeries}
+                    startDate={exp.start_date}
+                    endDate={exp.end_date}
+                    initialCapital={100_000}
+                  />
+                )}
+
                 {completedCount === 0 ? (
                   <div style={{ textAlign: "center", padding: "24px 0", color: "var(--ghost)", fontFamily: "var(--font-nunito)", fontSize: 13 }}>
                     Results will appear here as runs complete.
