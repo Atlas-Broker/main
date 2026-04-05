@@ -8,7 +8,6 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
-type PageTab   = "experiments" | "jobs";
 type ExperimentType = "philosophy" | "threshold" | "mode" | "single" | "multi";
 
 type BacktestJob = {
@@ -236,7 +235,6 @@ const COMP_STYLES = `
 }
 .bcv-job-card { transition: box-shadow 0.15s, border-color 0.15s; cursor: pointer; }
 .bcv-job-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); border-color: var(--brand) !important; }
-.bcv-tab { transition: color 0.15s, border-color 0.15s; }
 `;
 
 function StyleInjector() {
@@ -712,95 +710,6 @@ function ExperimentCard({ experiment, defaultOpen, onJobsChanged }: {
   );
 }
 
-// ── Flat job row (for Jobs tab) ───────────────────────────────────────────────
-
-function JobRow({ job, onCancel, onResume }: {
-  job: BacktestJob;
-  onCancel: () => void;
-  onResume: () => void;
-}) {
-  const isActive = job.status === "running" || job.status === "queued";
-  const isStale  = isActive && Date.now() - new Date(job.created_at).getTime() > STALE_MS;
-  const [showLogs, setShowLogs] = useState(false);
-
-  return (
-    <div style={{ background: "var(--surface)", border: `1px solid ${isActive ? "var(--hold)30" : "var(--line)"}`, borderRadius: 8, overflow: "hidden" }}>
-      <div
-        onClick={() => !isActive && setShowLogs((v) => !v)}
-        style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", cursor: isActive ? "default" : "pointer" }}
-      >
-        {/* Status dot */}
-        <div style={{ width: 8, height: 8, borderRadius: "50%", background: isStale ? "var(--bear)" : statusColor[job.status], flexShrink: 0 }} />
-
-        {/* Info */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-            <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 11, color: "var(--ink)" }}>
-              {job.tickers.join(" · ")}
-            </span>
-            {job.philosophy_mode && (
-              <span style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: philosophyColors[job.philosophy_mode] ?? "var(--brand)" }}>
-                {job.philosophy_mode}
-              </span>
-            )}
-            {job.confidence_threshold != null && (
-              <span style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--dim)" }}>
-                {(job.confidence_threshold * 100).toFixed(0)}% conf
-              </span>
-            )}
-            {isStale && <Pill label="stale" color="var(--bear)" />}
-          </div>
-          <div style={{ fontFamily: "var(--font-jb)", fontSize: 9, color: "var(--ghost)" }}>
-            {job.start_date} → {job.end_date} · {job.ebc_mode} · {relTime(job.created_at)} · {job.id.slice(0, 8)}
-          </div>
-        </div>
-
-        {/* Progress / metrics */}
-        {isActive ? (
-          <div style={{ width: 120 }}>
-            <ProgressBar progress={job.progress} running={job.status === "running"} />
-            <div style={{ marginTop: 3, fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)", textAlign: "right" }}>{job.progress}%</div>
-          </div>
-        ) : job.status === "completed" ? (
-          <div style={{ display: "flex", gap: 16, textAlign: "right" }}>
-            <div>
-              <div style={{ fontSize: 8, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}>RETURN</div>
-              <div style={{ fontSize: 11, fontFamily: "var(--font-jb)", fontWeight: 700, color: (job.total_return ?? 0) >= 0 ? "var(--bull)" : "var(--bear)" }}>{pct(job.total_return)}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 8, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}>SHARPE</div>
-              <div style={{ fontSize: 11, fontFamily: "var(--font-jb)", fontWeight: 700, color: (job.sharpe_ratio ?? 0) >= 1 ? "var(--bull)" : "var(--dim)" }}>{fmt(job.sharpe_ratio)}</div>
-            </div>
-          </div>
-        ) : (
-          <StatusBadge status={job.status} />
-        )}
-
-        {/* Actions */}
-        <div style={{ display: "flex", gap: 6 }}>
-          {(isActive || isStale) && (
-            <button onClick={(e) => { e.stopPropagation(); onCancel(); }} style={{ fontSize: 9, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--bear)40", color: "var(--bear)", padding: "2px 7px", borderRadius: 4, cursor: "pointer" }}>
-              cancel
-            </button>
-          )}
-          {(job.status === "failed" || job.status === "cancelled") && (
-            <button onClick={(e) => { e.stopPropagation(); onResume(); }} style={{ fontSize: 9, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--brand)40", color: "var(--brand)", padding: "2px 7px", borderRadius: 4, cursor: "pointer" }}>
-              resume
-            </button>
-          )}
-          {job.status === "completed" && (
-            <span style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)", cursor: "pointer" }}>
-              {showLogs ? "▴" : "▾"}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {showLogs && <div style={{ padding: "0 16px 16px" }}><JobLogsPanel job={job} onClose={() => setShowLogs(false)} /></div>}
-    </div>
-  );
-}
-
 // ── New experiment creation ────────────────────────────────────────────────────
 
 function CreateExperimentSection({ type, title, subtitle, onCreated }: {
@@ -964,7 +873,6 @@ function CreateExperimentSection({ type, title, subtitle, onCreated }: {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function BacktestComparisonView() {
-  const [tab, setTab]                         = useState<PageTab>("experiments");
   const [allJobs, setAllJobs]                 = useState<BacktestJob[]>([]);
   const [experiments, setExperiments]         = useState<Experiment[]>([]);
   const [loading, setLoading]                 = useState(true);
@@ -1025,46 +933,16 @@ export function BacktestComparisonView() {
     (j) => (j.status === "running" || j.status === "queued") && Date.now() - new Date(j.created_at).getTime() > STALE_MS
   ).length;
 
-  // Jobs tab: sort all jobs newest first
-  const sortedJobs = [...allJobs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-  async function cancelJob(jobId: string) {
-    await fetchWithAuth(`${API}/v1/backtest/${jobId}/cancel`, { method: "POST" });
-    await loadAll();
-  }
-  async function resumeJob(jobId: string) {
-    await fetchWithAuth(`${API}/v1/backtest/${jobId}/resume`, { method: "POST" });
-    await loadAll();
-  }
-
   return (
     <>
       <StyleInjector />
       <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingBottom: 32 }}>
 
-        {/* Tab bar */}
+        {/* Header bar */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <div style={{ display: "flex", gap: 0, borderBottom: "2px solid var(--line)" }}>
-            {(["experiments", "jobs"] as PageTab[]).map((t) => (
-              <button
-                key={t}
-                className="bcv-tab"
-                onClick={() => setTab(t)}
-                style={{
-                  background: "none", border: "none", cursor: "pointer",
-                  fontFamily: "var(--font-jb)", fontSize: 11, fontWeight: 700,
-                  letterSpacing: "0.08em", textTransform: "uppercase",
-                  padding: "8px 16px",
-                  color: tab === t ? "var(--ink)" : "var(--ghost)",
-                  borderBottom: tab === t ? "2px solid var(--brand)" : "2px solid transparent",
-                  marginBottom: -2,
-                }}
-              >
-                {t === "experiments" ? `Experiments${experiments.length > 0 ? ` (${experiments.length})` : ""}` : `Jobs${allJobs.length > 0 ? ` (${allJobs.length})` : ""}`}
-              </button>
-            ))}
+          <div style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+            {experiments.length} group{experiments.length !== 1 ? "s" : ""} · {allJobs.length} total runs
           </div>
-
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {staleCount > 0 && (
               <button
@@ -1098,8 +976,8 @@ export function BacktestComparisonView() {
           </div>
         )}
 
-        {/* ── EXPERIMENTS TAB ── */}
-        {!loading && tab === "experiments" && (
+        {/* Experiments */}
+        {!loading && (
           <>
             {experiments.length === 0 ? (
               <div style={{ textAlign: "center", padding: "32px 24px", color: "var(--ghost)", fontFamily: "var(--font-nunito)", fontSize: 13 }}>
@@ -1145,27 +1023,6 @@ export function BacktestComparisonView() {
           </>
         )}
 
-        {/* ── JOBS TAB ── */}
-        {!loading && tab === "jobs" && (
-          <>
-            {sortedJobs.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "32px 24px", color: "var(--ghost)", fontFamily: "var(--font-nunito)", fontSize: 13 }}>
-                No jobs yet.
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {sortedJobs.map((job) => (
-                  <JobRow
-                    key={job.id}
-                    job={job}
-                    onCancel={() => cancelJob(job.id)}
-                    onResume={() => resumeJob(job.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        )}
       </div>
     </>
   );

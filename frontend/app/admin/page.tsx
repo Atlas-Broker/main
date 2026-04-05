@@ -574,7 +574,7 @@ const NAV_ITEMS: { id: AdminPage; label: string; short: string }[] = [
 
 export default function AdminDashboard() {
   const [page, setPage]               = useState<AdminPage>("overview");
-  const [backtestSubTab, setBacktestSubTab] = useState<"jobs" | "experiments">("jobs");
+  const [backtestSubTab, setBacktestSubTab] = useState<"jobs" | "experiments">("experiments");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [role, setRole]               = useState<UserRole | null>(null);
   const [roleLoading, setRoleLoading] = useState(true);
@@ -733,7 +733,7 @@ export default function AdminDashboard() {
             <div className="flex flex-col gap-4">
               {/* Sub-tab pills */}
               <div className="flex items-center gap-2">
-                {(["jobs", "experiments"] as const).map((tab) => (
+                {(["experiments", "jobs"] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setBacktestSubTab(tab)}
