@@ -138,3 +138,34 @@ def cancel_backtest_job(job_id: str, user_id: str = Depends(require_admin)):
         # Running jobs: set the in-process flag; runner will stop after current day
         request_cancellation(job_id)
     return {"cancelling": True}
+
+
+@router.post("/{job_id}/resume")
+async def resume_backtest_job_endpoint(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    user_id: str = Depends(require_admin),
+):
+    """Resume a failed or cancelled backtest job from its last checkpoint."""
+    from backtesting.runner import resume_backtest_job
+    job = get_job(job_id, user_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["status"] not in ("failed", "cancelled"):
+        raise HTTPException(status_code=409, detail=f"Cannot resume job with status '{job['status']}'")
+    mongo_id = job.get("mongo_id")
+    if not mongo_id:
+        raise HTTPException(status_code=409, detail="Job has no results document — cannot resume. Create a new job instead.")
+    background_tasks.add_task(
+        resume_backtest_job,
+        job_id=job_id,
+        user_id=user_id,
+        tickers=job["tickers"],
+        start_date=job["start_date"],
+        end_date=job["end_date"],
+        ebc_mode=job["ebc_mode"],
+        mongo_id=mongo_id,
+        philosophy_mode=job.get("philosophy_mode", "balanced"),
+        confidence_threshold=job.get("confidence_threshold"),
+    )
+    return {"resuming": True, "job_id": job_id}

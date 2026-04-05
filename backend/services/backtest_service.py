@@ -189,3 +189,30 @@ def finalize_results(mongo_id: str, metrics: dict) -> None:
         {"_id": ObjectId(mongo_id)},
         {"$set": {"metrics": metrics, "completed_at": datetime.now(timezone.utc)}},
     )
+
+
+def save_checkpoint(
+    mongo_id: str,
+    last_completed_day: str,
+    cash: float,
+    positions: dict,  # {ticker: {"shares": float, "avg_cost": float, "entry_date": str}}
+) -> None:
+    """Persist virtual portfolio state so a failed job can resume from this day."""
+    _get_results_col().update_one(
+        {"_id": ObjectId(mongo_id)},
+        {"$set": {"checkpoint": {
+            "last_completed_day": last_completed_day,
+            "cash": cash,
+            "positions": positions,
+            "saved_at": datetime.now(timezone.utc),
+        }}},
+    )
+
+
+def get_checkpoint(mongo_id: str) -> dict | None:
+    """Return the saved checkpoint dict, or None if no checkpoint exists."""
+    doc = _get_results_col().find_one(
+        {"_id": ObjectId(mongo_id)},
+        {"checkpoint": 1},
+    )
+    return doc.get("checkpoint") if doc else None

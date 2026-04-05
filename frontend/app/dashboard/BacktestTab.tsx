@@ -242,6 +242,11 @@ export function BacktestTab({ role }: { role?: string }) {
     await loadJobs();
   }
 
+  async function resumeJob(jobId: string) {
+    await fetchWithAuth(`${API}/v1/backtest/${jobId}/resume`, { method: "POST" });
+    await loadJobs();
+  }
+
   if (view === "new") {
     return (
       <>
@@ -363,6 +368,18 @@ export function BacktestTab({ role }: { role?: string }) {
                     }}
                     title="Cancel"
                   >cancel</button>
+                )}
+                {/* Resume button — only for failed/cancelled */}
+                {(job.status === "failed" || job.status === "cancelled") && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); resumeJob(job.id); }}
+                    style={{
+                      background: "none", border: "1px solid var(--brand)40", cursor: "pointer",
+                      color: "var(--brand)", fontSize: 10, padding: "2px 7px", borderRadius: 4,
+                      fontFamily: "var(--font-jb)",
+                    }}
+                    title="Resume from last checkpoint"
+                  >resume</button>
                 )}
                 {/* Delete button — only for non-running, non-queued */}
                 {job.status !== "running" && job.status !== "queued" && (

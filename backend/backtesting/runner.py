@@ -22,6 +22,8 @@ from services.backtest_service import (
     append_day_results,
     create_results_doc,
     finalize_results,
+    get_checkpoint,
+    save_checkpoint,
     set_mongo_id,
     update_job_metrics,
     update_job_status,
@@ -163,6 +165,15 @@ async def run_backtest_job(
 
         all_daily_runs.extend(day_runs)
         append_day_results(mongo_id, day_runs, {"date": trading_day, "value": total_value, "cash": round(portfolio.cash, 2)})
+        save_checkpoint(
+            mongo_id,
+            last_completed_day=trading_day,
+            cash=portfolio.cash,
+            positions={
+                t: {"shares": p.shares, "avg_cost": p.avg_cost, "entry_date": p.entry_date}
+                for t, p in portfolio.positions.items()
+            },
+        )
         progress = int((runs_completed / total_runs) * 100)
         update_job_status(job_id, "running", progress=progress)
 
@@ -171,7 +182,18 @@ async def run_backtest_job(
         update_job_status(job_id, "failed", error_message=f"{errors}/{total_runs} pipeline calls failed")
         return
 
-    # Close open positions at last known prices
+    _recompute_and_finalize(job_id, mongo_id, portfolio)
+
+
+def _recompute_and_finalize(job_id: str, mongo_id: str, portfolio: VirtualPortfolio) -> None:
+    """Close open positions, recompute metrics from full MongoDB doc, finalize."""
+    from services.backtest_service import _get_results_col
+    from bson import ObjectId
+    doc = _get_results_col().find_one({"_id": ObjectId(mongo_id)})
+    all_daily_runs = doc.get("daily_runs", []) if doc else []
+    equity_curve = doc.get("equity_curve", []) if doc else []
+
+    # Close open positions
     if portfolio.positions:
         last_prices: dict[str, float] = {}
         for r in reversed(all_daily_runs):
@@ -180,12 +202,176 @@ async def run_backtest_job(
                 last_prices[t] = r["simulated_price"]
         portfolio.mark_to_market_positions(last_prices)
 
-    # Compute and persist metrics.
-    # Dict dedup is intentional: all tickers for a day share the same portfolio_value_after
-    # (total portfolio value after all tickers processed), so we want exactly one value per day.
-    daily_values = list(
-        {r["date"]: r["portfolio_value_after"] for r in all_daily_runs if r.get("portfolio_value_after")}.values()
-    )
-    metrics = compute_metrics(daily_values, 10000.0, all_daily_runs)
+    daily_values = [pt["value"] for pt in equity_curve if pt.get("value")]
+    initial = doc.get("initial_capital", 10000.0) if doc else 10000.0
+    metrics = compute_metrics(daily_values, initial, all_daily_runs)
     finalize_results(mongo_id, metrics)
     update_job_metrics(job_id, metrics, mongo_id)
+
+
+async def resume_backtest_job(
+    job_id: str,
+    user_id: str,
+    tickers: list[str],
+    start_date: str,
+    end_date: str,
+    ebc_mode: str,
+    mongo_id: str,
+    philosophy_mode: str = "balanced",
+    confidence_threshold: float | None = None,
+) -> None:
+    """
+    Resume a failed or cancelled backtest job from its last checkpoint.
+    Skips already-completed days and continues appending to the existing MongoDB doc.
+    """
+    update_job_status(job_id, "running")
+
+    checkpoint = get_checkpoint(mongo_id)
+    if checkpoint is None:
+        # No checkpoint — start fresh (reuse the existing mongo doc)
+        logger.info("[Backtest] No checkpoint found for %s — restarting from day 1", job_id)
+        portfolio = VirtualPortfolio(initial_capital=10000.0)
+        resume_after = None
+    else:
+        last_day = checkpoint["last_completed_day"]
+        logger.info("[Backtest] Resuming %s from after %s", job_id, last_day)
+        portfolio = VirtualPortfolio(initial_capital=10000.0)
+        portfolio.cash = checkpoint["cash"]
+        for ticker, pos_data in checkpoint["positions"].items():
+            from backtesting.simulator import Position
+            portfolio.positions[ticker] = Position(
+                ticker=ticker,
+                shares=pos_data["shares"],
+                avg_cost=pos_data["avg_cost"],
+                entry_date=pos_data["entry_date"],
+            )
+        resume_after = last_day
+
+    trading_days = _trading_days(date_cls.fromisoformat(start_date), date_cls.fromisoformat(end_date))
+    if not trading_days:
+        update_job_status(job_id, "failed", error_message="No trading days in range")
+        return
+
+    # Skip already-completed days
+    if resume_after is not None:
+        trading_days = [d for d in trading_days if d > resume_after]
+
+    if not trading_days:
+        # All days already done — just recompute metrics and finalize
+        _recompute_and_finalize(job_id, mongo_id, portfolio)
+        return
+
+    last_day = trading_days[-1]
+    total_runs = len(trading_days) * len(tickers)
+    runs_completed = 0
+    all_new_runs: list[dict] = []
+    errors = 0
+
+    for trading_day in trading_days:
+        if job_id in _cancellation_flags:
+            _cancellation_flags.discard(job_id)
+            update_job_status(job_id, "cancelled")
+            return
+        is_last = trading_day == last_day
+        day_runs: list[dict] = []
+
+        logger.debug(
+            "[Backtest:resume] Day %s | cash=$%.2f | positions=%s",
+            trading_day, portfolio.cash, list(portfolio.positions.keys()),
+        )
+
+        virtual_positions = {
+            t: {"shares": pos.shares, "avg_cost": pos.avg_cost}
+            for t, pos in portfolio.positions.items()
+        }
+        virtual_account = {
+            "portfolio_value": portfolio.portfolio_value({}),
+            "buying_power": portfolio.cash,
+            "equity": portfolio.portfolio_value({}),
+        }
+
+        for ticker in tickers:
+            run_record: dict
+            try:
+                signal = await run_pipeline_async(
+                    ticker=ticker,
+                    boundary_mode=ebc_mode,
+                    user_id=user_id,
+                    as_of_date=trading_day,
+                    philosophy_mode=philosophy_mode,
+                    current_positions=virtual_positions,
+                    account_info=virtual_account,
+                )
+                exec_price = (
+                    None
+                    if is_last
+                    else await asyncio.to_thread(fetch_next_open, ticker, trading_day)
+                )
+                sim = portfolio.process(
+                    date=trading_day,
+                    ticker=ticker,
+                    action=signal.action,
+                    confidence=signal.confidence,
+                    ebc_mode=ebc_mode,
+                    execution_price=exec_price,
+                    is_last_day=is_last,
+                    confidence_threshold_override=confidence_threshold,
+                    position_value_override=signal.risk.get("position_value"),
+                )
+                run_record = {
+                    "date": trading_day,
+                    "ticker": ticker,
+                    "action": signal.action,
+                    "confidence": signal.confidence,
+                    "reasoning": signal.reasoning,
+                    "executed": sim.get("executed", False),
+                    "simulated_price": exec_price,
+                    "shares": sim.get("shares"),
+                    "pnl": sim.get("pnl"),
+                    "skipped_reason": sim.get("skipped_reason") or sim.get("reason"),
+                    "trace_id": signal.trace_id,
+                }
+            except Exception as exc:
+                logger.warning("Pipeline error %s %s: %s", ticker, trading_day, exc)
+                errors += 1
+                run_record = {
+                    "date": trading_day,
+                    "ticker": ticker,
+                    "action": "ERROR",
+                    "error": str(exc),
+                    "executed": False,
+                }
+
+            day_runs.append(run_record)
+            runs_completed += 1
+
+        current_prices = {
+            r["ticker"]: r["simulated_price"]
+            for r in day_runs
+            if r.get("simulated_price")
+        }
+        total_value = round(portfolio.portfolio_value(current_prices), 2)
+        for r in day_runs:
+            r["portfolio_value_after"] = total_value
+
+        all_new_runs.extend(day_runs)
+        append_day_results(mongo_id, day_runs, {"date": trading_day, "value": total_value, "cash": round(portfolio.cash, 2)})
+        save_checkpoint(
+            mongo_id,
+            last_completed_day=trading_day,
+            cash=portfolio.cash,
+            positions={
+                t: {"shares": p.shares, "avg_cost": p.avg_cost, "entry_date": p.entry_date}
+                for t, p in portfolio.positions.items()
+            },
+        )
+        # Update progress based on total days in original range (not just remaining)
+        total_all_days = len(_trading_days(date_cls.fromisoformat(start_date), date_cls.fromisoformat(end_date))) * len(tickers)
+        progress = min(99, int(((total_all_days - total_runs + runs_completed) / total_all_days) * 100))
+        update_job_status(job_id, "running", progress=progress)
+
+    if total_runs > 0 and errors / total_runs > 0.5:
+        update_job_status(job_id, "failed", error_message=f"{errors}/{total_runs} pipeline calls failed on resume")
+        return
+
+    _recompute_and_finalize(job_id, mongo_id, portfolio)
