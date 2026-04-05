@@ -34,9 +34,10 @@ def create_job(
     ebc_mode: str,
     philosophy_mode: str = "balanced",
     confidence_threshold: Optional[float] = None,
+    experiment_id: Optional[str] = None,
 ) -> str:
     job_id = str(uuid.uuid4())
-    get_supabase().table("backtest_jobs").insert({
+    row: dict = {
         "id":                   job_id,
         "user_id":              user_id,
         "status":               "queued",
@@ -48,7 +49,10 @@ def create_job(
         "confidence_threshold": confidence_threshold,
         "initial_capital":      10000.0,
         "progress":             0,
-    }).execute()
+    }
+    if experiment_id is not None:
+        row["experiment_id"] = experiment_id
+    get_supabase().table("backtest_jobs").insert(row).execute()
     return job_id
 
 

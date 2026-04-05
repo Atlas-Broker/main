@@ -8,6 +8,8 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+type PageTab   = "experiments" | "jobs";
+type ExperimentType = "philosophy" | "threshold" | "mode" | "single" | "multi";
 
 type BacktestJob = {
   id: string;
@@ -18,6 +20,7 @@ type BacktestJob = {
   ebc_mode: string;
   philosophy_mode?: string | null;
   confidence_threshold?: number | null;
+  experiment_id?: string | null;
   progress: number;
   total_return: number | null;
   sharpe_ratio: number | null;
@@ -52,30 +55,27 @@ type DailyRun = {
   error?: string;
 };
 
-type ExperimentType = "philosophy" | "threshold" | "mode" | "single" | "multi";
-
-type Experiment = {
-  id: string;            // synthetic id for react key
-  type: ExperimentType;
-  label: string;
-  jobs: BacktestJob[];
-  createdAt: Date;       // most recent job created_at
-};
-
-type BacktestRequest = {
+// Experiment from backend API
+type BackendExperiment = {
+  id: string;
+  name: string;
+  experiment_type: ExperimentType;
   tickers: string[];
   start_date: string;
   end_date: string;
   ebc_mode: string;
-  philosophy_mode?: string;
-  confidence_threshold?: number;
+  created_at: string;
+  jobs: BacktestJob[];
 };
 
-type ExperimentRun = {
+// Client-side experiment (for orphan jobs or as display wrapper)
+type Experiment = {
+  id: string;
+  type: ExperimentType;
   label: string;
-  job: BacktestJob | null;
-  submitting: boolean;
-  error: string | null;
+  jobs: BacktestJob[];
+  createdAt: Date;
+  isBackendBacked: boolean;   // true = came from /v1/experiments
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ const DEFAULT_START   = new Date(Date.now() - 28 * 86400000).toISOString().slice
 const DEFAULT_END     = new Date(Date.now() - 3  * 86400000).toISOString().slice(0, 10);
 const DEFAULT_TICKERS = "AAPL, MSFT, TSLA, NVDA, META";
 
-const STALE_MS = 24 * 60 * 60 * 1000; // 24h — a "running" job older than this is stale
+const STALE_MS = 24 * 60 * 60 * 1000;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -140,9 +140,9 @@ function tradingDayEst(start: string, end: string) {
   return days;
 }
 
-// ── Experiment grouping ───────────────────────────────────────────────────────
+// ── Orphan-job grouping (for jobs without experiment_id) ──────────────────────
 
-function groupIntoExperiments(jobs: BacktestJob[]): Experiment[] {
+function groupOrphanJobs(jobs: BacktestJob[]): Experiment[] {
   const sorted = [...jobs].sort((a, b) =>
     new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
@@ -158,50 +158,58 @@ function groupIntoExperiments(jobs: BacktestJob[]): Experiment[] {
   let idx = 0;
 
   for (const baseJobs of byBase.values()) {
-    // Sub-group by time proximity (15-min window)
-    const groups: BacktestJob[][] = [];
-    let currentGroup: BacktestJob[] = [];
+    // Sub-group by 15-min time proximity
+    const timeGroups: BacktestJob[][] = [];
+    let cur: BacktestJob[] = [];
     for (const job of baseJobs) {
-      if (currentGroup.length === 0) {
-        currentGroup.push(job);
+      if (cur.length === 0) {
+        cur.push(job);
       } else {
-        const lastMs = new Date(currentGroup[currentGroup.length - 1].created_at).getTime();
-        const thisMs = new Date(job.created_at).getTime();
-        if (thisMs - lastMs < 15 * 60 * 1000) {
-          currentGroup.push(job);
-        } else {
-          groups.push(currentGroup);
-          currentGroup = [job];
-        }
+        const gap = new Date(job.created_at).getTime() - new Date(cur[cur.length - 1].created_at).getTime();
+        if (gap < 15 * 60 * 1000) { cur.push(job); } else { timeGroups.push(cur); cur = [job]; }
       }
     }
-    if (currentGroup.length > 0) groups.push(currentGroup);
+    if (cur.length > 0) timeGroups.push(cur);
 
-    for (const group of groups) {
-      const philosophies = new Set(group.map((j) => j.philosophy_mode).filter(Boolean));
-      const thresholds   = new Set(group.map((j) => j.confidence_threshold).filter((v) => v != null));
-      const modes        = new Set(group.map((j) => j.ebc_mode));
-      const createdAt    = new Date(Math.max(...group.map((j) => new Date(j.created_at).getTime())));
+    for (const tg of timeGroups) {
+      // Split into null-threshold (philosophy candidates) vs has-threshold (threshold candidates)
+      // This prevents philosophy jobs and threshold jobs submitted close together from merging.
+      const nullThresh = tg.filter((j) => j.confidence_threshold == null);
+      const hasThresh  = tg.filter((j) => j.confidence_threshold != null);
 
-      let type: ExperimentType;
-      let label: string;
-      if (group.length === 1) {
-        type = "single"; label = "Single Run";
-      } else if (philosophies.size > 1) {
-        type = "philosophy"; label = "Philosophy Comparison";
-      } else if (thresholds.size > 1) {
-        type = "threshold"; label = "Confidence Threshold Comparison";
-      } else if (modes.size > 1) {
-        type = "mode"; label = "Mode Comparison";
-      } else {
-        type = "multi"; label = `${group.length}-Run Group`;
+      const subGroups = [nullThresh, hasThresh].filter((g) => g.length > 0);
+
+      for (const sg of subGroups) {
+        const philosophies = new Set(sg.map((j) => j.philosophy_mode).filter(Boolean));
+        const thresholds   = new Set(sg.map((j) => j.confidence_threshold).filter((v) => v != null));
+        const modes        = new Set(sg.map((j) => j.ebc_mode));
+        const createdAt    = new Date(Math.max(...sg.map((j) => new Date(j.created_at).getTime())));
+
+        let type: ExperimentType;
+        let label: string;
+        if (sg.length === 1)         { type = "single";    label = "Single Run"; }
+        else if (thresholds.size > 1) { type = "threshold"; label = "Confidence Threshold Comparison"; }
+        else if (philosophies.size > 1){ type = "philosophy"; label = "Philosophy Comparison"; }
+        else if (modes.size > 1)      { type = "mode";      label = "Mode Comparison"; }
+        else                          { type = "multi";     label = `${sg.length}-Run Group`; }
+
+        experiments.push({ id: `orphan-${idx++}`, type, label, jobs: sg, createdAt, isBackendBacked: false });
       }
-
-      experiments.push({ id: `exp-${idx++}`, type, label, jobs: group, createdAt });
     }
   }
 
   return experiments.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+function backendToExperiment(be: BackendExperiment): Experiment {
+  return {
+    id: be.id,
+    type: be.experiment_type,
+    label: be.name,
+    jobs: be.jobs,
+    createdAt: new Date(be.created_at),
+    isBackendBacked: true,
+  };
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -220,10 +228,6 @@ const COMP_STYLES = `
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-@keyframes bcv-slide-down {
-  from { opacity: 0; max-height: 0; }
-  to   { opacity: 1; max-height: 2000px; }
-}
 .bcv-fade-in { animation: bcv-fade-in 0.25s ease both; }
 .bcv-shimmer-bar {
   background: linear-gradient(90deg, var(--hold) 0%, #f5c542 40%, var(--hold) 100%);
@@ -232,6 +236,7 @@ const COMP_STYLES = `
 }
 .bcv-job-card { transition: box-shadow 0.15s, border-color 0.15s; cursor: pointer; }
 .bcv-job-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); border-color: var(--brand) !important; }
+.bcv-tab { transition: color 0.15s, border-color 0.15s; }
 `;
 
 function StyleInjector() {
@@ -319,7 +324,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-// ── Job label within an experiment ────────────────────────────────────────────
+// ── Job label / color within an experiment ────────────────────────────────────
 
 function jobLabel(job: BacktestJob, expType: ExperimentType): string {
   if (expType === "philosophy" && job.philosophy_mode) {
@@ -339,7 +344,7 @@ function jobAccentColor(job: BacktestJob, expType: ExperimentType): string {
   return modeColor[job.ebc_mode] ?? "var(--brand)";
 }
 
-// ── Daily logs panel for a single job ─────────────────────────────────────────
+// ── Daily logs panel ──────────────────────────────────────────────────────────
 
 function JobLogsPanel({ job, onClose }: { job: BacktestJob; onClose: () => void }) {
   const [fullJob, setFullJob] = useState<BacktestJob | null>(null);
@@ -353,14 +358,14 @@ function JobLogsPanel({ job, onClose }: { job: BacktestJob; onClose: () => void 
   }, [job.id]);
 
   const runs = fullJob?.results?.daily_runs ?? [];
-  const errorCount = runs.filter((r) => r.action === "ERROR").length;
+  const errorCount    = runs.filter((r) => r.action === "ERROR").length;
   const executedCount = runs.filter((r) => r.executed).length;
 
-  // Export this job's daily runs as CSV
   function exportCSV() {
     const header = "date,ticker,action,confidence,executed,price,pnl,reason\n";
     const rows = runs.map((r) =>
-      [r.date, r.ticker, r.action, r.confidence ?? "", r.executed, r.simulated_price ?? "", r.pnl ?? "", `"${(r.skipped_reason ?? r.reasoning ?? "").replace(/"/g, "'")}"`].join(",")
+      [r.date, r.ticker, r.action, r.confidence ?? "", r.executed, r.simulated_price ?? "", r.pnl ?? "",
+       `"${(r.skipped_reason ?? r.reasoning ?? "").replace(/"/g, "'")}"`].join(",")
     ).join("\n");
     const blob = new Blob([header + rows], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -371,7 +376,6 @@ function JobLogsPanel({ job, onClose }: { job: BacktestJob; onClose: () => void 
 
   return (
     <div className="bcv-fade-in" style={{ background: "var(--deep)", border: "1px solid var(--line)", borderRadius: 10, padding: "16px 18px", marginTop: 4 }}>
-      {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
         <div>
           <div style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 2 }}>
@@ -396,7 +400,6 @@ function JobLogsPanel({ job, onClose }: { job: BacktestJob; onClose: () => void 
       </div>
 
       {loading && <div style={{ color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-jb)", textAlign: "center", padding: "16px 0" }}>Loading…</div>}
-
       {!loading && runs.length === 0 && (
         <div style={{ color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-nunito)", textAlign: "center", padding: "16px 0" }}>No daily runs recorded yet.</div>
       )}
@@ -427,7 +430,7 @@ function JobLogsPanel({ job, onClose }: { job: BacktestJob; onClose: () => void 
                     <td style={{ padding: "7px 10px" }}>
                       <span style={{ color: dr.executed ? "var(--bull)" : "var(--ghost)", fontSize: 11 }}>{dr.executed ? "✓ exec" : "—"}</span>
                     </td>
-                    <td style={{ padding: "7px 10px", color: "var(--dim)", fontFamily: "var(--font-jb)" }}>
+                    <td style={{ padding: "7px 10px", color: "var(--dim)" }}>
                       {dr.simulated_price != null ? `$${dr.simulated_price.toFixed(2)}` : "—"}
                     </td>
                     <td style={{ padding: "7px 10px", color: dr.pnl == null ? "var(--ghost)" : dr.pnl >= 0 ? "var(--bull)" : "var(--bear)" }}>
@@ -438,26 +441,10 @@ function JobLogsPanel({ job, onClose }: { job: BacktestJob; onClose: () => void 
                   {expandedRow === i && (dr.reasoning || dr.skipped_reason || dr.error) && (
                     <tr style={{ borderBottom: "1px solid var(--line)", background: "var(--elevated)" }}>
                       <td colSpan={8} style={{ padding: "8px 10px 10px 38px" }}>
-                        {dr.error && (
-                          <div style={{ color: "var(--bear)", fontSize: 11, fontFamily: "var(--font-nunito)", marginBottom: dr.reasoning ? 6 : 0 }}>
-                            Error: {dr.error}
-                          </div>
-                        )}
-                        {dr.skipped_reason && !dr.executed && (
-                          <div style={{ color: "var(--dim)", fontSize: 11, fontFamily: "var(--font-nunito)", marginBottom: dr.reasoning ? 6 : 0 }}>
-                            Skipped: {dr.skipped_reason}
-                          </div>
-                        )}
-                        {dr.reasoning && (
-                          <div style={{ color: "var(--dim)", fontSize: 11, fontFamily: "var(--font-nunito)", lineHeight: 1.5 }}>
-                            {dr.reasoning}
-                          </div>
-                        )}
-                        {dr.trace_id && (
-                          <div style={{ marginTop: 6, fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}>
-                            trace {dr.trace_id.slice(0, 16)}…
-                          </div>
-                        )}
+                        {dr.error && <div style={{ color: "var(--bear)", fontSize: 11, fontFamily: "var(--font-nunito)", marginBottom: dr.reasoning ? 6 : 0 }}>Error: {dr.error}</div>}
+                        {dr.skipped_reason && !dr.executed && <div style={{ color: "var(--dim)", fontSize: 11, fontFamily: "var(--font-nunito)", marginBottom: dr.reasoning ? 6 : 0 }}>Skipped: {dr.skipped_reason}</div>}
+                        {dr.reasoning && <div style={{ color: "var(--dim)", fontSize: 11, fontFamily: "var(--font-nunito)", lineHeight: 1.5 }}>{dr.reasoning}</div>}
+                        {dr.trace_id && <div style={{ marginTop: 6, fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}>trace {dr.trace_id.slice(0, 16)}…</div>}
                       </td>
                     </tr>
                   )}
@@ -471,14 +458,9 @@ function JobLogsPanel({ job, onClose }: { job: BacktestJob; onClose: () => void 
   );
 }
 
-// ── Individual job card inside an experiment ───────────────────────────────────
+// ── Job card ──────────────────────────────────────────────────────────────────
 
-function JobCard({
-  job,
-  expType,
-  onCancel,
-  onResume,
-}: {
+function JobCard({ job, expType, onCancel, onResume }: {
   job: BacktestJob;
   expType: ExperimentType;
   onCancel: () => void;
@@ -486,9 +468,9 @@ function JobCard({
 }) {
   const [showLogs, setShowLogs] = useState(false);
   const isActive = job.status === "running" || job.status === "queued";
-  const isStale = isActive && (Date.now() - new Date(job.created_at).getTime()) > STALE_MS;
-  const accent = jobAccentColor(job, expType);
-  const label = jobLabel(job, expType);
+  const isStale  = isActive && (Date.now() - new Date(job.created_at).getTime()) > STALE_MS;
+  const accent   = jobAccentColor(job, expType);
+  const label    = jobLabel(job, expType);
 
   return (
     <div>
@@ -504,21 +486,15 @@ function JobCard({
           cursor: isActive ? "default" : "pointer",
         }}
       >
-        {/* Label + status */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 12, color: accent }}>
-            {label}
-          </span>
+          <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 12, color: accent }}>{label}</span>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             {isActive && <PulsingDot />}
             <StatusBadge status={isStale ? "failed" : job.status} />
-            {isStale && (
-              <span style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--bear)" }}>stale</span>
-            )}
+            {isStale && <span style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--bear)" }}>stale</span>}
           </div>
         </div>
 
-        {/* Progress */}
         {isActive && (
           <div>
             <ProgressBar progress={job.progress} running={job.status === "running"} />
@@ -528,7 +504,6 @@ function JobCard({
           </div>
         )}
 
-        {/* Metrics */}
         {job.status === "completed" && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 4 }}>
             {[
@@ -546,28 +521,20 @@ function JobCard({
           </div>
         )}
 
-        {/* Failed */}
         {job.status === "failed" && (
           <div style={{ fontSize: 10, color: "var(--bear)", fontFamily: "var(--font-nunito)", marginTop: 4 }}>
             {job.error_message ?? "Pipeline failed"}
           </div>
         )}
 
-        {/* Actions */}
         <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
           {(isActive || isStale) && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onCancel(); }}
-              style={{ fontSize: 10, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--bear)40", color: "var(--bear)", padding: "2px 8px", borderRadius: 4, cursor: "pointer" }}
-            >
+            <button onClick={(e) => { e.stopPropagation(); onCancel(); }} style={{ fontSize: 10, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--bear)40", color: "var(--bear)", padding: "2px 8px", borderRadius: 4, cursor: "pointer" }}>
               cancel
             </button>
           )}
           {(job.status === "failed" || job.status === "cancelled") && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onResume(); }}
-              style={{ fontSize: 10, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--brand)40", color: "var(--brand)", padding: "2px 8px", borderRadius: 4, cursor: "pointer" }}
-            >
+            <button onClick={(e) => { e.stopPropagation(); onResume(); }} style={{ fontSize: 10, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--brand)40", color: "var(--brand)", padding: "2px 8px", borderRadius: 4, cursor: "pointer" }}>
               resume
             </button>
           )}
@@ -579,7 +546,6 @@ function JobCard({
         </div>
       </div>
 
-      {/* Logs panel */}
       {showLogs && <JobLogsPanel job={job} onClose={() => setShowLogs(false)} />}
     </div>
   );
@@ -587,11 +553,11 @@ function JobCard({
 
 // ── Comparison table ───────────────────────────────────────────────────────────
 
-function ComparisonTable({ experiment, onRefresh }: { experiment: Experiment; onRefresh: () => void }) {
+function ComparisonTable({ experiment }: { experiment: Experiment }) {
   const completed = experiment.jobs.filter((j) => j.status === "completed");
   if (completed.length < 2) return null;
 
-  const sorted = [...completed].sort((a, b) => (b.sharpe_ratio ?? -Infinity) - (a.sharpe_ratio ?? -Infinity));
+  const sorted  = [...completed].sort((a, b) => (b.sharpe_ratio ?? -Infinity) - (a.sharpe_ratio ?? -Infinity));
   const bestId  = sorted[0]?.id;
   const worstId = sorted[sorted.length - 1]?.id;
 
@@ -658,25 +624,20 @@ function ComparisonTable({ experiment, onRefresh }: { experiment: Experiment; on
   );
 }
 
-// ── Experiment card (expandable) ──────────────────────────────────────────────
+// ── Experiment card (expandable accordion) ────────────────────────────────────
 
-function ExperimentCard({
-  experiment,
-  defaultOpen,
-  onJobsChanged,
-}: {
+function ExperimentCard({ experiment, defaultOpen, onJobsChanged }: {
   experiment: Experiment;
   defaultOpen?: boolean;
   onJobsChanged: () => void;
 }) {
   const [open, setOpen] = useState(defaultOpen ?? false);
+
   const activeCount    = experiment.jobs.filter((j) => j.status === "running" || j.status === "queued").length;
   const completedCount = experiment.jobs.filter((j) => j.status === "completed").length;
   const errorCount     = experiment.jobs.filter((j) => j.status === "failed" || j.status === "cancelled").length;
-  const allDone        = experiment.jobs.every((j) => j.status === "completed" || j.status === "failed" || j.status === "cancelled");
-
-  // Stale detection — any running job older than 24h
-  const hasStale = experiment.jobs.some(
+  const allDone        = experiment.jobs.every((j) => ["completed", "failed", "cancelled"].includes(j.status));
+  const hasStale       = experiment.jobs.some(
     (j) => (j.status === "running" || j.status === "queued") && Date.now() - new Date(j.created_at).getTime() > STALE_MS
   );
 
@@ -684,7 +645,6 @@ function ExperimentCard({
     await fetchWithAuth(`${API}/v1/backtest/${jobId}/cancel`, { method: "POST" });
     onJobsChanged();
   }
-
   async function resumeJob(jobId: string) {
     await fetchWithAuth(`${API}/v1/backtest/${jobId}/resume`, { method: "POST" });
     onJobsChanged();
@@ -701,48 +661,34 @@ function ExperimentCard({
 
   return (
     <div style={{ background: "var(--surface)", border: `1px solid ${open ? "var(--brand)30" : "var(--line)"}`, borderRadius: 10, overflow: "hidden", transition: "border-color 0.2s" }}>
-      {/* Accordion header */}
       <button
         onClick={() => setOpen((v) => !v)}
         style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
       >
-        {/* Left accent stripe */}
         <div style={{ width: 3, height: 36, borderRadius: 2, background: accent, flexShrink: 0 }} />
-
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-            <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>
-              {experiment.label}
-            </span>
+            <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{experiment.label}</span>
             <Pill label={`${experiment.jobs.length} runs`} color={accent} />
             {activeCount > 0 && <PulsingDot color="var(--hold)" />}
             {allDone && completedCount > 0 && <Pill label="complete" color="var(--bull)" />}
             {hasStale && <Pill label="stale" color="var(--bear)" />}
+            {experiment.isBackendBacked && <Pill label="tracked" color="var(--ghost)" />}
           </div>
           <div style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)" }}>
-            {experiment.jobs[0].tickers.join(" · ")} · {experiment.jobs[0].start_date} → {experiment.jobs[0].end_date} · {relTime(experiment.createdAt.toISOString())}
+            {experiment.jobs[0]?.tickers.join(" · ")} · {experiment.jobs[0]?.start_date} → {experiment.jobs[0]?.end_date} · {relTime(experiment.createdAt.toISOString())}
           </div>
         </div>
-
-        {/* Status summary */}
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-          {completedCount > 0 && (
-            <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--bull)" }}>{completedCount} done</span>
-          )}
-          {errorCount > 0 && (
-            <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--bear)" }}>{errorCount} failed</span>
-          )}
-          {activeCount > 0 && (
-            <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--hold)" }}>{activeCount} running</span>
-          )}
+          {completedCount > 0 && <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--bull)" }}>{completedCount} done</span>}
+          {errorCount > 0 && <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--bear)" }}>{errorCount} failed</span>}
+          {activeCount > 0 && <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--hold)" }}>{activeCount} running</span>}
           <span style={{ fontFamily: "var(--font-jb)", fontSize: 12, color: "var(--ghost)", marginLeft: 4 }}>{open ? "▴" : "▾"}</span>
         </div>
       </button>
 
-      {/* Expanded body */}
       {open && (
         <div style={{ padding: "4px 18px 18px", borderTop: "1px solid var(--line)" }} className="bcv-fade-in">
-          {/* Job cards grid */}
           <div style={{
             display: "grid",
             gridTemplateColumns: experiment.jobs.length === 1 ? "1fr" : "repeat(auto-fill, minmax(220px, 1fr))",
@@ -759,72 +705,163 @@ function ExperimentCard({
               />
             ))}
           </div>
-
-          {/* Comparison table */}
-          <ComparisonTable experiment={experiment} onRefresh={onJobsChanged} />
+          <ComparisonTable experiment={experiment} />
         </div>
       )}
     </div>
   );
 }
 
+// ── Flat job row (for Jobs tab) ───────────────────────────────────────────────
+
+function JobRow({ job, onCancel, onResume }: {
+  job: BacktestJob;
+  onCancel: () => void;
+  onResume: () => void;
+}) {
+  const isActive = job.status === "running" || job.status === "queued";
+  const isStale  = isActive && Date.now() - new Date(job.created_at).getTime() > STALE_MS;
+  const [showLogs, setShowLogs] = useState(false);
+
+  return (
+    <div style={{ background: "var(--surface)", border: `1px solid ${isActive ? "var(--hold)30" : "var(--line)"}`, borderRadius: 8, overflow: "hidden" }}>
+      <div
+        onClick={() => !isActive && setShowLogs((v) => !v)}
+        style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", cursor: isActive ? "default" : "pointer" }}
+      >
+        {/* Status dot */}
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: isStale ? "var(--bear)" : statusColor[job.status], flexShrink: 0 }} />
+
+        {/* Info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+            <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 11, color: "var(--ink)" }}>
+              {job.tickers.join(" · ")}
+            </span>
+            {job.philosophy_mode && (
+              <span style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: philosophyColors[job.philosophy_mode] ?? "var(--brand)" }}>
+                {job.philosophy_mode}
+              </span>
+            )}
+            {job.confidence_threshold != null && (
+              <span style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--dim)" }}>
+                {(job.confidence_threshold * 100).toFixed(0)}% conf
+              </span>
+            )}
+            {isStale && <Pill label="stale" color="var(--bear)" />}
+          </div>
+          <div style={{ fontFamily: "var(--font-jb)", fontSize: 9, color: "var(--ghost)" }}>
+            {job.start_date} → {job.end_date} · {job.ebc_mode} · {relTime(job.created_at)} · {job.id.slice(0, 8)}
+          </div>
+        </div>
+
+        {/* Progress / metrics */}
+        {isActive ? (
+          <div style={{ width: 120 }}>
+            <ProgressBar progress={job.progress} running={job.status === "running"} />
+            <div style={{ marginTop: 3, fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)", textAlign: "right" }}>{job.progress}%</div>
+          </div>
+        ) : job.status === "completed" ? (
+          <div style={{ display: "flex", gap: 16, textAlign: "right" }}>
+            <div>
+              <div style={{ fontSize: 8, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}>RETURN</div>
+              <div style={{ fontSize: 11, fontFamily: "var(--font-jb)", fontWeight: 700, color: (job.total_return ?? 0) >= 0 ? "var(--bull)" : "var(--bear)" }}>{pct(job.total_return)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 8, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}>SHARPE</div>
+              <div style={{ fontSize: 11, fontFamily: "var(--font-jb)", fontWeight: 700, color: (job.sharpe_ratio ?? 0) >= 1 ? "var(--bull)" : "var(--dim)" }}>{fmt(job.sharpe_ratio)}</div>
+            </div>
+          </div>
+        ) : (
+          <StatusBadge status={job.status} />
+        )}
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 6 }}>
+          {(isActive || isStale) && (
+            <button onClick={(e) => { e.stopPropagation(); onCancel(); }} style={{ fontSize: 9, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--bear)40", color: "var(--bear)", padding: "2px 7px", borderRadius: 4, cursor: "pointer" }}>
+              cancel
+            </button>
+          )}
+          {(job.status === "failed" || job.status === "cancelled") && (
+            <button onClick={(e) => { e.stopPropagation(); onResume(); }} style={{ fontSize: 9, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--brand)40", color: "var(--brand)", padding: "2px 7px", borderRadius: 4, cursor: "pointer" }}>
+              resume
+            </button>
+          )}
+          {job.status === "completed" && (
+            <span style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)", cursor: "pointer" }}>
+              {showLogs ? "▴" : "▾"}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {showLogs && <div style={{ padding: "0 16px 16px" }}><JobLogsPanel job={job} onClose={() => setShowLogs(false)} /></div>}
+    </div>
+  );
+}
+
 // ── New experiment creation ────────────────────────────────────────────────────
 
-function CreateExperimentSection({
-  type,
-  title,
-  subtitle,
-  onCreated,
-}: {
-  type: "philosophy" | "threshold";
+function CreateExperimentSection({ type, title, subtitle, onCreated }: {
+  type: "philosophy" | "threshold" | "single";
   title: string;
   subtitle: string;
   onCreated: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [startDate, setStartDate]   = useState(DEFAULT_START);
-  const [endDate, setEndDate]       = useState(DEFAULT_END);
-  const [tickers, setTickers]       = useState(DEFAULT_TICKERS);
-  const [ebcMode, setEbcMode]       = useState("autonomous");
-  const [confThreshold, setConf]    = useState(0.65);
-  const [philosophy, setPhilosophy] = useState("balanced");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError]           = useState<string | null>(null);
-  const [success, setSuccess]       = useState(false);
+  const [open, setOpen]               = useState(false);
+  const [startDate, setStartDate]     = useState(DEFAULT_START);
+  const [endDate, setEndDate]         = useState(DEFAULT_END);
+  const [tickers, setTickers]         = useState(DEFAULT_TICKERS);
+  const [ebcMode, setEbcMode]         = useState("autonomous");
+  const [confThreshold, setConf]      = useState(0.65);
+  const [philosophy, setPhilosophy]   = useState("balanced");
+  const [submitting, setSubmitting]   = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+  const [success, setSuccess]         = useState(false);
 
   const tickerList = tickers.split(",").map((t) => t.trim().toUpperCase()).filter(Boolean);
+  const days = tradingDayEst(startDate, endDate);
+  const variantCount = type === "philosophy" ? PHILOSOPHIES.length : type === "threshold" ? THRESHOLDS.length : 1;
+  const calls = days * tickerList.length * variantCount;
+
+  // Friendly name auto-generated
+  const autoName =
+    type === "philosophy"
+      ? `Philosophy Comparison · ${tickerList.join(",")} · ${startDate}–${endDate}`
+      : type === "threshold"
+      ? `Threshold Comparison · ${tickerList.join(",")} · ${startDate}–${endDate}`
+      : `Single Run · ${tickerList.join(",")} · ${startDate}–${endDate}`;
 
   async function handleSubmit() {
     setSubmitting(true); setError(null);
 
-    const requests: BacktestRequest[] = type === "philosophy"
-      ? PHILOSOPHIES.map((p) => ({ tickers: tickerList, start_date: startDate, end_date: endDate, ebc_mode: ebcMode, philosophy_mode: p, confidence_threshold: confThreshold }))
-      : THRESHOLDS.map((t)  => ({ tickers: tickerList, start_date: startDate, end_date: endDate, ebc_mode: ebcMode, philosophy_mode: philosophy, confidence_threshold: t }));
+    const body = {
+      experiment_type: type,
+      name: autoName,
+      tickers: tickerList,
+      start_date: startDate,
+      end_date: endDate,
+      ebc_mode: ebcMode,
+      philosophy_mode: philosophy,
+      confidence_threshold: type === "philosophy" ? confThreshold : type === "single" ? confThreshold : null,
+    };
 
-    const days  = tradingDayEst(startDate, endDate);
-    const calls = days * tickerList.length * requests.length;
+    const res = await fetchWithAuth(`${API}/v1/experiments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
 
-    const results = await Promise.allSettled(
-      requests.map((body) =>
-        fetchWithAuth(`${API}/v1/backtest`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        })
-      )
-    );
-
-    const failed = results.filter((r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value?.ok));
-    if (failed.length > 0) {
-      setError(`${failed.length}/${requests.length} jobs failed to start. Partial run may be in progress.`);
+    if (!res?.ok) {
+      const detail = await res?.json().catch(() => ({}));
+      setError(detail?.detail ?? "Failed to launch experiment.");
     } else {
       setSuccess(true);
       setTimeout(() => { setSuccess(false); setOpen(false); onCreated(); }, 1500);
     }
     setSubmitting(false);
   }
-
-  const days  = tradingDayEst(startDate, endDate);
-  const calls = days * tickerList.length * (type === "philosophy" ? PHILOSOPHIES.length : THRESHOLDS.length);
 
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
@@ -833,9 +870,7 @@ function CreateExperimentSection({
         style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
       >
         <div>
-          <div style={{ fontFamily: "var(--font-jb)", fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 2 }}>
-            + {title}
-          </div>
+          <div style={{ fontFamily: "var(--font-jb)", fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 2 }}>+ {title}</div>
           <div style={{ fontFamily: "var(--font-nunito)", fontSize: 12, color: "var(--ghost)" }}>{subtitle}</div>
         </div>
         <span style={{ fontFamily: "var(--font-jb)", fontSize: 12, color: "var(--ghost)" }}>{open ? "▴" : "▾"}</span>
@@ -864,22 +899,9 @@ function CreateExperimentSection({
                 ))}
               </div>
             </Field>
-            {type === "philosophy" && (
-              <Field label="CONFIDENCE THRESHOLD">
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {THRESHOLDS.map((t) => (
-                    <button key={t} type="button" onClick={() => setConf(t)} style={{
-                      flex: "1 1 auto", padding: "7px 4px", borderRadius: 6, fontFamily: "var(--font-jb)", fontSize: 11,
-                      fontWeight: confThreshold === t ? 700 : 400,
-                      border: `1px solid ${confThreshold === t ? "var(--brand)" : "var(--line)"}`,
-                      color: confThreshold === t ? "var(--brand)" : "var(--ghost)",
-                      background: confThreshold === t ? "var(--brand-bg)" : "transparent", cursor: "pointer",
-                    }}>{(t * 100).toFixed(0)}%</button>
-                  ))}
-                </div>
-              </Field>
-            )}
-            {type === "threshold" && (
+
+            {/* Philosophy fixed param — show for threshold + single experiments */}
+            {(type === "threshold" || type === "single") && (
               <Field label="PHILOSOPHY">
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {PHILOSOPHIES.map((p) => (
@@ -893,10 +915,26 @@ function CreateExperimentSection({
                 </div>
               </Field>
             )}
+
+            {/* Confidence threshold fixed param — show for philosophy + single experiments */}
+            {(type === "philosophy" || type === "single") && (
+              <Field label={type === "philosophy" ? "CONFIDENCE THRESHOLD (fixed)" : "CONFIDENCE THRESHOLD"}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {THRESHOLDS.map((t) => (
+                    <button key={t} type="button" onClick={() => setConf(t)} style={{
+                      flex: "1 1 auto", padding: "7px 4px", borderRadius: 6, fontFamily: "var(--font-jb)", fontSize: 11, fontWeight: confThreshold === t ? 700 : 400,
+                      border: `1px solid ${confThreshold === t ? "var(--brand)" : "var(--line)"}`,
+                      color: confThreshold === t ? "var(--brand)" : "var(--ghost)",
+                      background: confThreshold === t ? "var(--brand-bg)" : "transparent", cursor: "pointer",
+                    }}>{(t * 100).toFixed(0)}%</button>
+                  ))}
+                </div>
+              </Field>
+            )}
           </div>
 
           <div style={{ background: "var(--elevated)", border: "1px solid var(--line)", borderRadius: 6, padding: "8px 12px", fontSize: 12, fontFamily: "var(--font-nunito)", color: "var(--dim)", marginBottom: 14 }}>
-            {type === "philosophy" ? PHILOSOPHIES.length : THRESHOLDS.length} variants × {days} days × {tickerList.length} tickers = ~{calls} AI calls
+            {variantCount} variant{variantCount > 1 ? "s" : ""} × {days} days × {tickerList.length} tickers = ~{calls} AI calls
           </div>
 
           {error && (
@@ -915,7 +953,7 @@ function CreateExperimentSection({
               cursor: submitting || success ? "not-allowed" : "pointer", transition: "background 0.2s",
             }}
           >
-            {success ? "✓ Launched" : submitting ? "Launching…" : `Run ${title} (${type === "philosophy" ? PHILOSOPHIES.length : THRESHOLDS.length} backtests)`}
+            {success ? "✓ Launched" : submitting ? "Launching…" : `Run ${title} (${variantCount} backtest${variantCount > 1 ? "s" : ""})`}
           </button>
         </div>
       )}
@@ -926,105 +964,208 @@ function CreateExperimentSection({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function BacktestComparisonView() {
-  const [allJobs, setAllJobs]         = useState<BacktestJob[]>([]);
-  const [loading, setLoading]         = useState(true);
-  const [experiments, setExperiments] = useState<Experiment[]>([]);
+  const [tab, setTab]                         = useState<PageTab>("experiments");
+  const [allJobs, setAllJobs]                 = useState<BacktestJob[]>([]);
+  const [experiments, setExperiments]         = useState<Experiment[]>([]);
+  const [loading, setLoading]                 = useState(true);
+  const [cancellingStale, setCancellingStale] = useState(false);
 
-  const loadJobs = useCallback(async () => {
-    const res = await fetchWithAuth(`${API}/v1/backtest`);
-    if (!res?.ok) return;
-    const jobs: BacktestJob[] = await res.json();
+  const loadAll = useCallback(async () => {
+    // Fetch backend experiments + all jobs in parallel
+    const [expRes, jobsRes] = await Promise.all([
+      fetchWithAuth(`${API}/v1/experiments`),
+      fetchWithAuth(`${API}/v1/backtest`),
+    ]);
+
+    const backendExps: BackendExperiment[] = expRes?.ok ? await expRes.json() : [];
+    const jobs: BacktestJob[]              = jobsRes?.ok ? await jobsRes.json() : [];
+
     setAllJobs(jobs);
-    setExperiments(groupIntoExperiments(jobs));
+
+    // Convert backend experiments to display format
+    const backedIds = new Set(backendExps.map((e) => e.id));
+    const beDisplayed = backendExps.map(backendToExperiment);
+
+    // Group orphan jobs (no experiment_id, or experiment_id not in backend list)
+    const orphanJobs = jobs.filter((j) => !j.experiment_id || !backedIds.has(j.experiment_id));
+    const orphanGroups = groupOrphanJobs(orphanJobs);
+
+    // Merge: backend experiments first (newest), then orphan groups
+    setExperiments([...beDisplayed, ...orphanGroups].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()));
   }, []);
 
   useEffect(() => {
-    loadJobs().finally(() => setLoading(false));
-  }, [loadJobs]);
+    loadAll().finally(() => setLoading(false));
+  }, [loadAll]);
 
   // Poll every 5s while any active jobs exist
   useEffect(() => {
     const hasActive = allJobs.some((j) => j.status === "running" || j.status === "queued");
     if (!hasActive) return;
-    const id = setInterval(loadJobs, 5000);
+    const id = setInterval(loadAll, 5000);
     return () => clearInterval(id);
-  }, [allJobs, loadJobs]);
+  }, [allJobs, loadAll]);
+
+  // Cancel all stale jobs (running > 24h)
+  async function cancelAllStale() {
+    setCancellingStale(true);
+    const stale = allJobs.filter(
+      (j) => (j.status === "running" || j.status === "queued") && Date.now() - new Date(j.created_at).getTime() > STALE_MS
+    );
+    await Promise.allSettled(
+      stale.map((j) => fetchWithAuth(`${API}/v1/backtest/${j.id}/cancel`, { method: "POST" }))
+    );
+    await loadAll();
+    setCancellingStale(false);
+  }
 
   const activeCount    = allJobs.filter((j) => j.status === "running" || j.status === "queued").length;
   const completedCount = allJobs.filter((j) => j.status === "completed").length;
+  const staleCount     = allJobs.filter(
+    (j) => (j.status === "running" || j.status === "queued") && Date.now() - new Date(j.created_at).getTime() > STALE_MS
+  ).length;
+
+  // Jobs tab: sort all jobs newest first
+  const sortedJobs = [...allJobs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  async function cancelJob(jobId: string) {
+    await fetchWithAuth(`${API}/v1/backtest/${jobId}/cancel`, { method: "POST" });
+    await loadAll();
+  }
+  async function resumeJob(jobId: string) {
+    await fetchWithAuth(`${API}/v1/backtest/${jobId}/resume`, { method: "POST" });
+    await loadAll();
+  }
 
   return (
     <>
       <StyleInjector />
       <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingBottom: 32 }}>
 
-        {/* Header */}
+        {/* Tab bar */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <div>
-            <div style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)", letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 2 }}>
-              EXPERIMENTS — {experiments.length} groups · {allJobs.length} total runs
-            </div>
-            <div style={{ display: "flex", gap: 10, fontSize: 11, fontFamily: "var(--font-nunito)", color: "var(--dim)" }}>
+          <div style={{ display: "flex", gap: 0, borderBottom: "2px solid var(--line)" }}>
+            {(["experiments", "jobs"] as PageTab[]).map((t) => (
+              <button
+                key={t}
+                className="bcv-tab"
+                onClick={() => setTab(t)}
+                style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  fontFamily: "var(--font-jb)", fontSize: 11, fontWeight: 700,
+                  letterSpacing: "0.08em", textTransform: "uppercase",
+                  padding: "8px 16px",
+                  color: tab === t ? "var(--ink)" : "var(--ghost)",
+                  borderBottom: tab === t ? "2px solid var(--brand)" : "2px solid transparent",
+                  marginBottom: -2,
+                }}
+              >
+                {t === "experiments" ? `Experiments${experiments.length > 0 ? ` (${experiments.length})` : ""}` : `Jobs${allJobs.length > 0 ? ` (${allJobs.length})` : ""}`}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {staleCount > 0 && (
+              <button
+                onClick={cancelAllStale}
+                disabled={cancellingStale}
+                style={{ fontSize: 10, fontFamily: "var(--font-jb)", background: "var(--bear-bg)", border: "1px solid var(--bear)40", color: "var(--bear)", padding: "4px 10px", borderRadius: 5, cursor: "pointer" }}
+              >
+                {cancellingStale ? "Cancelling…" : `Cancel ${staleCount} stale`}
+              </button>
+            )}
+            <div style={{ fontSize: 11, fontFamily: "var(--font-nunito)", color: "var(--dim)" }}>
               {activeCount > 0 && (
-                <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, marginRight: 10 }}>
                   <PulsingDot /> <span style={{ color: "var(--hold)" }}>{activeCount} running</span>
                 </span>
               )}
-              {completedCount > 0 && <span><span style={{ color: "var(--bull)" }}>{completedCount}</span> complete</span>}
+              {completedCount > 0 && <span><span style={{ color: "var(--bull)" }}>{completedCount}</span> done</span>}
             </div>
+            <button
+              onClick={loadAll}
+              style={{ fontSize: 11, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--line)", color: "var(--ghost)", padding: "4px 10px", borderRadius: 5, cursor: "pointer" }}
+            >
+              ↺ Refresh
+            </button>
           </div>
-          <button
-            onClick={loadJobs}
-            style={{ fontSize: 11, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--line)", color: "var(--ghost)", padding: "4px 10px", borderRadius: 5, cursor: "pointer" }}
-          >
-            ↺ Refresh
-          </button>
         </div>
 
         {loading && (
           <div style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)", textAlign: "center", padding: "32px 0" }}>
-            Loading experiments…
+            Loading…
           </div>
         )}
 
-        {/* Auto-grouped experiments */}
-        {!loading && experiments.length === 0 && (
-          <div style={{ textAlign: "center", padding: "32px 24px", color: "var(--ghost)", fontFamily: "var(--font-nunito)", fontSize: 13 }}>
-            <div style={{ fontSize: 24, marginBottom: 10 }}>◈</div>
-            <div style={{ fontWeight: 600, color: "var(--dim)", marginBottom: 6 }}>No experiments yet</div>
-            <div>Use the forms below to launch a philosophy or threshold comparison.</div>
-          </div>
+        {/* ── EXPERIMENTS TAB ── */}
+        {!loading && tab === "experiments" && (
+          <>
+            {experiments.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "32px 24px", color: "var(--ghost)", fontFamily: "var(--font-nunito)", fontSize: 13 }}>
+                <div style={{ fontSize: 24, marginBottom: 10 }}>◈</div>
+                <div style={{ fontWeight: 600, color: "var(--dim)", marginBottom: 6 }}>No experiments yet</div>
+                <div>Use the forms below to launch a philosophy or threshold comparison.</div>
+              </div>
+            ) : (
+              experiments.map((exp, i) => (
+                <ExperimentCard
+                  key={exp.id}
+                  experiment={exp}
+                  defaultOpen={i === 0}
+                  onJobsChanged={loadAll}
+                />
+              ))
+            )}
+
+            {/* Launch section */}
+            <div style={{ borderTop: "1px solid var(--line)", margin: "8px 0", paddingTop: 12 }}>
+              <div style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
+                Launch New Experiment
+              </div>
+            </div>
+            <CreateExperimentSection
+              type="philosophy"
+              title="Philosophy Comparison"
+              subtitle="Run Lynch · Soros · Buffett · Balanced with the same settings"
+              onCreated={loadAll}
+            />
+            <CreateExperimentSection
+              type="threshold"
+              title="Confidence Threshold Comparison"
+              subtitle="Run 50% · 65% · 80% · 95% confidence thresholds with the same settings"
+              onCreated={loadAll}
+            />
+            <CreateExperimentSection
+              type="single"
+              title="Single Run"
+              subtitle="Run one backtest with custom settings"
+              onCreated={loadAll}
+            />
+          </>
         )}
 
-        {!loading && experiments.map((exp, i) => (
-          <ExperimentCard
-            key={exp.id}
-            experiment={exp}
-            defaultOpen={i === 0}
-            onJobsChanged={loadJobs}
-          />
-        ))}
-
-        {/* Divider */}
-        <div style={{ borderTop: "1px solid var(--line)", margin: "8px 0", paddingTop: 12 }}>
-          <div style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
-            Launch New Experiment
-          </div>
-        </div>
-
-        {/* Creation forms */}
-        <CreateExperimentSection
-          type="philosophy"
-          title="Philosophy Comparison"
-          subtitle="Run Lynch · Soros · Buffett · Balanced with the same settings"
-          onCreated={loadJobs}
-        />
-        <CreateExperimentSection
-          type="threshold"
-          title="Confidence Threshold Comparison"
-          subtitle="Run 50% · 65% · 80% · 95% confidence thresholds with the same settings"
-          onCreated={loadJobs}
-        />
+        {/* ── JOBS TAB ── */}
+        {!loading && tab === "jobs" && (
+          <>
+            {sortedJobs.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "32px 24px", color: "var(--ghost)", fontFamily: "var(--font-nunito)", fontSize: 13 }}>
+                No jobs yet.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {sortedJobs.map((job) => (
+                  <JobRow
+                    key={job.id}
+                    job={job}
+                    onCancel={() => cancelJob(job.id)}
+                    onResume={() => resumeJob(job.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
     </>
   );
