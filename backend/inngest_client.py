@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 # client is constructed — main.py's load_dotenv() runs after imports.
 load_dotenv()
 
-_is_prod = os.getenv("ENVIRONMENT") == "production"
+# Treat both "production" and "uat" as cloud environments (not local dev)
+_is_prod = os.getenv("ENVIRONMENT") in ("production", "uat")
 _dev_server = os.getenv("INNGEST_BASE_URL", "http://localhost:8288")
 
 inngest_client = inngest.Inngest(
