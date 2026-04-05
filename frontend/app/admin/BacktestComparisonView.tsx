@@ -141,6 +141,57 @@ function tradingDayEst(start: string, end: string) {
 
 // ── Orphan-job grouping (for jobs without experiment_id) ──────────────────────
 
+/**
+ * When a time-window group contains jobs from BOTH a philosophy experiment and
+ * a threshold experiment (submitted close together), we need to split them.
+ *
+ * Key insight:
+ * - Philosophy experiment jobs: non-"balanced" philosophies (lynch/soros/buffett)
+ *   all share the SAME confidence_threshold (the fixed value for that run).
+ * - Threshold experiment jobs: all "balanced" philosophy with DIFFERENT thresholds.
+ *
+ * A "balanced" job with the philosophy-experiment's fixed threshold is genuinely
+ * ambiguous, so we claim it for the philosophy group first (completing the 4-way
+ * comparison) and let the remainder form the threshold group.
+ */
+function splitMixedTimeGroup(jobs: BacktestJob[]): BacktestJob[][] {
+  const nonBalanced = jobs.filter((j) => j.philosophy_mode && j.philosophy_mode !== "balanced");
+  if (nonBalanced.length === 0) return [jobs]; // nothing to disambiguate
+
+  // The threshold shared by non-balanced jobs is the "fixed" threshold for the
+  // philosophy experiment.  Pick the most common value in case of noise.
+  const tCounts = new Map<number | null, number>();
+  for (const j of nonBalanced) {
+    const t = j.confidence_threshold ?? null;
+    tCounts.set(t, (tCounts.get(t) ?? 0) + 1);
+  }
+  const fixedThreshold = [...tCounts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+
+  // Philosophy group: all non-balanced + ONE balanced job with the fixed threshold
+  const philosophyJobs: BacktestJob[] = [...nonBalanced];
+  const balancedAtFixed = jobs.filter(
+    (j) => j.philosophy_mode === "balanced" && j.confidence_threshold === fixedThreshold
+  );
+  if (balancedAtFixed.length > 0) philosophyJobs.push(balancedAtFixed[0]);
+
+  const philIds = new Set(philosophyJobs.map((j) => j.id));
+  const remaining = jobs.filter((j) => !philIds.has(j.id));
+
+  return remaining.length > 0 ? [philosophyJobs, remaining] : [philosophyJobs];
+}
+
+function classifyGroup(sg: BacktestJob[]): { type: ExperimentType; label: string } {
+  const philosophies = new Set(sg.map((j) => j.philosophy_mode).filter(Boolean));
+  const thresholds   = new Set(sg.map((j) => j.confidence_threshold).filter((v) => v != null));
+  const modes        = new Set(sg.map((j) => j.ebc_mode));
+
+  if (sg.length === 1)          return { type: "single",    label: "Single Run" };
+  if (philosophies.size > 1)    return { type: "philosophy", label: "Philosophy Comparison" };
+  if (thresholds.size > 1)      return { type: "threshold",  label: "Confidence Threshold Comparison" };
+  if (modes.size > 1)           return { type: "mode",       label: "Mode Comparison" };
+  return { type: "multi", label: `${sg.length}-Run Group` };
+}
+
 function groupOrphanJobs(jobs: BacktestJob[]): Experiment[] {
   const sorted = [...jobs].sort((a, b) =>
     new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -171,27 +222,13 @@ function groupOrphanJobs(jobs: BacktestJob[]): Experiment[] {
     if (cur.length > 0) timeGroups.push(cur);
 
     for (const tg of timeGroups) {
-      // Split into null-threshold (philosophy candidates) vs has-threshold (threshold candidates)
-      // This prevents philosophy jobs and threshold jobs submitted close together from merging.
-      const nullThresh = tg.filter((j) => j.confidence_threshold == null);
-      const hasThresh  = tg.filter((j) => j.confidence_threshold != null);
-
-      const subGroups = [nullThresh, hasThresh].filter((g) => g.length > 0);
+      // Detect mixed groups (philosophy + threshold experiments submitted together)
+      // and split them before classifying.
+      const subGroups = splitMixedTimeGroup(tg);
 
       for (const sg of subGroups) {
-        const philosophies = new Set(sg.map((j) => j.philosophy_mode).filter(Boolean));
-        const thresholds   = new Set(sg.map((j) => j.confidence_threshold).filter((v) => v != null));
-        const modes        = new Set(sg.map((j) => j.ebc_mode));
-        const createdAt    = new Date(Math.max(...sg.map((j) => new Date(j.created_at).getTime())));
-
-        let type: ExperimentType;
-        let label: string;
-        if (sg.length === 1)         { type = "single";    label = "Single Run"; }
-        else if (thresholds.size > 1) { type = "threshold"; label = "Confidence Threshold Comparison"; }
-        else if (philosophies.size > 1){ type = "philosophy"; label = "Philosophy Comparison"; }
-        else if (modes.size > 1)      { type = "mode";      label = "Mode Comparison"; }
-        else                          { type = "multi";     label = `${sg.length}-Run Group`; }
-
+        const { type, label } = classifyGroup(sg);
+        const createdAt = new Date(Math.max(...sg.map((j) => new Date(j.created_at).getTime())));
         experiments.push({ id: `orphan-${idx++}`, type, label, jobs: sg, createdAt, isBackendBacked: false });
       }
     }
@@ -474,14 +511,14 @@ function JobCard({ job, expType, onCancel, onResume }: {
     <div>
       <div
         className="bcv-job-card"
-        onClick={() => !isActive && setShowLogs((v) => !v)}
+        onClick={() => setShowLogs((v) => !v)}
         style={{
           background: "var(--surface)",
-          border: `1px solid ${isActive ? "var(--hold)40" : showLogs ? "var(--brand)50" : "var(--line)"}`,
+          border: `1px solid ${showLogs ? "var(--brand)50" : isActive ? "var(--hold)40" : "var(--line)"}`,
           borderLeft: `3px solid ${accent}`,
           borderRadius: 8,
           padding: "12px 14px",
-          cursor: isActive ? "default" : "pointer",
+          cursor: "pointer",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
@@ -536,9 +573,14 @@ function JobCard({ job, expType, onCancel, onResume }: {
               resume
             </button>
           )}
-          {job.status === "completed" && (
+          {!isActive && (
             <span style={{ fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)", marginLeft: "auto", opacity: 0.6 }}>
               {showLogs ? "hide logs ▴" : "view logs ▾"}
+            </span>
+          )}
+          {isActive && (
+            <span style={{ fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)", marginLeft: "auto", opacity: 0.6 }}>
+              {showLogs ? "hide ▴" : "view partial ▾"}
             </span>
           )}
         </div>
