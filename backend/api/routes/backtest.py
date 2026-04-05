@@ -1,5 +1,5 @@
 # backend/api/routes/backtest.py
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -142,8 +142,20 @@ def cancel_backtest_job(job_id: str, user_id: str = Depends(require_admin)):
         # Queued jobs haven't started the runner yet — cancel immediately
         update_job_status(job_id, "cancelled")
     else:
-        # Running jobs: set the in-process flag; runner will stop after current day
-        request_cancellation(job_id)
+        # Running jobs: check whether the job is stale (runner process likely dead)
+        STALE_THRESHOLD_HOURS = 2
+        created_at_str = job.get("created_at", "")
+        is_stale = False
+        if created_at_str:
+            created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+            age = datetime.now(timezone.utc) - created_at
+            is_stale = age.total_seconds() > STALE_THRESHOLD_HOURS * 3600
+        if is_stale:
+            # Zombie job — no runner is reading the flag, force-cancel directly
+            update_job_status(job_id, "cancelled")
+        else:
+            # Fresh running job — signal the in-process runner to stop gracefully
+            request_cancellation(job_id)
     return {"cancelling": True}
 
 
