@@ -88,6 +88,23 @@ const statusColor: Record<JobStatus, string> = {
   cancelled: "var(--dim)",
 };
 
+// Filled background color for status badges
+const statusBg: Record<JobStatus, string> = {
+  queued:    "rgba(120,120,140,0.18)",
+  running:   "rgba(245,158,11,0.18)",
+  completed: "rgba(16,185,129,0.18)",
+  failed:    "rgba(239,68,68,0.18)",
+  cancelled: "rgba(120,120,140,0.18)",
+};
+
+const STATUS_ORDER: Record<JobStatus, number> = {
+  running:   0,
+  queued:    1,
+  completed: 2,
+  failed:    3,
+  cancelled: 4,
+};
+
 function tradingDayEstimate(start: string, end: string): number {
   if (!start || !end) return 0;
   const s = new Date(start), e = new Date(end);
@@ -375,9 +392,21 @@ export function BacktestTab({ role }: { role?: string }) {
           </div>
         )}
 
-        {jobs.map((job) => (
+        {[...jobs].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]).map((job, idx, sorted) => {
+          const prevJob = sorted[idx - 1];
+          const isTerminal = job.status === "failed" || job.status === "cancelled";
+          const prevIsActive = prevJob && prevJob.status !== "failed" && prevJob.status !== "cancelled";
+          const showDivider = isTerminal && prevIsActive;
+          return (
+          <div key={job.id}>
+          {showDivider && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 8px" }}>
+              <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
+              <span style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)", textTransform: "uppercase", letterSpacing: "0.08em" }}>cancelled / failed</span>
+              <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
+            </div>
+          )}
           <div
-            key={job.id}
             className={`bt-card ${job.status === "running" ? "bt-running-card" : ""}`}
             onClick={() => openDetail(job)}
             style={{
@@ -404,9 +433,10 @@ export function BacktestTab({ role }: { role?: string }) {
               <div className="flex items-center gap-2">
                 <span style={{
                   fontSize: 10, fontFamily: "var(--font-jb)", color: statusColor[job.status],
-                  padding: "2px 7px", borderRadius: 4,
-                  background: `${statusColor[job.status]}15`,
-                  border: `1px solid ${statusColor[job.status]}35`,
+                  padding: "2px 8px", borderRadius: 4,
+                  background: statusBg[job.status],
+                  border: `1px solid ${statusColor[job.status]}50`,
+                  fontWeight: 600,
                 }}>
                   {job.status}
                 </span>
@@ -495,7 +525,9 @@ export function BacktestTab({ role }: { role?: string }) {
               color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", opacity: 0.5,
             }}>→</span>
           </div>
-        ))}
+          </div>
+          );
+        })}
       </div>
     </>
   );

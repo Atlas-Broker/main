@@ -263,7 +263,8 @@ def _finalize(job_id: str, mongo_id: str) -> dict[str, Any]:
     # Throttle limits how many new runs start per minute, reducing Gemini burst 429s.
     throttle=inngest.Throttle(limit=20, period=datetime.timedelta(minutes=1)),
 )
-async def run_backtest_fn(ctx: inngest.Context, step: inngest.Step) -> dict[str, Any]:
+async def run_backtest_fn(ctx: inngest.Context) -> dict[str, Any]:
+    step = ctx.step
     data = ctx.event.data
     job_id: str            = data["job_id"]
     user_id: str           = data["user_id"]
@@ -293,19 +294,21 @@ async def run_backtest_fn(ctx: inngest.Context, step: inngest.Step) -> dict[str,
     for i, day in enumerate(trading_days):
         is_last = i == total - 1
 
-        # Capture loop vars by value to avoid Python closure issues
-        def make_day_handler(
+        # Capture loop vars by value to avoid Python closure issues.
+        # Pass make_day_handler (the function) — NOT make_day_handler() (a coroutine).
+        # step.run() requires a callable; calling it here would return a coroutine object.
+        async def make_day_handler(
             _job_id=job_id, _mongo_id=mongo_id, _day=day, _is_last=is_last,
             _i=i, _total=total, _user_id=user_id, _tickers=tickers,
             _ebc_mode=ebc_mode, _philosophy_mode=philosophy_mode,
             _ct=confidence_threshold, _ic=initial_capital,
         ):
-            return _run_trading_day(
+            return await _run_trading_day(
                 _job_id, _mongo_id, _day, _is_last, _i, _total,
                 _user_id, _tickers, _ebc_mode, _philosophy_mode, _ct, _ic,
             )
 
-        result = await step.run(f"day-{day}", make_day_handler())
+        result = await step.run(f"day-{day}", make_day_handler)
         if result.get("cancelled"):
             return {"status": "cancelled", "job_id": job_id}
 
