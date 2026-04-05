@@ -21,6 +21,7 @@ type BacktestJob = {
   ebc_mode: string;
   philosophy_mode?: string | null;
   confidence_threshold?: number | null;
+  initial_capital?: number | null;
   experiment_id?: string | null;
   progress: number;
   total_return: number | null;
@@ -546,7 +547,7 @@ export default function ExperimentDetailPage() {
                     series={chartSeries}
                     startDate={exp.start_date}
                     endDate={exp.end_date}
-                    initialCapital={100_000}
+                    initialCapital={exp.jobs[0]?.initial_capital ?? 100_000}
                   />
                 )}
 
