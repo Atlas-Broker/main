@@ -31,7 +31,20 @@ async def run_pipeline_async(
     user_id: str = "system",
     as_of_date: str | None = None,
     philosophy_mode: str | None = None,
+    current_positions: dict | None = None,
+    account_info: dict | None = None,
 ) -> AgentSignal:
+    """
+    Run the full agent pipeline for a ticker.
+
+    current_positions: pre-seeded portfolio snapshot — when provided, the graph
+        skips the live Alpaca positions fetch (used by backtesting).
+        Format: {ticker: {"shares": float, "avg_cost": float}}
+
+    account_info: pre-seeded account snapshot — when provided, the graph skips
+        the live Alpaca account fetch (used by backtesting).
+        Format: {"portfolio_value": float, "buying_power": float, "equity": float}
+    """
     if as_of_date is not None:
         try:
             datetime.strptime(as_of_date, "%Y-%m-%d")
@@ -48,7 +61,8 @@ async def run_pipeline_async(
         "as_of_date": as_of_date,
         "philosophy_mode": philosophy_mode,
         "analyst_outputs": {},
-        "current_positions": None,
+        "current_positions": current_positions,
+        "account_info": account_info,
         "synthesis": None,
         "risk": None,
         "portfolio_decision": None,
@@ -71,6 +85,7 @@ async def run_pipeline_async(
             "stop_loss": risk["stop_loss"],
             "take_profit": risk["take_profit"],
             "position_size": risk["position_size"],
+            "position_value": risk.get("position_value", 1000.0),
             "risk_reward_ratio": risk["risk_reward_ratio"],
         },
         latency_ms=round((time.time() - start) * 1000),
@@ -83,8 +98,14 @@ def run_pipeline(
     user_id: str = "system",
     as_of_date: str | None = None,
     philosophy_mode: str | None = None,
+    current_positions: dict | None = None,
+    account_info: dict | None = None,
 ) -> AgentSignal:
     """Sync wrapper — safe to call from FastAPI sync route handlers."""
     return asyncio.run(
-        run_pipeline_async(ticker, boundary_mode, user_id, as_of_date, philosophy_mode)
+        run_pipeline_async(
+            ticker, boundary_mode, user_id, as_of_date, philosophy_mode,
+            current_positions=current_positions,
+            account_info=account_info,
+        )
     )

@@ -43,6 +43,7 @@ class VirtualPortfolio:
         execution_price: float | None,
         is_last_day: bool,
         confidence_threshold_override: float | None = None,
+        position_value_override: float | None = None,
     ) -> dict:
         threshold = (
             confidence_threshold_override
@@ -62,16 +63,17 @@ class VirtualPortfolio:
             return {"executed": False, "reason": "no_price_data"}
 
         if action == "BUY":
-            return self._execute_buy(date, ticker, execution_price)
+            return self._execute_buy(date, ticker, execution_price, notional=position_value_override)
         if action == "SELL":
             return self._execute_sell(ticker, execution_price)
         return {"executed": False, "reason": "unknown_action"}
 
-    def _execute_buy(self, date: str, ticker: str, price: float) -> dict:
-        if self.cash < NOTIONAL:
+    def _execute_buy(self, date: str, ticker: str, price: float, notional: float | None = None) -> dict:
+        trade_notional = notional if notional is not None else NOTIONAL
+        if self.cash < trade_notional:
             return {"executed": False, "skipped_reason": "insufficient_funds"}
-        shares = NOTIONAL / price
-        self.cash -= NOTIONAL
+        shares = trade_notional / price
+        self.cash -= trade_notional
         if ticker in self.positions:
             existing = self.positions[ticker]
             total = existing.shares + shares
@@ -79,7 +81,7 @@ class VirtualPortfolio:
             self.positions[ticker] = Position(ticker, total, avg, existing.entry_date)
         else:
             self.positions[ticker] = Position(ticker, shares, price, date)
-        return {"executed": True, "action": "BUY", "shares": shares, "price": price}
+        return {"executed": True, "action": "BUY", "shares": shares, "price": price, "notional": trade_notional}
 
     def _execute_sell(self, ticker: str, price: float) -> dict:
         if ticker not in self.positions:

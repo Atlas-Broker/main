@@ -22,6 +22,11 @@ from agents.memory import trace as trace_store
 logger = logging.getLogger(__name__)
 
 
+def _is_backtest(state: "AgentState") -> bool:
+    """Return True when running in backtest mode (as_of_date is set)."""
+    return state.get("as_of_date") is not None
+
+
 # ── Node functions ──────────────────────────────────────────────────────────
 # Each node receives the full state and returns a dict of keys to update.
 
@@ -140,20 +145,27 @@ def _fetch_account_info(user_id: str) -> dict | None:
 
 
 async def fetch_account(state: AgentState) -> dict:
+    # In backtest mode or when pre-seeded, skip the live broker fetch
+    if _is_backtest(state) or state.get("account_info") is not None:
+        return {}
     account_info = await asyncio.to_thread(_fetch_account_info, state["user_id"])
     return {"account_info": account_info}
 
 
 async def run_portfolio(state: AgentState) -> dict:
-    current_positions = await asyncio.to_thread(
-        _fetch_current_positions, state["user_id"]
-    )
+    # In backtest mode or when pre-seeded, use the provided positions (may be empty dict)
+    if _is_backtest(state) or state.get("current_positions") is not None:
+        current_positions = state.get("current_positions") or {}
+    else:
+        current_positions = await asyncio.to_thread(
+            _fetch_current_positions, state["user_id"]
+        )
     result = await asyncio.to_thread(
         portfolio_agent.decide,
         state["ticker"],
         state["synthesis"],
         state["risk"],
-        current_positions,
+        current_positions or None,  # pass None if empty so agent prompt skips the portfolio block
     )
     return {"portfolio_decision": result, "current_positions": current_positions}
 

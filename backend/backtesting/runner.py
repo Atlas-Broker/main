@@ -80,6 +80,22 @@ async def run_backtest_job(
         is_last = trading_day == last_day
         day_runs: list[dict] = []
 
+        logger.debug(
+            "[Backtest] Day %s | cash=$%.2f | positions=%s",
+            trading_day, portfolio.cash, list(portfolio.positions.keys()),
+        )
+
+        # Snapshot virtual portfolio state for this day's pipeline calls
+        virtual_positions = {
+            t: {"shares": pos.shares, "avg_cost": pos.avg_cost}
+            for t, pos in portfolio.positions.items()
+        }
+        virtual_account = {
+            "portfolio_value": portfolio.portfolio_value({}),
+            "buying_power": portfolio.cash,
+            "equity": portfolio.portfolio_value({}),
+        }
+
         for ticker in tickers:
             run_record: dict
             try:
@@ -89,6 +105,8 @@ async def run_backtest_job(
                     user_id=user_id,
                     as_of_date=trading_day,
                     philosophy_mode=philosophy_mode,
+                    current_positions=virtual_positions,
+                    account_info=virtual_account,
                 )
                 exec_price = (
                     None
@@ -104,6 +122,7 @@ async def run_backtest_job(
                     execution_price=exec_price,
                     is_last_day=is_last,
                     confidence_threshold_override=confidence_threshold,
+                    position_value_override=signal.risk.get("position_value"),
                 )
                 run_record = {
                     "date":           trading_day,
