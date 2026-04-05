@@ -32,18 +32,22 @@ def create_job(
     start_date: str,
     end_date: str,
     ebc_mode: str,
+    philosophy_mode: str = "balanced",
+    confidence_threshold: Optional[float] = None,
 ) -> str:
     job_id = str(uuid.uuid4())
     get_supabase().table("backtest_jobs").insert({
-        "id":             job_id,
-        "user_id":        user_id,
-        "status":         "queued",
-        "tickers":        tickers,
-        "start_date":     start_date,
-        "end_date":       end_date,
-        "ebc_mode":       ebc_mode,
-        "initial_capital": 10000.0,
-        "progress":       0,
+        "id":                   job_id,
+        "user_id":              user_id,
+        "status":               "queued",
+        "tickers":              tickers,
+        "start_date":           start_date,
+        "end_date":             end_date,
+        "ebc_mode":             ebc_mode,
+        "philosophy_mode":      philosophy_mode,
+        "confidence_threshold": confidence_threshold,
+        "initial_capital":      10000.0,
+        "progress":             0,
     }).execute()
     return job_id
 
@@ -143,19 +147,23 @@ def create_results_doc(
     start_date: str,
     end_date: str,
     ebc_mode: str,
+    philosophy_mode: str = "balanced",
+    confidence_threshold: Optional[float] = None,
 ) -> str:
     doc = {
-        "job_id":         job_id,
-        "user_id":        user_id,
-        "tickers":        tickers,
-        "start_date":     start_date,
-        "end_date":       end_date,
-        "ebc_mode":       ebc_mode,
-        "initial_capital": 10000.0,
-        "daily_runs":     [],
-        "equity_curve":   [],
-        "metrics":        {},
-        "created_at":     datetime.now(timezone.utc),
+        "job_id":               job_id,
+        "user_id":              user_id,
+        "tickers":              tickers,
+        "start_date":           start_date,
+        "end_date":             end_date,
+        "ebc_mode":             ebc_mode,
+        "philosophy_mode":      philosophy_mode,
+        "confidence_threshold": confidence_threshold,
+        "initial_capital":      10000.0,
+        "daily_runs":           [],
+        "equity_curve":         [],
+        "metrics":              {},
+        "created_at":           datetime.now(timezone.utc),
     }
     result = _get_results_col().insert_one(doc)
     return str(result.inserted_id)

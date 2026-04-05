@@ -33,8 +33,9 @@ function EquityCurveContent() {
   }, []);
 
   const last = points[points.length - 1];
-  const first = points[0];
-  const totalReturn = last && first ? ((last.value - first.value) / first.value) * 100 : 0;
+  // Find the first point with a nonzero value as the baseline (avoids Infinity when starting with 0 cash)
+  const first = points.find((p) => p.value > 0) ?? points[0];
+  const totalReturn = last && first && first.value > 0 ? ((last.value - first.value) / first.value) * 100 : 0;
   const positive = totalReturn >= 0;
 
   return (
@@ -72,19 +73,62 @@ function EquityCurveContent() {
               </div>
             </div>
 
-            {/* SVG chart */}
+            {/* SVG chart with axes */}
             <div style={{
               background: "var(--surface)", border: "1px solid var(--line)",
-              borderRadius: 12, padding: "16px", marginBottom: 24, overflow: "hidden",
+              borderRadius: 12, padding: "16px 16px 8px 8px", marginBottom: 24, overflow: "hidden",
             }}>
-              <svg viewBox={`0 0 480 160`} style={{ width: "100%", height: "auto", display: "block" }}>
-                <path
-                  d={sparkPath(points, 480, 160)}
-                  fill="none"
-                  stroke={positive ? "var(--bull)" : "var(--bear)"}
-                  strokeWidth={2}
-                />
-              </svg>
+              {(() => {
+                const W = 460, H = 140, PAD_L = 52, PAD_B = 28, PAD_T = 8;
+                const plotW = W - PAD_L;
+                const plotH = H - PAD_B - PAD_T;
+                const values = points.map(p => p.value);
+                const minV = Math.min(...values);
+                const maxV = Math.max(...values);
+                const range = maxV - minV || 1;
+                // Y gridlines: 4 levels
+                const yTicks = [0, 0.33, 0.66, 1].map(t => ({
+                  frac: t,
+                  val: minV + t * range,
+                  y: PAD_T + plotH - t * plotH,
+                }));
+                // X ticks: ~5 date labels spread evenly
+                const xStep = Math.max(1, Math.floor((points.length - 1) / 4));
+                const xTicks = points
+                  .map((p, i) => ({ i, label: new Date(p.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) }))
+                  .filter((_,i) => i % xStep === 0 || i === points.length - 1);
+                // Build path in plot coords
+                const path = points.map((p, i) => {
+                  const x = PAD_L + (i / (points.length - 1)) * plotW;
+                  const y = PAD_T + plotH - ((p.value - minV) / range) * plotH;
+                  return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+                }).join(" ");
+                const lineColor = positive ? "var(--bull)" : "var(--bear)";
+                return (
+                  <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+                    {/* Y gridlines + labels */}
+                    {yTicks.map(({ val, y }, i) => (
+                      <g key={i}>
+                        <line x1={PAD_L} x2={W} y1={y} y2={y} stroke="var(--line)" strokeWidth={0.5} strokeDasharray="3,3" />
+                        <text x={PAD_L - 4} y={y + 3.5} textAnchor="end" fontSize={8} fontFamily="var(--font-jb)" fill="var(--ghost)">
+                          ${val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val.toFixed(0)}
+                        </text>
+                      </g>
+                    ))}
+                    {/* X date labels */}
+                    {xTicks.map(({ i, label }) => {
+                      const x = PAD_L + (i / (points.length - 1)) * plotW;
+                      return (
+                        <text key={i} x={x} y={H - 6} textAnchor="middle" fontSize={8} fontFamily="var(--font-jb)" fill="var(--ghost)">
+                          {label}
+                        </text>
+                      );
+                    })}
+                    {/* Equity line */}
+                    <path d={path} fill="none" stroke={lineColor} strokeWidth={2} strokeLinejoin="round" />
+                  </svg>
+                );
+              })()}
             </div>
 
             {/* Key stats */}

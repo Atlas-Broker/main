@@ -80,6 +80,13 @@ type Signal = {
   trace?: TracePanel;
 };
 
+type PortfolioPosition = {
+  ticker: string;
+  shares: number;
+  avg_cost: number;
+  current_price: number;
+};
+
 type NodeId =
   | "fetch_data"
   | "technical"
@@ -727,18 +734,81 @@ function RiskPanel({ data, risk }: { data?: TracePanel["risk"]; risk: RiskParams
     max_loss_dollars: data?.max_loss_dollars ?? risk.max_loss_dollars,
   };
 
+  const fmtPrice = (v: number | undefined) =>
+    v == null ? "—" : `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+
   const items = [
-    { label: "Stop Loss", value: `${resolved.stop_loss}%` },
-    { label: "Take Profit", value: `${resolved.take_profit}%` },
-    { label: "Position Size", value: `$${resolved.position_size?.toLocaleString() ?? "—"}` },
-    { label: "R/R Ratio", value: `${resolved.risk_reward_ratio}:1` },
-    ...(resolved.position_value !== undefined ? [{ label: "Position Value", value: `$${resolved.position_value.toLocaleString()}` }] : []),
-    ...(resolved.max_loss_dollars !== undefined ? [{ label: "Max Loss", value: `$${resolved.max_loss_dollars.toLocaleString()}` }] : []),
+    { label: "Stop Loss", value: fmtPrice(resolved.stop_loss) },
+    { label: "Take Profit", value: fmtPrice(resolved.take_profit) },
+    { label: "R/R Ratio", value: resolved.risk_reward_ratio != null ? `${resolved.risk_reward_ratio}:1` : "—" },
+    { label: "Position Size", value: resolved.position_size != null ? `${resolved.position_size} sh` : "—" },
+    { label: "Notional", value: resolved.position_value != null ? `$${resolved.position_value.toLocaleString()}` : "—" },
+    { label: "Max Loss", value: resolved.max_loss_dollars != null ? `$${resolved.max_loss_dollars.toLocaleString()}` : "—" },
   ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <KVGrid items={items} />
+      {/* Horizontal scroll metrics row */}
+      <div style={{ position: "relative" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            overflowX: "auto",
+            scrollbarWidth: "none",
+            scrollSnapType: "x mandatory",
+            paddingBottom: 4,
+          }}
+        >
+          {items.map((item) => (
+            <div
+              key={item.label}
+              style={{
+                flexShrink: 0,
+                width: 110,
+                scrollSnapAlign: "start",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid var(--line)",
+                borderRadius: 8,
+                padding: "10px 12px",
+              }}
+            >
+              <div style={{
+                fontSize: 9,
+                fontFamily: "var(--font-jb)",
+                color: "var(--ghost)",
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                marginBottom: 6,
+              }}>
+                {item.label}
+              </div>
+              <div style={{
+                fontSize: 13,
+                fontFamily: "var(--font-jb)",
+                color: "var(--ink)",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}>
+                {item.value}
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Right-edge fade hint */}
+        <div style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          bottom: 4,
+          width: 32,
+          background: "linear-gradient(to right, transparent, var(--bg))",
+          pointerEvents: "none",
+          borderRadius: "0 8px 8px 0",
+        }} />
+      </div>
     </div>
   );
 }
@@ -849,69 +919,180 @@ function EBCPanel({ signal }: { signal: Signal }) {
   const action = signal.action;
   const actionColor = ACTION_COLOR[action] ?? "var(--ghost)";
 
+  // Derive execution outcome
+  type EBCOutcome = { label: string; color: string; dot: string; detail: string };
+  const outcome: EBCOutcome = (() => {
+    if (signal.status === "executed") {
+      return { label: "Filled", color: "var(--bull)", dot: "var(--bull)", detail: "Order placed and filled with broker." };
+    }
+    if (signal.status === "awaiting_approval") {
+      return { label: "Queued", color: "var(--hold)", dot: "var(--hold)", detail: "Signal queued — awaiting human approval before execution." };
+    }
+    if (signal.status === "rejected") {
+      return { label: "Rejected", color: "var(--bear)", dot: "var(--bear)", detail: "Signal rejected by user." };
+    }
+    if (action === "HOLD") {
+      return { label: "Not Executed", color: "var(--ghost)", dot: "var(--ghost)", detail: "HOLD signal — no order placed." };
+    }
+    if (signal.boundary_mode === "advisory") {
+      return { label: "Not Executed", color: "var(--ghost)", dot: "var(--dim)", detail: "Advisory mode — signal surfaced for review only, no automated execution." };
+    }
+    return { label: "Not Executed", color: "var(--ghost)", dot: "var(--ghost)", detail: "Signal did not meet execution criteria (confidence threshold, insufficient balance, or duplicate guard)." };
+  })();
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div>
         <SectionLabel>Execution Boundary Check</SectionLabel>
         <p style={{ fontSize: 13, color: "var(--dim)", margin: 0, lineHeight: 1.6, fontFamily: "var(--font-nunito)" }}>
           The EBC validates that the signal passes all pre-execution checks before routing to the
-          broker: position limits, buying power, duplicate-signal guard, and boundary mode gating.
+          broker: confidence threshold, buying power, duplicate-signal guard, and boundary mode gating.
         </p>
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          padding: "10px 12px",
-          background: action === "HOLD" ? "rgba(255,255,255,0.03)" : `${actionColor}0d`,
-          border: `1px solid ${actionColor}30`,
-          borderRadius: 8,
-        }}
-      >
-        <div
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: actionColor,
-            flexShrink: 0,
-          }}
-        />
-        <span style={{ fontSize: 12, fontFamily: "var(--font-jb)", color: "var(--dim)" }}>
-          Final action:{" "}
-          <span style={{ color: actionColor, fontWeight: 700 }}>{action}</span>
-          {signal.status === "executed" && (
-            <span style={{ color: "var(--ghost)", marginLeft: 8 }}>· Executed</span>
-          )}
-          {signal.status === "awaiting_approval" && (
-            <span style={{ color: "var(--hold)", marginLeft: 8 }}>· Awaiting Approval</span>
-          )}
-          {signal.status === "rejected" && (
-            <span style={{ color: "var(--bear)", marginLeft: 8 }}>· Rejected</span>
-          )}
-        </span>
+      {/* Outcome status card */}
+      <div style={{
+        display: "flex", gap: 12, alignItems: "flex-start", padding: "12px 14px",
+        background: `${outcome.dot}0d`, border: `1px solid ${outcome.dot}30`, borderRadius: 8,
+      }}>
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: outcome.dot, flexShrink: 0, marginTop: 3 }} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <span style={{ fontSize: 12, fontFamily: "var(--font-jb)", color: outcome.color, fontWeight: 700 }}>
+            {outcome.label}
+          </span>
+          <span style={{ fontSize: 11, fontFamily: "var(--font-nunito)", color: "var(--dim)", lineHeight: 1.5 }}>
+            {outcome.detail}
+          </span>
+        </div>
       </div>
 
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <span style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}>BOUNDARY MODE</span>
-        <span
-          style={{
-            fontSize: 10,
-            fontFamily: "var(--font-jb)",
-            color: "var(--dim)",
-            background: "rgba(255,255,255,0.05)",
-            border: "1px solid var(--line)",
-            borderRadius: 4,
-            padding: "2px 7px",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-          }}
-        >
+      {/* Signal row */}
+      <div style={{
+        display: "flex", gap: 8, alignItems: "center", padding: "8px 12px",
+        background: "rgba(255,255,255,0.03)", border: "1px solid var(--line)", borderRadius: 8,
+      }}>
+        <span style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}>SIGNAL</span>
+        <span style={{ fontSize: 12, fontFamily: "var(--font-jb)", color: actionColor, fontWeight: 700 }}>{action}</span>
+        <span style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)", marginLeft: "auto" }}>BOUNDARY MODE</span>
+        <span style={{
+          fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--dim)",
+          background: "rgba(255,255,255,0.05)", border: "1px solid var(--line)",
+          borderRadius: 4, padding: "2px 7px", textTransform: "uppercase", letterSpacing: "0.05em",
+        }}>
           {signal.boundary_mode}
         </span>
       </div>
+    </div>
+  );
+}
+
+// ─── Position Impact ───────────────────────────────────────────────────────
+
+function PositionImpact({
+  signal,
+  position,
+}: {
+  signal: Signal;
+  position: PortfolioPosition | null;
+}) {
+  const action = signal.action;
+  const posSize = signal.risk.position_size ?? 0;
+  const currentPrice = position?.current_price ?? signal.risk.stop_loss ?? 0;
+
+  const beforeShares = position?.shares ?? 0;
+  const beforeAvg = position?.avg_cost ?? 0;
+
+  let afterShares = beforeShares;
+  let afterAvg = beforeAvg;
+  let insufficientQty = false;
+
+  if (action === "BUY") {
+    afterShares = beforeShares + posSize;
+    if (beforeShares > 0 && currentPrice > 0) {
+      afterAvg =
+        (beforeShares * beforeAvg + posSize * currentPrice) / afterShares;
+    } else if (currentPrice > 0) {
+      afterAvg = currentPrice;
+    }
+  } else if (action === "SELL") {
+    afterShares = 0;
+    insufficientQty = beforeShares > 0 && posSize > beforeShares;
+  }
+  // HOLD: no change
+
+  const fmtShares = (v: number) =>
+    v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  const fmtPrice = (v: number) =>
+    `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const afterSharesDisplay = action === "SELL" ? 0 : afterShares;
+  const afterAvgDisplay = action === "SELL" ? 0 : afterAvg;
+
+  // Card style helper
+  const impactCard = (label: string, shares: number, avg: number, dim?: boolean): React.ReactNode => (
+    <div style={{
+      flex: 1,
+      background: dim ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.05)",
+      border: "1px solid var(--line)",
+      borderRadius: 8,
+      padding: "10px 12px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 8,
+    }}>
+      <div style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)", letterSpacing: "0.08em", textTransform: "uppercase" as const }}>{label}</div>
+      <div style={{ display: "flex", flexDirection: "column" as const, gap: 4 }}>
+        <div style={{
+          fontSize: 15, fontFamily: "var(--font-jb)", fontWeight: 700,
+          color: dim ? "var(--dim)" : "var(--ink)",
+        }}>
+          {shares > 0 ? fmtShares(shares) : "0"} <span style={{ fontSize: 10, fontWeight: 400, color: "var(--ghost)" }}>shares</span>
+        </div>
+        <div style={{
+          fontSize: 11, fontFamily: "var(--font-jb)",
+          color: dim ? "var(--ghost)" : "var(--dim)",
+        }}>
+          {avg > 0 ? `${fmtPrice(avg)} avg cost` : shares === 0 ? "no position" : "—"}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      style={{
+        background: "rgba(255,255,255,0.03)",
+        border: "1px solid var(--line)",
+        borderRadius: 10,
+        padding: "12px 14px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+        Position Impact
+      </div>
+
+      <div style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
+        {impactCard("Before", beforeShares, beforeAvg, true)}
+        <div style={{ display: "flex", alignItems: "center", color: "var(--ghost)", fontSize: 14, fontFamily: "var(--font-jb)", flexShrink: 0 }}>→</div>
+        {impactCard("After", afterSharesDisplay, afterAvgDisplay, false)}
+      </div>
+
+      {insufficientQty && (
+        <div
+          style={{
+            fontSize: 11,
+            fontFamily: "var(--font-jb)",
+            color: "var(--bear)",
+            lineHeight: 1.5,
+          }}
+        >
+          ⚠ Insufficient quantity: only {fmtShares(beforeShares)} shares available,
+          signal requires {fmtShares(posSize)} shares
+        </div>
+      )}
     </div>
   );
 }
@@ -950,10 +1131,12 @@ function ReasoningPanel({
   selected,
   trace,
   signal,
+  position,
 }: {
   selected: NodeId;
   trace?: TracePanel;
   signal: Signal;
+  position: PortfolioPosition | null;
 }) {
   const titles: Record<NodeId, string> = {
     fetch_data: "Fetch Data",
@@ -1013,7 +1196,10 @@ function ReasoningPanel({
       {selected === "risk" && <RiskPanel data={trace?.risk} risk={signal.risk} />}
 
       {selected === "portfolio" && (
-        <PortfolioPanel data={trace?.portfolio_decision} signal={signal} />
+        <>
+          <PortfolioPanel data={trace?.portfolio_decision} signal={signal} />
+          <PositionImpact signal={signal} position={position} />
+        </>
       )}
 
       {selected === "ebc" && <EBCPanel signal={signal} />}
@@ -1037,6 +1223,7 @@ export default function SignalDetailPage({ params }: { params: Promise<{ id: str
   const [loading, setLoading] = useState(true);
   const [approved, setApproved] = useState(false);
   const [selectedNode, setSelectedNode] = useState<NodeId>("portfolio");
+  const [currentPosition, setCurrentPosition] = useState<PortfolioPosition | null>(null);
 
   useEffect(() => {
     params.then(({ id }) => {
@@ -1046,11 +1233,31 @@ export default function SignalDetailPage({ params }: { params: Promise<{ id: str
           return;
         }
         const list: Signal[] = await res.json();
-        setSignal(list.find((s) => s.id === id) ?? null);
+        const found = list.find((s) => s.id === id) ?? null;
+        setSignal(found);
         setLoading(false);
       });
     });
   }, [params]);
+
+  // Fetch current portfolio positions to compute position impact
+  useEffect(() => {
+    if (!signal) return;
+    fetchWithAuth(`${API_URL}/v1/portfolio`).then(async (res) => {
+      if (!res || !res.ok) return;
+      try {
+        const data: { positions: PortfolioPosition[] } = await res.json();
+        const match = (data.positions ?? []).find(
+          (p) => p.ticker.toUpperCase() === signal.ticker.toUpperCase()
+        );
+        setCurrentPosition(match ?? null);
+      } catch {
+        // fail silently — position impact section won't render
+      }
+    }).catch(() => {
+      // fail silently
+    });
+  }, [signal]);
 
   async function handleApprove() {
     if (!signal) return;
@@ -1223,7 +1430,7 @@ export default function SignalDetailPage({ params }: { params: Promise<{ id: str
 
       {/* ── Bottom Half: Reasoning Panel ── */}
       <div style={{ flex: 1, overflowY: "auto" }}>
-        <ReasoningPanel selected={selectedNode} trace={signal.trace} signal={signal} />
+        <ReasoningPanel selected={selectedNode} trace={signal.trace} signal={signal} position={currentPosition} />
       </div>
 
       {/* ── Action Footer ── */}

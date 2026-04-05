@@ -179,6 +179,7 @@ class TickerDecision(BaseModel):
     confidence: float
     reasoning: str
     created_at: str
+    trace_id: str | None = None
 
 
 _mongo_client = None  # module-level singleton — avoids creating a new client per request
@@ -211,7 +212,8 @@ def get_ticker_decision_log(
         traces = list(
             col.find(
                 {"user_id": user_id, "ticker": ticker},
-                {"pipeline_run.final_decision.action": 1,
+                {"_id": 1,
+                 "pipeline_run.final_decision.action": 1,
                  "pipeline_run.final_decision.confidence": 1,
                  "pipeline_run.final_decision.reasoning": 1,
                  "created_at": 1},
@@ -232,6 +234,7 @@ def get_ticker_decision_log(
             "confidence": float(decision.get("confidence", 0.0)),
             "reasoning": decision.get("reasoning", ""),
             "created_at": created_str,
+            "trace_id": str(trace.get("_id", "")) or None,
         })
 
     return results

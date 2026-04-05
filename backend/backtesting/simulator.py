@@ -42,8 +42,13 @@ class VirtualPortfolio:
         ebc_mode: str,
         execution_price: float | None,
         is_last_day: bool,
+        confidence_threshold_override: float | None = None,
     ) -> dict:
-        threshold = CONFIDENCE_THRESHOLDS.get(ebc_mode)
+        threshold = (
+            confidence_threshold_override
+            if confidence_threshold_override is not None
+            else CONFIDENCE_THRESHOLDS.get(ebc_mode)
+        )
 
         if threshold is None:
             return {"executed": False, "reason": "advisory_mode"}

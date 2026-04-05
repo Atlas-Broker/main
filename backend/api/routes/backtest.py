@@ -1,11 +1,13 @@
 # backend/api/routes/backtest.py
 from datetime import date, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, field_validator, model_validator
 
-from api.dependencies import get_current_user
+from api.dependencies import require_admin
 from db.supabase import get_user_role
+from agents.philosophy import VALID_PHILOSOPHY_MODES
 from backtesting.runner import run_backtest_job, request_cancellation
 from services.backtest_service import create_job, delete_job, get_job, list_jobs, update_job_status
 
@@ -17,6 +19,8 @@ class BacktestRequest(BaseModel):
     start_date: date
     end_date: date
     ebc_mode: str
+    philosophy_mode: str = "balanced"
+    confidence_threshold: Optional[float] = None
 
     @field_validator("tickers")
     @classmethod
@@ -30,6 +34,20 @@ class BacktestRequest(BaseModel):
     def validate_mode(cls, v: str) -> str:
         if v not in ("advisory", "autonomous_guardrail", "autonomous"):
             raise ValueError("ebc_mode must be advisory, autonomous_guardrail, or autonomous")
+        return v
+
+    @field_validator("philosophy_mode")
+    @classmethod
+    def validate_philosophy_mode(cls, v: str) -> str:
+        if v not in VALID_PHILOSOPHY_MODES:
+            raise ValueError(f"philosophy_mode must be one of {sorted(VALID_PHILOSOPHY_MODES)}")
+        return v
+
+    @field_validator("confidence_threshold")
+    @classmethod
+    def validate_confidence_threshold(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not 0.0 <= v <= 1.0:
+            raise ValueError("confidence_threshold must be between 0.0 and 1.0")
         return v
 
     @model_validator(mode="after")
@@ -48,7 +66,7 @@ class BacktestRequest(BaseModel):
 async def create_backtest(
     req: BacktestRequest,
     background_tasks: BackgroundTasks,
-    user_id: str = Depends(get_current_user),
+    user_id: str = Depends(require_admin),
 ):
     jobs = list_jobs(user_id)
     user_role = get_user_role(user_id)
@@ -65,6 +83,8 @@ async def create_backtest(
         start_date=req.start_date.isoformat(),
         end_date=req.end_date.isoformat(),
         ebc_mode=req.ebc_mode,
+        philosophy_mode=req.philosophy_mode,
+        confidence_threshold=req.confidence_threshold,
     )
     background_tasks.add_task(
         run_backtest_job,
@@ -74,17 +94,19 @@ async def create_backtest(
         start_date=req.start_date.isoformat(),
         end_date=req.end_date.isoformat(),
         ebc_mode=req.ebc_mode,
+        philosophy_mode=req.philosophy_mode,
+        confidence_threshold=req.confidence_threshold,
     )
     return {"job_id": job_id, "status": "queued"}
 
 
 @router.get("")
-def list_backtest_jobs(user_id: str = Depends(get_current_user)):
+def list_backtest_jobs(user_id: str = Depends(require_admin)):
     return list_jobs(user_id)
 
 
 @router.get("/{job_id}")
-def get_backtest_job(job_id: str, user_id: str = Depends(get_current_user)):
+def get_backtest_job(job_id: str, user_id: str = Depends(require_admin)):
     job = get_job(job_id, user_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -92,7 +114,7 @@ def get_backtest_job(job_id: str, user_id: str = Depends(get_current_user)):
 
 
 @router.delete("/{job_id}")
-def delete_backtest_job(job_id: str, user_id: str = Depends(get_current_user)):
+def delete_backtest_job(job_id: str, user_id: str = Depends(require_admin)):
     result = delete_job(job_id, user_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -102,7 +124,7 @@ def delete_backtest_job(job_id: str, user_id: str = Depends(get_current_user)):
 
 
 @router.post("/{job_id}/cancel")
-def cancel_backtest_job(job_id: str, user_id: str = Depends(get_current_user)):
+def cancel_backtest_job(job_id: str, user_id: str = Depends(require_admin)):
     """Cancel a queued or running backtest job."""
     job = get_job(job_id, user_id)
     if job is None:

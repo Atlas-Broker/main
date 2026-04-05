@@ -7,8 +7,27 @@ from google.genai import types
 from agents.llm.factory import get_llm
 
 
-def decide(ticker: str, synthesis: dict, risk: dict) -> dict:
+def _format_positions(current_positions: dict) -> str:
+    """Format current_positions dict into a readable prompt block."""
+    lines = []
+    for ticker, pos in current_positions.items():
+        shares = pos.get("shares", pos.get("qty", 0))
+        avg_cost = pos.get("avg_cost", pos.get("avg_entry_price", 0))
+        lines.append(f"  {ticker}: {shares} shares @ ${avg_cost} avg cost")
+    return "\n".join(lines)
+
+
+def decide(
+    ticker: str,
+    synthesis: dict,
+    risk: dict,
+    current_positions: dict | None = None,
+) -> dict:
     start = time.time()
+
+    portfolio_block = ""
+    if current_positions:
+        portfolio_block = f"\nCURRENT PORTFOLIO:\n{_format_positions(current_positions)}\n"
 
     prompt = f"""You are the final decision agent for a swing trading system. Make the final trade decision for {ticker}.
 
@@ -24,7 +43,7 @@ Risk assessment:
 - Position size: {risk.get("position_size")} shares (${risk.get("position_value"):,})
 - Risk/reward ratio: {risk.get("risk_reward_ratio")}:1
 - Max loss: ${risk.get("max_loss_dollars")}
-
+{portfolio_block}
 Make a final decision. Return ONLY valid JSON:
 {{
   "action": "BUY" or "SELL" or "HOLD",

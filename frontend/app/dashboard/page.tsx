@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { fetchWithAuth, fetchMyProfile, type UserRole } from "@/lib/api";
 import { AccountDropdown } from "@/components/AccountDropdown";
-import { BacktestTab } from "./BacktestTab";
 import { AgentTab } from "./AgentTab";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -113,7 +112,7 @@ const ACTION_STYLE = {
   HOLD: { color: "var(--hold)", bg: "var(--hold-bg)", glow: "signal-glow-hold" },
 } as const;
 
-type Tab = "portfolio" | "signals" | "backtest" | "settings";
+type Tab = "portfolio" | "signals" | "settings";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -1588,7 +1587,6 @@ export function SettingsTab({
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "portfolio", label: "Portfolio", icon: "◈" },
   { id: "signals",   label: "Agent",     icon: "◉" },
-  { id: "backtest",  label: "Backtest",  icon: "⏮" },
   { id: "settings",  label: "Settings",  icon: "⊙" },
 ];
 
@@ -1743,13 +1741,12 @@ export default function UserDashboard() {
                 onPhilosophyChange={(p) => setPhilosophy(p)}
               />
             )}
-            {tab === "backtest"  && <BacktestTab role={role ?? undefined} />}
           </>
         )}
       </main>
 
       {/* ── Bottom nav ── */}
-      <nav className="sticky bottom-0 z-20 grid grid-cols-4" style={{
+      <nav className="sticky bottom-0 z-20 grid grid-cols-3" style={{
         background: "var(--nav-bg)",
         backdropFilter: "blur(12px)",
         borderTop: "1px solid var(--line)",

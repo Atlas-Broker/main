@@ -48,6 +48,7 @@ async def run_pipeline_async(
         "as_of_date": as_of_date,
         "philosophy_mode": philosophy_mode,
         "analyst_outputs": {},
+        "current_positions": None,
         "synthesis": None,
         "risk": None,
         "portfolio_decision": None,

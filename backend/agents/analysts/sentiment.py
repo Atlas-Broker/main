@@ -2,10 +2,38 @@
 
 import json
 import time
+from datetime import datetime, timezone
 
 from google.genai import types
 from agents.llm.factory import get_llm
 from agents.philosophy import get_philosophy_prefix
+
+_MAX_ARTICLES = 15
+
+
+def _extract_article_metadata(news: list[dict]) -> list[dict]:
+    """Extract title, ISO date, and URL from up to _MAX_ARTICLES news items."""
+    articles = []
+    for item in news[:_MAX_ARTICLES]:
+        title = item.get("title", "")
+        if not title:
+            continue
+
+        # yfinance live path: providerPublishTime is a unix timestamp
+        # Alpaca path: published is already an ISO string
+        raw_date = item.get("providerPublishTime") or item.get("published", "")
+        if isinstance(raw_date, (int, float)) and raw_date:
+            date_str = datetime.fromtimestamp(raw_date, tz=timezone.utc).strftime("%Y-%m-%d")
+        elif isinstance(raw_date, str) and raw_date:
+            # Truncate to date portion if it includes time
+            date_str = raw_date[:10]
+        else:
+            date_str = ""
+
+        url = item.get("link", item.get("url", ""))
+        articles.append({"title": title, "date": date_str, "url": url})
+
+    return articles
 
 
 def analyse(ticker: str, news: list[dict], philosophy_mode: str | None = None) -> dict:
@@ -13,6 +41,7 @@ def analyse(ticker: str, news: list[dict], philosophy_mode: str | None = None) -
     philosophy_prefix = get_philosophy_prefix(philosophy_mode)
 
     headlines = [n["title"] for n in news if n.get("title")]
+    news_articles = _extract_article_metadata(news)
 
     prompt = f"""{philosophy_prefix}You are a sentiment analyst for a swing trading system. Analyse recent news for {ticker} and return a JSON object.
 
@@ -41,6 +70,7 @@ Return ONLY valid JSON with this exact structure:
         "sources": ["news"],
         "headline_count": len(headlines),
         "reasoning": result.get("reasoning", ""),
+        "news_articles": news_articles,
         "model": "gemini-2.0-flash-lite",
         "latency_ms": round((time.time() - start) * 1000),
     }

@@ -7,6 +7,7 @@ Graph shape:
     → synthesis → risk → portfolio → save_trace
 """
 import asyncio
+import logging
 
 from langgraph.graph import StateGraph, START, END
 
@@ -17,6 +18,8 @@ from agents.synthesis import agent as synthesis_agent
 from agents.risk import agent as risk_agent
 from agents.portfolio import agent as portfolio_agent
 from agents.memory import trace as trace_store
+
+logger = logging.getLogger(__name__)
 
 
 # ── Node functions ──────────────────────────────────────────────────────────
@@ -94,14 +97,37 @@ async def run_risk(state: AgentState) -> dict:
     return {"risk": result}
 
 
+def _fetch_current_positions(user_id: str) -> dict | None:
+    """Fetch the user's live positions from Alpaca via the broker factory.
+
+    Returns a dict of {ticker: {"shares": float, "avg_cost": float}} or None
+    if positions cannot be fetched (broker unavailable, backtest context, etc.).
+    """
+    try:
+        from broker.factory import get_broker
+        broker = get_broker()
+        raw_positions = broker.get_positions()
+        return {
+            p["ticker"]: {"shares": p["qty"], "avg_cost": p["avg_cost"]}
+            for p in raw_positions
+        }
+    except Exception as exc:
+        logger.debug("Could not fetch current positions for portfolio context: %r", exc)
+        return None
+
+
 async def run_portfolio(state: AgentState) -> dict:
+    current_positions = await asyncio.to_thread(
+        _fetch_current_positions, state["user_id"]
+    )
     result = await asyncio.to_thread(
         portfolio_agent.decide,
         state["ticker"],
         state["synthesis"],
         state["risk"],
+        current_positions,
     )
-    return {"portfolio_decision": result}
+    return {"portfolio_decision": result, "current_positions": current_positions}
 
 
 async def save_trace(state: AgentState) -> dict:

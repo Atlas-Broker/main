@@ -1,7 +1,7 @@
 // frontend/app/dashboard/stock/[ticker]/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchDecisionLog, type DecisionLogEntry } from "@/lib/api";
 
@@ -17,6 +17,7 @@ export default function StockLogPage({ params }: { params: Promise<{ ticker: str
   const [entries, setEntries] = useState<DecisionLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
+  const scrollRestoredRef = useRef(false);
 
   useEffect(() => {
     params.then(({ ticker: t }) => {
@@ -28,6 +29,28 @@ export default function StockLogPage({ params }: { params: Promise<{ ticker: str
       });
     });
   }, [params]);
+
+  // Restore scroll position after entries have loaded
+  useEffect(() => {
+    if (loading || scrollRestoredRef.current || !ticker) return;
+    scrollRestoredRef.current = true;
+    const key = `atlas_log_scroll_${ticker}`;
+    const saved = sessionStorage.getItem(key);
+    if (saved) {
+      const y = parseInt(saved, 10);
+      sessionStorage.removeItem(key);
+      // Defer to next frame so layout has settled
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: y, behavior: "instant" });
+      });
+    }
+  }, [loading, ticker]);
+
+  function handleEntryClick(entry: DecisionLogEntry) {
+    if (!entry.trace_id) return;
+    sessionStorage.setItem(`atlas_log_scroll_${ticker}`, String(window.scrollY));
+    router.push(`/dashboard/signal/${entry.trace_id}`);
+  }
 
   const visible = showAll ? entries : entries.slice(0, 5);
   const ACTION_COLOR = {
@@ -60,8 +83,24 @@ export default function StockLogPage({ params }: { params: Promise<{ ticker: str
             <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "0 16px", marginBottom: 12 }}>
               {visible.map((entry, i) => {
                 const c = ACTION_COLOR[entry.action];
+                const isClickable = Boolean(entry.trace_id);
                 return (
-                  <div key={i} className="decision-log-row">
+                  <div
+                    key={i}
+                    className="decision-log-row"
+                    onClick={isClickable ? () => handleEntryClick(entry) : undefined}
+                    style={{
+                      cursor: isClickable ? "pointer" : "default",
+                      borderRadius: isClickable ? 6 : 0,
+                      transition: isClickable ? "background 0.12s" : undefined,
+                    }}
+                    onMouseEnter={isClickable ? (e) => {
+                      (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.04)";
+                    } : undefined}
+                    onMouseLeave={isClickable ? (e) => {
+                      (e.currentTarget as HTMLDivElement).style.background = "";
+                    } : undefined}
+                  >
                     <span style={{
                       flexShrink: 0, padding: "2px 8px", borderRadius: 4,
                       fontSize: 11, fontFamily: "var(--font-mono)", fontWeight: 700,
@@ -80,6 +119,16 @@ export default function StockLogPage({ params }: { params: Promise<{ ticker: str
                         <div className="conf-bar-fill" style={{ width: `${entry.confidence * 100}%`, background: c }} />
                       </div>
                     </div>
+                    {isClickable && (
+                      <span style={{
+                        flexShrink: 0,
+                        color: "var(--ghost)",
+                        fontSize: 14,
+                        fontFamily: "var(--font-jb)",
+                        marginLeft: 4,
+                        lineHeight: 1,
+                      }}>→</span>
+                    )}
                   </div>
                 );
               })}

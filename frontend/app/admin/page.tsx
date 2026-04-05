@@ -4,12 +4,14 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { fetchWithAuth, fetchMyProfile, type UserRole } from "@/lib/api";
 import { AccountDropdown } from "@/components/AccountDropdown";
+import { BacktestTab } from "@/app/dashboard/BacktestTab";
+import { BacktestComparisonView } from "@/app/admin/BacktestComparisonView";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type AdminPage = "overview" | "users" | "system" | "roles";
+type AdminPage = "overview" | "users" | "system" | "backtest" | "roles";
 
 type AdminStats = {
   total_users: number;
@@ -561,16 +563,18 @@ function RolesPage({ users, usersLoading, onAction, onRefresh }: {
 // ─── Nav items ────────────────────────────────────────────────────────────────
 
 const NAV_ITEMS: { id: AdminPage; label: string; short: string }[] = [
-  { id: "overview", label: "Overview",      short: "OV" },
-  { id: "users",    label: "Users",         short: "US" },
-  { id: "system",   label: "System Status", short: "SS" },
-  { id: "roles",    label: "Roles",         short: "RL" },
+  { id: "overview",  label: "Overview",      short: "OV" },
+  { id: "users",     label: "Users",         short: "US" },
+  { id: "backtest",  label: "Backtesting",   short: "BT" },
+  { id: "system",    label: "System Status", short: "SS" },
+  { id: "roles",     label: "Roles",         short: "RL" },
 ];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AdminDashboard() {
   const [page, setPage]               = useState<AdminPage>("overview");
+  const [backtestSubTab, setBacktestSubTab] = useState<"jobs" | "experiments">("jobs");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [role, setRole]               = useState<UserRole | null>(null);
   const [roleLoading, setRoleLoading] = useState(true);
@@ -724,6 +728,38 @@ export default function AdminDashboard() {
           )}
           {page === "system" && (
             <SystemPage systemStatus={systemStatus} systemLoading={systemLoading} isSuperadmin={isSuperadmin} />
+          )}
+          {page === "backtest" && (
+            <div className="flex flex-col gap-4">
+              {/* Sub-tab pills */}
+              <div className="flex items-center gap-2">
+                {(["jobs", "experiments"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setBacktestSubTab(tab)}
+                    style={{
+                      padding: "7px 16px",
+                      borderRadius: 20,
+                      fontSize: 12,
+                      fontFamily: "var(--font-jb)",
+                      fontWeight: backtestSubTab === tab ? 700 : 400,
+                      letterSpacing: "0.04em",
+                      textTransform: "uppercase",
+                      border: `1px solid ${backtestSubTab === tab ? "var(--brand)40" : "var(--line)"}`,
+                      background: backtestSubTab === tab ? "var(--brand)18" : "var(--elevated)",
+                      color: backtestSubTab === tab ? "var(--brand)" : "var(--ghost)",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    {tab === "jobs" ? "Jobs" : "Experiments"}
+                  </button>
+                ))}
+              </div>
+
+              {backtestSubTab === "jobs" && <BacktestTab role={role ?? undefined} />}
+              {backtestSubTab === "experiments" && <BacktestComparisonView />}
+            </div>
           )}
           {page === "roles" && isSuperadmin && (
             <RolesPage users={users} usersLoading={usersLoading} onAction={setModal} onRefresh={loadUsers} />

@@ -49,9 +49,15 @@ async def run_backtest_job(
     start_date: str,
     end_date: str,
     ebc_mode: str,
+    philosophy_mode: str = "balanced",
+    confidence_threshold: float | None = None,
 ) -> None:
     update_job_status(job_id, "running", progress=0)
-    mongo_id = create_results_doc(job_id, user_id, tickers, start_date, end_date, ebc_mode)
+    mongo_id = create_results_doc(
+        job_id, user_id, tickers, start_date, end_date, ebc_mode,
+        philosophy_mode=philosophy_mode,
+        confidence_threshold=confidence_threshold,
+    )
     set_mongo_id(job_id, mongo_id)
 
     trading_days = _trading_days(date_cls.fromisoformat(start_date), date_cls.fromisoformat(end_date))
@@ -82,6 +88,7 @@ async def run_backtest_job(
                     boundary_mode=ebc_mode,
                     user_id=user_id,
                     as_of_date=trading_day,
+                    philosophy_mode=philosophy_mode,
                 )
                 exec_price = (
                     None
@@ -96,6 +103,7 @@ async def run_backtest_job(
                     ebc_mode=ebc_mode,
                     execution_price=exec_price,
                     is_last_day=is_last,
+                    confidence_threshold_override=confidence_threshold,
                 )
                 run_record = {
                     "date":           trading_day,

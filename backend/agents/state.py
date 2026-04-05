@@ -29,6 +29,9 @@ class AgentState(TypedDict):
     # can each add their key without overwriting each other
     analyst_outputs: Annotated[dict, operator.or_]
 
+    # Current live positions — fetched before portfolio node, None if unavailable
+    current_positions: dict | None
+
     # Sequential stage outputs
     synthesis: dict | None
     risk: dict | None
