@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -625,6 +626,7 @@ function ExperimentCard({ experiment, defaultOpen, onJobsChanged }: {
   defaultOpen?: boolean;
   onJobsChanged: () => void;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(defaultOpen ?? false);
 
   const activeCount    = experiment.jobs.filter((j) => j.status === "running" || j.status === "queued").length;
@@ -653,6 +655,44 @@ function ExperimentCard({ experiment, defaultOpen, onJobsChanged }: {
   };
   const accent = typeColor[experiment.type];
 
+  // Backend-backed experiments navigate to their own detail page
+  if (experiment.isBackendBacked) {
+    return (
+      <div
+        onClick={() => router.push(`/admin/experiments/${experiment.id}`)}
+        style={{
+          background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10,
+          overflow: "hidden", cursor: "pointer", transition: "border-color 0.15s, box-shadow 0.15s",
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--brand)40"; (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 12px rgba(0,0,0,0.07)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--line)"; (e.currentTarget as HTMLDivElement).style.boxShadow = "none"; }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px" }}>
+          <div style={{ width: 3, height: 36, borderRadius: 2, background: accent, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+              <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{experiment.label}</span>
+              <Pill label={`${experiment.jobs.length} runs`} color={accent} />
+              {activeCount > 0 && <PulsingDot color="var(--hold)" />}
+              {allDone && completedCount > 0 && <Pill label="complete" color="var(--bull)" />}
+              {hasStale && <Pill label="stale" color="var(--bear)" />}
+            </div>
+            <div style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)" }}>
+              {experiment.jobs[0]?.tickers.join(" · ")} · {experiment.jobs[0]?.start_date} → {experiment.jobs[0]?.end_date} · {relTime(experiment.createdAt.toISOString())}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+            {completedCount > 0 && <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--bull)" }}>{completedCount} done</span>}
+            {errorCount > 0 && <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--bear)" }}>{errorCount} failed</span>}
+            {activeCount > 0 && <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--hold)" }}>{activeCount} running</span>}
+            <span style={{ fontFamily: "var(--font-jb)", fontSize: 12, color: "var(--ghost)" }}>→</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Legacy/orphan experiments: keep accordion expand
   return (
     <div style={{ background: "var(--surface)", border: `1px solid ${open ? "var(--brand)30" : "var(--line)"}`, borderRadius: 10, overflow: "hidden", transition: "border-color 0.2s" }}>
       <button
@@ -664,34 +704,25 @@ function ExperimentCard({ experiment, defaultOpen, onJobsChanged }: {
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
             <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{experiment.label}</span>
             <Pill label={`${experiment.jobs.length} runs`} color={accent} />
+            <Pill label="legacy" color="var(--dim)" />
             {activeCount > 0 && <PulsingDot color="var(--hold)" />}
-            {allDone && completedCount > 0 && <Pill label="complete" color="var(--bull)" />}
             {hasStale && <Pill label="stale" color="var(--bear)" />}
-            {experiment.isBackendBacked
-              ? <Pill label="tracked" color="var(--ghost)" />
-              : <Pill label="legacy" color="var(--dim)" />
-            }
           </div>
           <div style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)" }}>
             {experiment.jobs[0]?.tickers.join(" · ")} · {experiment.jobs[0]?.start_date} → {experiment.jobs[0]?.end_date} · {relTime(experiment.createdAt.toISOString())}
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+          {activeCount > 0 && <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--hold)" }}>{activeCount} running</span>}
           {completedCount > 0 && <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--bull)" }}>{completedCount} done</span>}
           {errorCount > 0 && <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--bear)" }}>{errorCount} failed</span>}
-          {activeCount > 0 && <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--hold)" }}>{activeCount} running</span>}
           <span style={{ fontFamily: "var(--font-jb)", fontSize: 12, color: "var(--ghost)", marginLeft: 4 }}>{open ? "▴" : "▾"}</span>
         </div>
       </button>
 
       {open && (
         <div style={{ padding: "4px 18px 18px", borderTop: "1px solid var(--line)" }} className="bcv-fade-in">
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: experiment.jobs.length === 1 ? "1fr" : "repeat(auto-fill, minmax(220px, 1fr))",
-            gap: 10,
-            marginTop: 14,
-          }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10, marginTop: 14 }}>
             {experiment.jobs.map((job) => (
               <JobCard
                 key={job.id}
