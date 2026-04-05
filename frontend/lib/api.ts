@@ -74,3 +74,21 @@ export async function fetchDecisionLog(apiUrl: string, ticker: string, limit = 2
   if (!res || !res.ok) return [];
   return res.json();
 }
+
+export type WatchlistSchedule = "1x" | "3x" | "6x";
+export type WatchlistEntry = { ticker: string; schedule: WatchlistSchedule };
+
+export async function fetchWatchlist(): Promise<WatchlistEntry[] | null> {
+  const res = await fetchWithAuth(`${API_URL}/v1/watchlist`);
+  if (!res || !res.ok) return null;
+  return res.json() as Promise<WatchlistEntry[]>;
+}
+
+export async function saveWatchlist(entries: WatchlistEntry[]): Promise<boolean> {
+  const res = await fetchWithAuth(`${API_URL}/v1/watchlist`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ entries }),
+  });
+  return res?.ok ?? false;
+}

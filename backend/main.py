@@ -9,7 +9,7 @@ from fastapi import FastAPI
 
 from api.middleware.cors import add_cors
 from api.middleware.auth import ClerkAuthMiddleware
-from api.routes import signals, portfolio, trades, pipeline, webhooks, profile, scheduler as scheduler_router, broker as broker_router, backtest as backtest_router, users as users_router, admin as admin_router
+from api.routes import signals, portfolio, trades, pipeline, webhooks, profile, scheduler as scheduler_router, broker as broker_router, backtest as backtest_router, users as users_router, admin as admin_router, watchlist as watchlist_router
 
 load_dotenv()
 
@@ -41,9 +41,8 @@ async def lifespan(app: FastAPI):
         logger.info("Starting keep-alive loop → %s", render_url)
         tasks.append(asyncio.create_task(_keep_alive_loop(render_url)))
 
-    if os.getenv("SCHEDULER_ENABLED", "false").lower() == "true":
-        logger.info("Starting daily watchlist scheduler")
-        tasks.append(asyncio.create_task(scheduler_loop()))
+    logger.info("Starting multi-window watchlist scheduler")
+    tasks.append(asyncio.create_task(scheduler_loop()))
 
     yield
 
@@ -76,6 +75,7 @@ app.include_router(broker_router.router)
 app.include_router(backtest_router.router)
 app.include_router(users_router.router)
 app.include_router(admin_router.router)
+app.include_router(watchlist_router.router)
 
 
 @app.get("/health")

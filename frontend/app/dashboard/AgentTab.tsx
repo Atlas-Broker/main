@@ -1,16 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { fetchWatchlist, saveWatchlist, type WatchlistEntry, type WatchlistSchedule } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Schedule = "1x" | "3x" | "6x";
-
-type WatchlistEntry = {
-  ticker: string;
-  schedule: Schedule;
-};
+type Schedule = WatchlistSchedule;
 
 type Signal = {
   id: string;
@@ -754,17 +750,35 @@ export function AgentTab({
 }) {
   const router = useRouter();
 
-  const [watchlist, setWatchlist] = useState<WatchlistEntry[]>(() => {
-    if (typeof window === "undefined") return DEFAULT_WATCHLIST;
-    try {
-      const saved = localStorage.getItem("atlas_watchlist");
-      return saved ? (JSON.parse(saved) as WatchlistEntry[]) : DEFAULT_WATCHLIST;
-    } catch {
-      return DEFAULT_WATCHLIST;
-    }
-  });
+  const [watchlist, setWatchlist] = useState<WatchlistEntry[]>(DEFAULT_WATCHLIST);
+  const initializedRef = useRef(false);
 
+  // Load watchlist from API on mount; fall back to localStorage, then defaults
   useEffect(() => {
+    fetchWatchlist().then((remote) => {
+      if (remote && remote.length > 0) {
+        setWatchlist(remote);
+      } else {
+        // Try localStorage migration
+        try {
+          const saved = localStorage.getItem("atlas_watchlist");
+          const local = saved ? (JSON.parse(saved) as WatchlistEntry[]) : DEFAULT_WATCHLIST;
+          setWatchlist(local);
+          // Persist to backend so future loads are from DB
+          void saveWatchlist(local);
+        } catch {
+          setWatchlist(DEFAULT_WATCHLIST);
+          void saveWatchlist(DEFAULT_WATCHLIST);
+        }
+      }
+      initializedRef.current = true;
+    });
+  }, []);
+
+  // Persist any changes back to the API (skip the initial seed)
+  useEffect(() => {
+    if (!initializedRef.current) return;
+    void saveWatchlist(watchlist);
     localStorage.setItem("atlas_watchlist", JSON.stringify(watchlist));
   }, [watchlist]);
 

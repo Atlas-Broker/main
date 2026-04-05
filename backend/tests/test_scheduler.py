@@ -6,7 +6,6 @@ Uses the dual-patch auth pattern:
 - patch("api.middleware.auth.ClerkAuthMiddleware.dispatch") to bypass ASGI-layer JWT verification
 - app.dependency_overrides[get_current_user] to satisfy the route-level Depends(get_current_user)
 """
-import os
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -47,7 +46,7 @@ def test_scheduler_status_returns_correct_fields(client):
     assert "last_run_results" in data
     assert "watchlist" in data
     # Route-added fields
-    assert "next_market_open_et" in data
+    assert "next_window_et" in data
     assert "current_time_et" in data
 
 
@@ -81,38 +80,14 @@ def test_scheduler_trigger_runs_pipeline(client):
 
 
 # ---------------------------------------------------------------------------
-# test_scheduler_disabled_when_env_false
+# test_scheduler_always_enabled
 # ---------------------------------------------------------------------------
 
-def test_scheduler_disabled_when_env_false(monkeypatch):
+def test_scheduler_always_enabled():
     """
-    When SCHEDULER_ENABLED is not 'true', the scheduler loop must NOT be started.
-    Verify by inspecting main.py lifespan: asyncio.create_task should not be called
-    for scheduler_loop when the env var is false/absent.
+    The scheduler always starts — it is no longer gated by SCHEDULER_ENABLED.
+    Verify that the state dict marks enabled=True on module import.
     """
-    monkeypatch.setenv("SCHEDULER_ENABLED", "false")
-
-    import importlib
-    import asyncio
-    from unittest.mock import MagicMock, patch as _patch
-
-    tasks_created = []
-
-    original_create_task = asyncio.create_task
-
-    def tracking_create_task(coro, *args, **kwargs):
-        tasks_created.append(getattr(coro, "__name__", repr(coro)))
-        # Cancel immediately so tests don't leave dangling tasks
-        task = original_create_task(coro, *args, **kwargs)
-        task.cancel()
-        return task
-
-    with _patch("asyncio.create_task", side_effect=tracking_create_task):
-        # The state is checked in the lifespan — read the env var at startup
-        import main as main_mod
-        env_val = os.getenv("SCHEDULER_ENABLED", "false").lower()
-        scheduler_would_start = env_val == "true"
-
-    assert not scheduler_would_start, (
-        "SCHEDULER_ENABLED=false must prevent the scheduler task from starting"
-    )
+    from scheduler.runner import get_state
+    state = get_state()
+    assert state["enabled"] is True, "Scheduler must always be enabled"

@@ -1,19 +1,23 @@
 # backend/scheduler/runner.py
 """
-Daily watchlist scheduler.
+Multi-window watchlist scheduler.
 
-Runs the Atlas pipeline for ALL connected users every US market day at 9:30 AM ET.
-Each user runs with their own Alpaca credentials and their own boundary_mode from profiles.
-When SCHEDULER_USER_ID is set, only that single user is scheduled (v1 single-user mode).
-When SCHEDULER_EBC_MODE is set, it overrides per-user profile boundary_mode.
+Runs the Atlas pipeline for all connected users at each scan window that falls
+on a US market day. The scan windows are derived from each user's per-ticker
+schedule stored in the watchlist table:
+
+  1×/day → 16:30 ET
+  3×/day → 08:30, 13:00, 16:30 ET
+  6×/day → 06:30, 09:30, 12:00, 13:30, 15:00, 16:30 ET
+
+At each window, only the tickers whose schedule includes that window are run.
 
 Configuration (env vars):
-  SCHEDULER_ENABLED   — "true" to activate (default: false)
-  SCHEDULER_TICKERS   — comma-separated tickers (default: AAPL,MSFT,TSLA,NVDA,META)
-                        Falls back to WATCHLIST_TICKERS for backward compatibility.
-  SCHEDULER_EBC_MODE  — override boundary mode: advisory/autonomous_guardrail/autonomous (default: per-user profile)
-  SCHEDULER_USER_ID   — Clerk user_id to attribute scheduled runs to (v1 single-user mode).
-                        When set, only this user is scheduled; broker_connections table is ignored.
+  SCHEDULER_TICKERS  — comma-separated fallback tickers when a user has no saved
+                       watchlist (default: AAPL,MSFT,TSLA,NVDA,META).
+                       Falls back to WATCHLIST_TICKERS for backwards compat.
+  SCHEDULER_EBC_MODE — override boundary mode per run (default: per-user profile).
+  SCHEDULER_USER_ID  — Clerk user_id for v1 single-user mode.
 """
 import asyncio
 import logging
@@ -21,69 +25,63 @@ import os
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from services.watchlist_service import ALL_SCAN_WINDOWS, get_tickers_for_window
+
 logger = logging.getLogger(__name__)
 
 EASTERN = ZoneInfo("America/New_York")
-MARKET_OPEN_HOUR = 9
-MARKET_OPEN_MINUTE = 30
 
-# US federal market holidays (month, day) that fall on fixed dates.
-# Variable-date holidays (MLK, Presidents, Memorial, Labor, Thanksgiving, Good Friday)
-# are skipped here — yfinance returns prior close data on those days, which is valid
-# for signal generation purposes.
+# US federal market holidays on fixed dates.
 _FIXED_HOLIDAYS: frozenset[tuple[int, int]] = frozenset({
-    (1, 1),   # New Year's Day
-    (7, 4),   # Independence Day
-    (12, 25), # Christmas Day
+    (1, 1),    # New Year's Day
+    (7, 4),    # Independence Day
+    (12, 25),  # Christmas Day
 })
 
 
 def _is_market_day(d: date) -> bool:
-    """Return True if d is a weekday and not a fixed US market holiday."""
-    if d.weekday() >= 5:  # Saturday=5, Sunday=6
+    """Return True if d is a weekday that is not a fixed US market holiday."""
+    if d.weekday() >= 5:
         return False
     if (d.month, d.day) in _FIXED_HOLIDAYS:
         return False
     return True
 
 
-def next_market_open(from_dt: datetime | None = None) -> datetime:
+def next_scan_window(from_dt: datetime | None = None) -> tuple[datetime, tuple[int, int]]:
     """
-    Return the next 9:30 AM ET on a market day.
-    If from_dt is before 9:30 AM ET on a market day, returns today's open.
+    Return (next_window_dt, (hour, minute)) for the next scan window after from_dt.
+    Skips non-market days. Looks up to 10 days ahead to handle long weekends.
     """
     now = from_dt or datetime.now(tz=EASTERN)
-    candidate = now.replace(
-        hour=MARKET_OPEN_HOUR,
-        minute=MARKET_OPEN_MINUTE,
-        second=0,
-        microsecond=0,
-    )
-    if candidate <= now:
-        candidate += timedelta(days=1)
 
-    while not _is_market_day(candidate.date()):
-        candidate += timedelta(days=1)
+    for day_offset in range(10):
+        candidate_date = now.date() + timedelta(days=day_offset)
+        if not _is_market_day(candidate_date):
+            continue
+        for (h, m) in ALL_SCAN_WINDOWS:
+            candidate = datetime(
+                candidate_date.year, candidate_date.month, candidate_date.day,
+                h, m, 0, 0,
+                tzinfo=EASTERN,
+            )
+            if candidate > now:
+                return candidate, (h, m)
 
-    return candidate
+    raise RuntimeError("Could not determine next scan window within 10 days")
 
 
-def _get_watchlist() -> list[str]:
-    # SCHEDULER_TICKERS takes priority; fall back to legacy WATCHLIST_TICKERS
+def _get_fallback_tickers() -> list[str]:
+    """Return tickers from env vars (used when a user has no saved watchlist)."""
     raw = os.getenv("SCHEDULER_TICKERS") or os.getenv("WATCHLIST_TICKERS", "AAPL,MSFT,TSLA,NVDA,META")
     return [t.strip().upper() for t in raw.split(",") if t.strip()]
 
 
 def _get_ebc_mode_override() -> str | None:
-    """Return SCHEDULER_EBC_MODE if set, otherwise None (use per-user profile)."""
     return os.getenv("SCHEDULER_EBC_MODE") or None
 
 
 def _get_user_boundary_mode(user_id: str) -> str:
-    """
-    Fetch the boundary_mode to use for a scheduled run.
-    Priority: SCHEDULER_EBC_MODE env var > user's Supabase profile > 'advisory'.
-    """
     override = _get_ebc_mode_override()
     if override:
         return override
@@ -96,15 +94,15 @@ def _get_user_boundary_mode(user_id: str) -> str:
         return "advisory"
 
 
-# Shared state for the status endpoint — module-level is fine for a single-process server.
+# Shared state for the /scheduler/status endpoint.
 _state: dict = {
-    "enabled": False,
+    "enabled": True,
     "next_run_utc": None,
     "last_run_utc": None,
     "last_run_results": [],
     "watchlist": [],
-    "tickers": [],        # alias for watchlist — exposed in /status for clarity
-    "ebc_mode": None,     # SCHEDULER_EBC_MODE value, or None (per-user profile)
+    "tickers": [],
+    "ebc_mode": None,
     "active_users": 0,
 }
 
@@ -113,15 +111,16 @@ def get_state() -> dict:
     return dict(_state)
 
 
-async def run_watchlist_for_user(user_id: str) -> list[dict]:
+async def run_watchlist_for_user(
+    user_id: str,
+    tickers: list[str],
+) -> list[dict]:
     """
-    Run the full watchlist pipeline for a single user.
-    Uses the user's boundary_mode from their profile.
+    Run the full pipeline for a set of tickers for a single user.
     Returns per-ticker result summaries.
     """
     from services.pipeline_service import run_pipeline_with_ebc
 
-    tickers = _get_watchlist()
     boundary_mode = await asyncio.to_thread(_get_user_boundary_mode, user_id)
 
     logger.info(
@@ -152,7 +151,10 @@ async def run_watchlist_for_user(user_id: str) -> list[dict]:
                 user_id, ticker, signal["action"], signal["confidence"] * 100,
             )
         except Exception as exc:
-            logger.error("[Scheduler] Pipeline failed for user=%s ticker=%s: %s", user_id, ticker, exc)
+            logger.error(
+                "[Scheduler] Pipeline failed for user=%s ticker=%s: %s",
+                user_id, ticker, exc,
+            )
             summary = {"user_id": user_id, "ticker": ticker, "status": "error", "error": str(exc)}
 
         results.append(summary)
@@ -160,16 +162,20 @@ async def run_watchlist_for_user(user_id: str) -> list[dict]:
     return results
 
 
-async def run_all_users(override_user_id: str | None = None) -> list[dict]:
+async def run_all_users(
+    override_user_id: str | None = None,
+    window: tuple[int, int] | None = None,
+) -> list[dict]:
     """
-    Run the watchlist pipeline for all connected users (or just override_user_id).
+    Run the pipeline for all connected users at the given scan window.
 
-    Resolution order for user list:
+    Resolution order:
     1. override_user_id — explicit caller (e.g. /trigger endpoint)
     2. SCHEDULER_USER_ID env var — v1 single-user mode
     3. Active broker connections from the database (multi-user mode)
 
-    Used by both the scheduled loop and the /trigger endpoint.
+    For each user, tickers are determined by their saved watchlist filtered to
+    the current window. Falls back to env-var tickers when no watchlist is saved.
     """
     from services.broker_service import get_active_user_ids
 
@@ -185,11 +191,30 @@ async def run_all_users(override_user_id: str | None = None) -> list[dict]:
         logger.info("[Scheduler] No active broker connections found — skipping run.")
         return []
 
-    logger.info("[Scheduler] Running for %d user(s): %s", len(user_ids), user_ids)
+    logger.info("[Scheduler] Running for %d user(s) at window %s: %s", len(user_ids), window, user_ids)
 
+    fallback_tickers = _get_fallback_tickers()
     all_results: list[dict] = []
+
     for uid in user_ids:
-        results = await run_watchlist_for_user(uid)
+        if window is not None:
+            tickers = await asyncio.to_thread(get_tickers_for_window, uid, window)
+            if not tickers:
+                logger.info(
+                    "[Scheduler] user=%s has no tickers for window %s — using fallback %s",
+                    uid, window, fallback_tickers,
+                )
+                tickers = fallback_tickers
+        else:
+            # Called without a window (e.g. manual trigger) — use all saved tickers or fallback
+            from services.watchlist_service import get_watchlist
+            saved = await asyncio.to_thread(get_watchlist, uid)
+            tickers = [e["ticker"] for e in saved] if saved else fallback_tickers
+
+        if not tickers:
+            continue
+
+        results = await run_watchlist_for_user(uid, tickers)
         all_results.extend(results)
 
     return all_results
@@ -197,36 +222,38 @@ async def run_all_users(override_user_id: str | None = None) -> list[dict]:
 
 async def scheduler_loop() -> None:
     """
-    Main scheduler loop. Sleeps until next 9:30 AM ET market open, runs all connected users,
-    repeats. Runs as a background asyncio task alongside the keep-alive loop.
+    Main scheduler loop. Sleeps until the next scan window (ET), fires the pipeline
+    for each user's tickers at that window, then repeats indefinitely.
     """
-    watchlist = _get_watchlist()
     ebc_mode = _get_ebc_mode_override()
     _state["enabled"] = True
-    _state["watchlist"] = watchlist
-    _state["tickers"] = watchlist
     _state["ebc_mode"] = ebc_mode
 
     logger.info(
-        "[Scheduler] Started | watchlist=%s | ebc_mode=%s",
-        watchlist, ebc_mode or "per-user-profile",
+        "[Scheduler] Started | windows=%s | ebc_mode=%s",
+        ALL_SCAN_WINDOWS, ebc_mode or "per-user-profile",
     )
 
     while True:
-        next_run = next_market_open()
+        next_dt, window = next_scan_window()
         now = datetime.now(tz=EASTERN)
-        sleep_secs = (next_run - now).total_seconds()
+        sleep_secs = (next_dt - now).total_seconds()
 
-        _state["next_run_utc"] = next_run.astimezone(ZoneInfo("UTC")).isoformat()
+        _state["next_run_utc"] = next_dt.astimezone(ZoneInfo("UTC")).isoformat()
 
         logger.info(
-            "[Scheduler] Next run: %s ET (%.0f seconds from now)",
-            next_run.strftime("%Y-%m-%d %H:%M"), sleep_secs,
+            "[Scheduler] Next window: %02d:%02d ET on %s (%.0f s from now)",
+            window[0], window[1],
+            next_dt.strftime("%Y-%m-%d"),
+            sleep_secs,
         )
 
         await asyncio.sleep(sleep_secs)
 
         _state["last_run_utc"] = datetime.now(tz=ZoneInfo("UTC")).isoformat()
-        results = await run_all_users()
+        results = await run_all_users(window=window)
         _state["last_run_results"] = results
         _state["active_users"] = len({r.get("user_id") for r in results})
+        # Update tickers list with whatever ran in this window
+        _state["tickers"] = list({r["ticker"] for r in results if r.get("ticker")})
+        _state["watchlist"] = _state["tickers"]

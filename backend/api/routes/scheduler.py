@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends
 
 from api.dependencies import get_current_user
-from scheduler.runner import get_state, next_market_open, run_all_users
+from scheduler.runner import get_state, next_scan_window, run_all_users
 
 router = APIRouter(prefix="/v1/scheduler", tags=["scheduler"])
 logger = logging.getLogger(__name__)
@@ -25,11 +25,12 @@ def scheduler_status(_: str = Depends(get_current_user)):
     """Return the current scheduler state: enabled flag, next run time, last results."""
     state = get_state()
     now_et = datetime.now(tz=ZoneInfo("America/New_York"))
-    next_open = next_market_open(from_dt=now_et)
+    next_dt, window = next_scan_window(from_dt=now_et)
 
     return {
         **state,
-        "next_market_open_et": next_open.strftime("%Y-%m-%d %H:%M ET"),
+        "next_window_et": next_dt.strftime("%Y-%m-%d %H:%M ET"),
+        "next_window_hhmm": f"{window[0]:02d}:{window[1]:02d}",
         "current_time_et": now_et.strftime("%Y-%m-%d %H:%M ET"),
     }
 
