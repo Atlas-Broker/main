@@ -16,16 +16,41 @@ from alpaca.data.requests import NewsRequest
 
 logger = logging.getLogger(__name__)
 
+_INFO_KEYS = [
+    "shortName", "sector", "industry",
+    "trailingPE", "forwardPE", "priceToBook",
+    "revenueGrowth", "earningsGrowth", "profitMargins",
+    "debtToEquity", "returnOnEquity", "currentRatio",
+    "marketCap", "fiftyTwoWeekHigh", "fiftyTwoWeekLow",
+    "currentPrice", "targetMeanPrice", "recommendationMean",
+]
 
-def _yf_download_with_retry(ticker: str, retries: int = 3, **kwargs) -> "pd.DataFrame":  # type: ignore[name-defined]
-    """Download yfinance data with exponential backoff on 401 crumb errors."""
+
+def _safe_float(val) -> float:
+    """Convert a value that may be a pandas Series or scalar to float."""
+    if hasattr(val, "iloc"):
+        return float(val.iloc[0])
+    return float(val)
+
+
+def _ticker_history(ticker: str, retries: int = 3, **kwargs):
+    """Fetch OHLCV via yf.Ticker.history() with exponential backoff.
+
+    Using Ticker.history() instead of yf.download() avoids the MultiIndex
+    column structure that causes 'float() argument must be a Series' errors
+    when iterating rows.
+    """
+    t = yf.Ticker(ticker)
     for attempt in range(retries):
-        df = yf.download(ticker, progress=False, **kwargs)
-        if not df.empty:
-            return df
+        try:
+            df = t.history(**kwargs)
+            if df is not None and not df.empty:
+                return df
+        except Exception as exc:
+            logger.warning("yfinance history attempt %d for %s: %s", attempt + 1, ticker, exc)
         if attempt < retries - 1:
             time.sleep(2 ** attempt)  # 1s, 2s, 4s
-    return df  # return empty on exhaustion
+    return None
 
 
 def fetch_ohlcv(
@@ -34,73 +59,75 @@ def fetch_ohlcv(
     interval: str = "1d",
     as_of_date: str | None = None,
 ) -> list[dict]:
-    if as_of_date:
-        end_dt = datetime.strptime(as_of_date, "%Y-%m-%d")
-        start_dt = end_dt - timedelta(days=90)
-        # end is exclusive in yfinance — add 1 day to include as_of_date
-        df = _yf_download_with_retry(
-            ticker,
-            start=start_dt.strftime("%Y-%m-%d"),
-            end=(end_dt + timedelta(days=1)).strftime("%Y-%m-%d"),
-            interval=interval,
-        )
-    else:
-        df = _yf_download_with_retry(ticker, period=period, interval=interval)
+    try:
+        if as_of_date:
+            end_dt = datetime.strptime(as_of_date, "%Y-%m-%d")
+            start_dt = end_dt - timedelta(days=90)
+            # end is exclusive — add 1 day to include as_of_date
+            df = _ticker_history(
+                ticker,
+                start=start_dt.strftime("%Y-%m-%d"),
+                end=(end_dt + timedelta(days=1)).strftime("%Y-%m-%d"),
+                interval=interval,
+                auto_adjust=True,
+            )
+        else:
+            df = _ticker_history(ticker, period=period, interval=interval, auto_adjust=True)
 
-    if df.empty:
+        if df is None or df.empty:
+            return []
+
+        df = df.reset_index()
+        # Ticker.history() uses 'Datetime' for intraday, 'Date' for daily
+        date_col = next((c for c in ("Datetime", "Date") if c in df.columns), df.columns[0])
+
+        rows = []
+        for _, row in df.iterrows():
+            try:
+                rows.append({
+                    "date":   str(row[date_col])[:10],
+                    "open":   round(_safe_float(row["Open"]),   4),
+                    "high":   round(_safe_float(row["High"]),   4),
+                    "low":    round(_safe_float(row["Low"]),    4),
+                    "close":  round(_safe_float(row["Close"]),  4),
+                    "volume": int(_safe_float(row["Volume"])),
+                })
+            except (TypeError, ValueError, KeyError):
+                continue
+        return rows
+    except Exception as exc:
+        logger.warning("fetch_ohlcv failed for %s (as_of=%s): %s", ticker, as_of_date, exc)
         return []
-    # Flatten multi-level columns (yfinance returns ('Close', 'AAPL') style)
-    df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
-    df = df.reset_index()
-    # Detect the date column — yfinance names it 'Datetime' (intraday) or 'Date' (daily);
-    # unnamed indexes become 'index' after reset_index (e.g. in tests)
-    if "Datetime" in df.columns:
-        date_col = "Datetime"
-    elif "Date" in df.columns:
-        date_col = "Date"
-    else:
-        date_col = "index"
-    return [
-        {
-            "date": str(row[date_col])[:10],
-            "open":   round(float(row["Open"]),   4),
-            "high":   round(float(row["High"]),   4),
-            "low":    round(float(row["Low"]),    4),
-            "close":  round(float(row["Close"]),  4),
-            "volume": int(row["Volume"]),
-        }
-        for _, row in df.iterrows()
-    ]
 
 
 def fetch_next_open(ticker: str, after_date: str) -> float | None:
     """Return the first available open price strictly after after_date."""
-    start_dt = datetime.strptime(after_date, "%Y-%m-%d") + timedelta(days=1)
-    end_dt = start_dt + timedelta(days=7)  # buffer for weekends/holidays
-    df = _yf_download_with_retry(
-        ticker,
-        start=start_dt.strftime("%Y-%m-%d"),
-        end=end_dt.strftime("%Y-%m-%d"),
-        interval="1d",
-    )
-    if df.empty:
+    try:
+        start_dt = datetime.strptime(after_date, "%Y-%m-%d") + timedelta(days=1)
+        end_dt = start_dt + timedelta(days=7)  # buffer for weekends/holidays
+        df = _ticker_history(
+            ticker,
+            start=start_dt.strftime("%Y-%m-%d"),
+            end=end_dt.strftime("%Y-%m-%d"),
+            interval="1d",
+            auto_adjust=True,
+        )
+        if df is None or df.empty:
+            return None
+        return float(df["Open"].iloc[0])
+    except Exception as exc:
+        logger.warning("fetch_next_open failed for %s after %s: %s", ticker, after_date, exc)
         return None
-    df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
-    return float(df["Open"].iloc[0])
 
 
 def fetch_info(ticker: str) -> dict:
-    t = yf.Ticker(ticker)
-    info = t.info or {}
-    keys = [
-        "shortName", "sector", "industry",
-        "trailingPE", "forwardPE", "priceToBook",
-        "revenueGrowth", "earningsGrowth", "profitMargins",
-        "debtToEquity", "returnOnEquity", "currentRatio",
-        "marketCap", "fiftyTwoWeekHigh", "fiftyTwoWeekLow",
-        "currentPrice", "targetMeanPrice", "recommendationMean",
-    ]
-    return {k: info.get(k) for k in keys}
+    try:
+        t = yf.Ticker(ticker)
+        info = t.info or {}
+    except Exception as exc:
+        logger.warning("yfinance fetch_info failed for %s: %s", ticker, exc)
+        info = {}
+    return {k: info.get(k) for k in _INFO_KEYS}
 
 
 def fetch_news(ticker: str, as_of_date: str | None = None) -> list[dict]:

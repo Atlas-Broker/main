@@ -23,11 +23,15 @@ This directory contains the LangGraph-based multi-agent pipeline that generates 
                           └───────┬───────┘
                                   ▼
                           ┌───────────────┐
-                          │     Risk      │  stop-loss, take-profit, sizing
+                          │ fetch_account │  live Alpaca balance (skipped in backtest)
                           └───────┬───────┘
                                   ▼
                           ┌───────────────┐
-                          │   Portfolio   │  final action + confidence score
+                          │     Risk      │  stop-loss, take-profit, account-aware sizing
+                          └───────┬───────┘
+                                  ▼
+                          ┌───────────────┐
+                          │   Portfolio   │  final action + confidence (all positions)
                           └───────┬───────┘
                                   ▼
                           ┌───────────────┐
@@ -55,6 +59,8 @@ All nodes read from and write to a single `AgentState` TypedDict. No agent calls
 | `boundary_mode` | `str` | caller (input) |
 | `philosophy_mode` | `str \| None` | caller (input) |
 | `as_of_date` | `str \| None` | caller (input, backtest only) |
+| `current_positions` | `dict \| None` | caller (input, pre-seeded in backtest); `run_portfolio` (live) |
+| `account_info` | `dict \| None` | caller (input, pre-seeded in backtest); `fetch_account` (live) |
 | `ohlcv` | `list[dict]` | `fetch_data` |
 | `info` | `dict` | `fetch_data` |
 | `news` | `list[dict]` | `fetch_data` |
@@ -66,6 +72,17 @@ All nodes read from and write to a single `AgentState` TypedDict. No agent calls
 | `trace_id` | `str \| None` | `save_trace` |
 
 `analyst_outputs` uses `operator.or_` as its LangGraph reducer so the three parallel analyst nodes can each write `{"technical": ...}`, `{"fundamental": ...}`, `{"sentiment": ...}` without overwriting each other.
+
+---
+
+## Backtest / Live Isolation
+
+The `_is_backtest(state)` helper returns `True` when `as_of_date` is set. Two nodes are gated by this:
+
+- **`fetch_account`** — skips entirely in backtest mode; virtual account info is pre-seeded by `backtesting/runner.py`
+- **`run_portfolio`** — skips live Alpaca positions fetch in backtest mode; virtual positions are pre-seeded
+
+In live mode, `fetch_account` calls `get_broker_for_user(user_id).get_account()` and `run_portfolio` calls `get_broker_for_user(user_id).get_positions()` to get real account state.
 
 ---
 
@@ -130,16 +147,25 @@ LLM tier: **deep** (`gemini-2.5-flash`)
 
 ---
 
+### fetch_account
+**File:** `graph.py`
+
+Fetches the live Alpaca account balance (portfolio_value, buying_power, equity) using the per-user broker. Skipped entirely in backtest mode or when `account_info` has been pre-seeded by the caller.
+
+In backtest mode, `backtesting/runner.py` pre-seeds `account_info` with `{"portfolio_value": ..., "buying_power": portfolio.cash, "equity": ...}` so the risk agent sizes positions relative to the virtual portfolio's remaining cash.
+
+---
+
 ### Risk
 **File:** `risk/agent.py`
 
-Pure Python — no LLM call. Calculates position sizing and risk parameters from the synthesis verdict and technical key levels.
+Pure Python — no LLM call. Calculates position sizing and risk parameters from the synthesis verdict, technical key levels, and account state.
 
 Rules:
-- Risk 2% of portfolio per trade (`$2,000` on a `$100,000` reference portfolio)
+- Risk 2% of portfolio per trade
 - Stop-loss: 1% below technical support if available, otherwise 5% below entry
 - Take-profit: 2× the risk distance from entry (2:1 R/R)
-- Position size: `max_loss / risk_per_share` shares
+- Position value: `(2% × portfolio_value) / risk_per_share`, capped at `buying_power × 0.95` when available
 
 Outputs: `stop_loss`, `take_profit`, `position_size`, `position_value`, `risk_reward_ratio`, `max_loss_dollars`, `reasoning`
 
@@ -148,9 +174,9 @@ Outputs: `stop_loss`, `take_profit`, `position_size`, `position_value`, `risk_re
 ### Portfolio Decision
 **File:** `portfolio/agent.py`
 
-Takes the synthesis verdict and the full risk assessment and asks the LLM to make a final, committed decision with a calibrated confidence score.
+Takes the synthesis verdict and the full risk assessment and asks the LLM to make a final, committed decision with a calibrated confidence score. When `current_positions` contains holdings, the prompt includes the full portfolio context so the agent reasons over position concentration and existing exposure, not just the single ticker being analyzed.
 
-Reads from state: `synthesis`, `risk`
+Reads from state: `synthesis`, `risk`, `current_positions`
 
 Outputs: `action` (BUY/SELL/HOLD), `confidence` (0.0–1.0), `reasoning`, `latency_ms`
 
@@ -213,6 +239,8 @@ All LLM calls go through `get_llm(mode)` which returns a `(client, model_id)` tu
 
 `orchestrator.py` is the stable import surface for `services/pipeline_service.py`. It initialises `AgentState`, invokes the compiled LangGraph graph, and returns an `AgentSignal` Pydantic model.
 
+`run_pipeline_async()` accepts optional `current_positions` and `account_info` parameters. When provided (as in backtesting), these are pre-seeded into the initial state and both `fetch_account` and the live positions fetch are skipped.
+
 After the graph completes, `pipeline_service.py` hands the `AgentSignal` to the **Execution Boundary Controller (EBC)** (`boundary/controller.py`), which applies the user's chosen execution mode:
 
 | Mode | Behaviour |
@@ -220,6 +248,8 @@ After the graph completes, `pipeline_service.py` hands the `AgentSignal` to the 
 | `advisory` | Signal returned to user for manual review — no order placed |
 | `autonomous_guardrail` | Auto-executes if `confidence ≥ 0.65`; holds for human review otherwise, fires email notification |
 | `autonomous` | Always executes; 5-minute override window returned to frontend |
+
+Before placing any autonomous order, the EBC calls `broker.get_open_orders(ticker)` and cancels each one to prevent stale orders from accumulating between pipeline runs.
 
 The agents themselves have no knowledge of the EBC — they always produce a signal. Execution mode is enforced entirely outside the graph.
 
@@ -230,5 +260,5 @@ The agents themselves have no knowledge of the EBC — they always produce a sig
 | Path | What it does |
 |---|---|
 | `orchestrator.run_pipeline()` | Sync wrapper — called by `pipeline_service.py` |
-| `orchestrator.run_pipeline_async()` | Async version — used directly in async contexts |
+| `orchestrator.run_pipeline_async()` | Async version — used directly by backtesting runner and async contexts |
 | `graph.get_graph()` | Returns the compiled LangGraph singleton |

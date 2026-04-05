@@ -703,7 +703,9 @@ function ResultsDetail({
               <span style={{ fontFamily: "var(--font-jb)", color: "var(--ghost)", marginRight: 8 }}>{lastRun.date}</span>
               <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, color: "var(--ink)", marginRight: 8 }}>{lastRun.ticker}</span>
               <ActionBadge action={lastRun.action} />
-              <span style={{ marginLeft: 8, color: "var(--ghost)" }}>{Math.round(lastRun.confidence * 100)}% confidence</span>
+              <span style={{ marginLeft: 8, color: "var(--ghost)" }}>
+                {lastRun.confidence != null ? `${Math.round(lastRun.confidence * 100)}% confidence` : "—"}
+              </span>
             </div>
           )}
         </div>
@@ -750,7 +752,7 @@ function ResultsDetail({
                     <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 12, color: "var(--ink)", minWidth: 44 }}>{r.ticker}</span>
                     <ActionBadge action={r.action} />
                     <span style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--dim)", marginLeft: 2 }}>
-                      {Math.round(r.confidence * 100)}%
+                      {r.confidence != null ? `${Math.round(r.confidence * 100)}%` : "—"}
                     </span>
                     <span style={{ marginLeft: "auto", fontFamily: "var(--font-nunito)", fontSize: 11, color: r.executed ? "var(--bull)" : "var(--ghost)" }}>
                       {r.executed ? "✓ exec" : r.skipped_reason ?? "skip"}
@@ -843,7 +845,7 @@ function ResultsDetail({
                   <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", minWidth: 78 }}>{r.date}</span>
                   <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 12, color: "var(--ink)", minWidth: 44 }}>{r.ticker}</span>
                   <ActionBadge action={r.action} />
-                  <span style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--dim)" }}>{Math.round(r.confidence * 100)}%</span>
+                  <span style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--dim)" }}>{r.confidence != null ? `${Math.round(r.confidence * 100)}%` : "—"}</span>
                   <span style={{ marginLeft: "auto", fontFamily: "var(--font-nunito)", fontSize: 11, color: r.executed ? "var(--bull)" : "var(--ghost)" }}>
                     {r.executed ? "✓ exec" : r.skipped_reason ?? "skip"}
                   </span>

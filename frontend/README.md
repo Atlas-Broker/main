@@ -32,13 +32,13 @@ Auth-gated. Five-tab layout. Calls live backend APIs on mount. All requests incl
 | Overview | Portfolio summary, latest signal, open positions snapshot | `/v1/portfolio` |
 | Signals | Signal list with confidence bars, risk params, approve/reject buttons | `/v1/signals` |
 | Positions | Open positions table with unrealised P&L | `/v1/portfolio` |
-| Backtest | Job list with progress bars, new job form, results detail with equity curve | `/v1/backtest` |
-| Settings | Theme toggle, execution mode selector (persisted to Supabase `profiles`) | — |
+| Backtest | Job list with progress bars + resume button on failed/cancelled jobs, new job form, results detail with equity curve | `/v1/backtest` |
+| Settings | Theme toggle, execution mode selector, watchlist editor (ticker + `1x`/`3x`/`6x` scan frequency) | `/v1/watchlist` |
 
-Signal approval calls `POST /v1/signals/{id}/approve` and re-fetches. Signal rejection calls `POST /v1/signals/{id}/reject`.
+Signal approval calls `POST /v1/signals/{id}/approve` and re-fetches. Signal rejection calls `POST /v1/signals/{id}/reject`. Backtest resume calls `POST /v1/backtest/{id}/resume`.
 
 ### `/admin` — Admin Panel
-Desktop-first sidebar. Manual pipeline triggers, system status, env config display.
+Desktop-first sidebar. Manual pipeline triggers, system status, env config display. Includes backtest comparison view.
 
 ### `/design-system` — Component Library
 Living styleguide: colour tokens, typography scale, spacing, all button variants and states, badges, cards, signal rows, motion specs, and responsive breakpoints.
@@ -57,6 +57,22 @@ Living styleguide: colour tokens, typography scale, spacing, all button variants
 3. `lib/auth.ts` exports `getClerkToken()` — retrieves the current Clerk session JWT.
 4. `lib/api.ts` exports `fetchWithAuth()` — wraps `fetch()` with `Authorization: Bearer <token>` and handles network errors gracefully.
 5. `AuthSync` (mounted in root layout) requests a Clerk JWT using the `atlas-supabase` template and syncs the user's profile and portfolio to Supabase on sign-in. INSERT on first login; UPDATE identity fields only on conflict.
+
+## Watchlist Persistence
+
+`AgentTab` (inside the Settings tab) loads the user's watchlist from `GET /v1/watchlist` on mount, falling back to localStorage for migration. Any change saves immediately to `PUT /v1/watchlist` and to localStorage in parallel. The backend `scheduler/runner.py` reads this watchlist from Supabase to determine which tickers to analyze at each scan window.
+
+## API Client (`lib/api.ts`)
+
+Key types and functions:
+
+| Export | Purpose |
+|--------|---------|
+| `WatchlistSchedule` | `"1x" \| "3x" \| "6x"` |
+| `WatchlistEntry` | `{ ticker: string; schedule: WatchlistSchedule }` |
+| `fetchWatchlist()` | `GET /v1/watchlist` |
+| `saveWatchlist(entries)` | `PUT /v1/watchlist` |
+| `fetchWithAuth(url, options)` | Wraps fetch with Clerk JWT |
 
 ## Supabase Client (Frontend)
 

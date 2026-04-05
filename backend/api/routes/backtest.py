@@ -102,7 +102,14 @@ async def create_backtest(
 
 @router.get("")
 def list_backtest_jobs(user_id: str = Depends(require_admin)):
-    return list_jobs(user_id)
+    try:
+        return list_jobs(user_id)
+    except Exception:
+        # On connection-level failures (e.g. HTTP/2 drop), reset the Supabase
+        # singleton and retry once with a fresh client.
+        from db.supabase import reset_supabase
+        reset_supabase()
+        return list_jobs(user_id)
 
 
 @router.get("/{job_id}")

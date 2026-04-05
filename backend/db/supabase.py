@@ -22,6 +22,16 @@ def get_supabase() -> Client:
     return _client
 
 
+def reset_supabase() -> None:
+    """Discard the cached client so the next call to get_supabase() creates a fresh one.
+
+    Call this when an httpx.RemoteProtocolError or similar connection-level
+    error indicates the HTTP/2 connection to Supabase has been dropped.
+    """
+    global _client
+    _client = None
+
+
 def get_user_tier(user_id: str) -> str:
     """Return the user's tier ('free', 'pro', 'max'). Defaults to 'free' on error."""
     try:

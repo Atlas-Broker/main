@@ -17,35 +17,43 @@ FastAPI REST API for the Atlas AI trading assistant. Deployed on Render (UAT) vi
 
 ```
 backend/
-├── main.py                        # App entry point — mounts routers, middleware, keep-alive task
+├── main.py                        # App entry point — mounts routers, middleware, keep-alive task, scheduler
 ├── api/
 │   ├── middleware/
 │   │   ├── auth.py                # ClerkAuthMiddleware — JWT verification via JWKS
-│   │   └── cors.py                # CORS config
+│   │   └── cors.py                # CORS config (auto-includes localhost in dev)
 │   └── routes/
 │       ├── pipeline.py            # POST /v1/pipeline/run — full live pipeline
 │       ├── signals.py             # GET /v1/signals, POST approve/reject
-│       ├── portfolio.py           # GET /v1/portfolio — live Alpaca data
+│       ├── portfolio.py           # GET /v1/portfolio, GET equity-curve, GET positions/{ticker}/log
 │       ├── trades.py              # GET /v1/trades, POST /v1/trades/{id}/override
-│       └── backtest.py            # POST/GET/DELETE /v1/backtest — backtest job management
+│       ├── watchlist.py           # GET/PUT /v1/watchlist — per-user watchlist with schedule
+│       ├── backtest.py            # POST/GET/DELETE /v1/backtest — backtest job management
+│       ├── scheduler.py           # GET /v1/scheduler/status
+│       ├── profile.py             # GET/PATCH /v1/profile
+│       └── admin.py               # GET/PATCH /v1/admin/* — role-gated admin endpoints
 ├── broker/
-│   ├── base.py                    # BrokerAdapter Protocol
+│   ├── base.py                    # BrokerAdapter Protocol (place_order, cancel_order, get_open_orders, get_account, get_positions)
 │   ├── alpaca.py                  # AlpacaAdapter — paper trading
-│   └── factory.py                 # Returns correct broker from BROKER_TYPE env var
+│   └── factory.py                 # get_broker_for_user() (Supabase credentials) + get_broker() (env fallback)
 ├── boundary/
 │   ├── modes.py                   # BoundaryMode enum + per-mode confidence thresholds
-│   └── controller.py              # ExecutionBoundaryController.execute()
+│   └── controller.py              # ExecutionBoundaryController.execute() — cancels stale orders before autonomous runs
 ├── db/
 │   └── supabase.py                # Supabase client — trades, positions, profiles, override_log
 ├── backtesting/
 │   ├── __init__.py
-│   ├── runner.py                  # Background task: orchestrates full backtest run
+│   ├── runner.py                  # Background task: orchestrates backtest run + checkpoint/resume
 │   ├── simulator.py               # VirtualPortfolio — cash, positions, P&L simulation
 │   └── metrics.py                 # Sharpe, drawdown, win rate, signal-to-execution rate
+├── scheduler/
+│   └── runner.py                  # Multi-window scheduler loop + per-user watchlist dispatch
 └── services/
-    ├── pipeline_service.py        # run_pipeline_with_ebc — agents → EBC → response
+    ├── pipeline_service.py        # run_pipeline_with_ebc — agents → EBC → response; cancels stale orders
     ├── signals_service.py         # MongoDB queries; approve-and-execute with idempotency guard
-    └── backtest_service.py        # Backtest job CRUD (Supabase) + results persistence (MongoDB)
+    ├── backtest_service.py        # Backtest job CRUD (Supabase) + results persistence + checkpoint (MongoDB)
+    ├── watchlist_service.py       # SCHEDULE_WINDOWS mapping, get/save watchlist, get_tickers_for_window
+    └── notification_service.py   # Resend email — low-confidence signal alerts
 ```
 
 `atlas-agents` (the `agents/` package) is installed as a local editable dependency.
@@ -65,20 +73,34 @@ The JWKS URL is derived automatically from `CLERK_PUBLISHABLE_KEY` (decodes the 
 
 ## API Routes
 
-| Method | Path | Status | Description |
-|--------|------|--------|-------------|
-| `GET` | `/health` | ✅ Live | Health check — returns status, version, env |
-| `POST` | `/v1/pipeline/run` | ✅ Live | Runs the full agent pipeline for a ticker |
-| `GET` | `/v1/signals` | ✅ Live | Fetches recent signals from MongoDB reasoning traces |
-| `POST` | `/v1/signals/{id}/approve` | ✅ Live | Places Alpaca order; marks trace as executed (idempotent) |
-| `POST` | `/v1/signals/{id}/reject` | ✅ Live | Persists rejection to MongoDB trace (`execution.rejected = true`) |
-| `GET` | `/v1/portfolio` | ✅ Live | Returns live equity, cash, and positions from Alpaca |
-| `GET` | `/v1/trades` | ✅ Live | Returns trade history from Supabase |
-| `POST` | `/v1/trades/{id}/override` | ✅ Live | Cancels Alpaca order; writes to Supabase `override_log` |
-| `POST` | `/v1/backtest` | ✅ Live | Create backtest job + start background task |
-| `GET` | `/v1/backtest` | ✅ Live | List all backtest jobs for user |
-| `GET` | `/v1/backtest/{id}` | ✅ Live | Job status + full results (polling target) |
-| `DELETE` | `/v1/backtest/{id}` | ✅ Live | Delete job + MongoDB document |
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check — returns status, version, env |
+| `POST` | `/v1/pipeline/run` | Runs the full agent pipeline for a ticker |
+| `GET` | `/v1/signals` | Fetches recent signals from MongoDB reasoning traces |
+| `POST` | `/v1/signals/{id}/approve` | Places Alpaca order; marks trace as executed (idempotent) |
+| `POST` | `/v1/signals/{id}/reject` | Persists rejection to MongoDB trace |
+| `GET` | `/v1/portfolio` | Returns live equity, cash, and positions from Alpaca |
+| `GET` | `/v1/portfolio/equity-curve` | Historical equity curve from Alpaca portfolio history API |
+| `GET` | `/v1/portfolio/positions/{ticker}/log` | Decision log for a ticker from MongoDB |
+| `GET` | `/v1/trades` | Returns trade history from Supabase |
+| `POST` | `/v1/trades/{id}/override` | Cancels Alpaca order; writes to Supabase `override_log` |
+| `GET` | `/v1/watchlist` | Returns user's watchlist with schedule codes |
+| `PUT` | `/v1/watchlist` | Replaces user's watchlist (validates ticker + schedule) |
+| `POST` | `/v1/backtest` | Create backtest job + start background task |
+| `GET` | `/v1/backtest` | List all backtest jobs for user |
+| `GET` | `/v1/backtest/{id}` | Job status + full results (polling target) |
+| `DELETE` | `/v1/backtest/{id}` | Delete job + MongoDB document |
+| `POST` | `/v1/backtest/{id}/cancel` | Cancel a running or queued job |
+| `POST` | `/v1/backtest/{id}/resume` | Resume a failed/cancelled job from its last checkpoint |
+| `GET` | `/v1/scheduler/status` | Scheduler state + next scan window ET |
+| `GET` | `/v1/profile` | Returns current user's profile |
+| `PATCH` | `/v1/profile` | Updates boundary_mode / philosophy / display_name |
+| `GET` | `/v1/admin/stats` | Platform stats (admin+) |
+| `GET` | `/v1/admin/users` | All users (admin+) |
+| `PATCH` | `/v1/admin/users/{id}/tier` | Update user tier (superadmin) |
+| `PATCH` | `/v1/admin/users/{id}/role` | Update user role (superadmin) |
+| `GET` | `/v1/admin/system-status` | Live health check for all services (admin+) |
 
 ### Run the Pipeline
 
@@ -96,7 +118,7 @@ Returns action, confidence, reasoning, risk parameters (stop-loss, take-profit, 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `PORT` | No | Server port (default: `8000`) |
-| `ENVIRONMENT` | No | `development` or `production` |
+| `ENVIRONMENT` | No | `dev` / `development` or `production` — dev auto-adds localhost to CORS |
 | `CORS_ORIGINS` | No | Comma-separated allowed origins |
 | `CLERK_PUBLISHABLE_KEY` | Yes* | Used to auto-derive JWKS URL |
 | `CLERK_JWKS_URL` | Yes* | Instance JWKS endpoint — overrides auto-derivation |
@@ -112,13 +134,12 @@ Returns action, confidence, reasoning, risk parameters (stop-loss, take-profit, 
 | `LLM_DEEP_MODEL` | No | Deep model (default: `gemini-2.5-flash`) |
 | `ALPACA_API_KEY` | Yes | Alpaca API key |
 | `ALPACA_SECRET_KEY` | Yes | Alpaca secret key |
-| `ALPACA_BASE_URL` | No | Defaults to paper trading endpoint |
 | `BROKER_TYPE` | No | `alpaca` (default) — future: `ibkr` |
+| `SCHEDULER_TICKERS` | No | Fallback tickers for scheduled runs when watchlist is empty |
+| `SCHEDULER_EBC_MODE` | No | Override boundary mode for all scheduled runs |
+| `SCHEDULER_USER_ID` | No | Clerk user_id to attribute scheduled runs to (fallback single-user mode) |
 | `RENDER_EXTERNAL_URL` | Auto | Set by Render — used by the keep-alive ping task |
-| `SCHEDULER_ENABLED` | No | `true` to activate daily 9:30 AM ET pipeline runs (default: `false`) |
-| `SCHEDULER_TICKERS` | No | Comma-separated tickers for scheduled runs (e.g. `AAPL,MSFT,TSLA,NVDA,META`). Falls back to `WATCHLIST_TICKERS`. |
-| `SCHEDULER_EBC_MODE` | No | Override boundary mode for all scheduled runs: `advisory` or `autonomous`. Defaults to per-user profile value. |
-| `SCHEDULER_USER_ID` | No | Clerk user_id to attribute scheduled runs to (v1 single-user mode). When set, skips broker_connections lookup. |
+| `RESEND_API_KEY` | No | Resend API key — required for email notifications |
 
 *Either `CLERK_PUBLISHABLE_KEY` or `CLERK_JWKS_URL` must be set for auth to work.
 

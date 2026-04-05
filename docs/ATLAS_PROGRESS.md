@@ -1,6 +1,6 @@
 # Atlas — Progress Log
 
-> What has been built and validated as of 3 April 2026.
+> What has been built and validated as of 5 April 2026.
 
 ---
 
@@ -15,7 +15,7 @@ Market Data (yfinance: 90-day OHLCV, fundamentals, news)
     ↓
 [Technical | Fundamental | Sentiment]  ← parallel via LangGraph
     ↓ fan-in
-Synthesis (bull/bear debate) → Risk (2% rule, 2:1 R/R) → Portfolio Decision
+Synthesis (bull/bear debate) → fetch_account → Risk (2% rule, 2:1 R/R) → Portfolio Decision
     ↓
 MongoDB Atlas (full reasoning trace per run)
     ↓
@@ -27,11 +27,27 @@ Agents implemented:
 - **Fundamental Analyst** — P/E, P/B, revenue growth, debt/equity, ROE, analyst targets (14 metrics) → Gemini structured signal
 - **Sentiment Analyst** — News headline tone, key themes → Gemini sentiment score (−1.0 to +1.0)
 - **Synthesis Agent** — Bull case + bear case → unified trade thesis with confidence weighting
-- **Risk Agent** — Deterministic: 2% portfolio risk rule, stop-loss from support or 5% fixed, 2:1 R/R take-profit
-- **Portfolio Decision Agent** — Final BUY/SELL/HOLD + confidence score (0.0–1.0)
+- **fetch_account node** — Fetches live Alpaca account balance (portfolio value, buying power, equity). Skipped entirely in backtest mode.
+- **Risk Agent** — Deterministic: 2% portfolio risk rule, stop-loss from support or 5% fixed, 2:1 R/R take-profit. Position value capped at `buying_power × 0.95` when account info is available.
+- **Portfolio Decision Agent** — Final BUY/SELL/HOLD with confidence score (0.0–1.0), aware of all current portfolio positions (not just the ticker being analyzed)
 - **save_trace** — Persists full pipeline run to MongoDB `reasoning_traces` collection
 
 Full node-by-node documentation in `backend/agents/README.md`.
+
+---
+
+## Backtest / Live Trading Isolation
+
+**Status: Fully isolated.**
+
+The `_is_backtest(state)` helper (`as_of_date is not None`) gates all broker calls in the graph. In backtest mode:
+
+- `fetch_account` node returns early — does not call Alpaca
+- `run_portfolio` node uses pre-seeded virtual positions — does not call Alpaca for positions
+- `pipeline_service.py` EBC does not place orders — no Alpaca trade API calls
+- News still fetched from Alpaca News API with date-bounded params (not the trading client)
+
+In live mode, the graph fetches real account balance and positions from the per-user Alpaca account via `get_broker_for_user(user_id)`.
 
 ---
 
@@ -44,6 +60,8 @@ Full node-by-node documentation in `backend/agents/README.md`.
 | Advisory | N/A | Returns signal only — human executes manually via approve button |
 | Autonomous Guardrail | ≥ 65% auto-executes; < 65% holds for review | High-confidence signals execute immediately; low-confidence signals queue and fire an email notification via Resend |
 | Autonomous | ≥ 65% | Executes immediately — user has 5-minute override window to cancel |
+
+Before each autonomous execution, `pipeline_service.py` fetches and cancels any unfulfilled open orders for that ticker on Alpaca, preventing stale orders from accumulating between runs.
 
 The override window calls `POST /v1/trades/{id}/override`, which:
 1. Cancels the Alpaca order via `broker.cancel_order(order_id)`
@@ -75,7 +93,15 @@ Investment philosophy overlays each analyst's prompt without changing the graph 
 
 **Status: Alpaca paper trading connected.**
 
-Protocol-based `BrokerAdapter` (`broker/base.py`) with a working `AlpacaAdapter` (`broker/alpaca.py`). Places market orders at notional USD (~$1,000), fetches account equity, cash, and open positions. `broker/factory.py` exposes `get_broker()` and `get_broker_for_user()`. IBKR is a future implementation of the same protocol.
+Protocol-based `BrokerAdapter` (`broker/base.py`) with a working `AlpacaAdapter` (`broker/alpaca.py`). Operations implemented:
+
+- `place_order()` — market order at notional USD
+- `cancel_order(order_id)` — cancels a specific Alpaca order
+- `get_open_orders(ticker)` — fetches unfulfilled orders for a ticker (or all tickers); used by pipeline_service before each autonomous run
+- `get_account()` — equity, cash, buying_power; used by the `fetch_account` graph node for live risk sizing
+- `get_positions()` — live open positions; used by portfolio agent for live portfolio-aware decisions
+
+`broker/factory.py` exposes `get_broker_for_user(user_id)` (reads credentials from Supabase `broker_connections` for per-user auth) and `get_broker()` (env var fallback, legacy). IBKR is a future implementation of the same protocol.
 
 ---
 
@@ -103,6 +129,13 @@ Protocol-based `BrokerAdapter` (`broker/base.py`) with a working `AlpacaAdapter`
 | `GET /v1/trades` | Trade history from Supabase `trades` table |
 | `POST /v1/trades/{id}/override` | Cancels Alpaca order, writes to `override_log` |
 
+### Watchlist
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /v1/watchlist` | Returns the authenticated user's watchlist entries with schedule codes |
+| `PUT /v1/watchlist` | Replaces entire watchlist; validates ticker format (1–5 alpha) and schedule (`1x`/`3x`/`6x`) |
+
 ### Backtesting
 
 | Endpoint | Description |
@@ -112,6 +145,13 @@ Protocol-based `BrokerAdapter` (`broker/base.py`) with a working `AlpacaAdapter`
 | `GET /v1/backtest/{id}` | Job status + full results (polling target for frontend) |
 | `DELETE /v1/backtest/{id}` | Delete job + MongoDB document (blocked on running jobs — 409) |
 | `POST /v1/backtest/{id}/cancel` | Cancel a running or queued job; queued jobs cancel immediately |
+| `POST /v1/backtest/{id}/resume` | Resume a failed or cancelled job from its last checkpoint |
+
+### Scheduler
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /v1/scheduler/status` | Returns scheduler state and next scan window ET time |
 
 ### Profile
 
@@ -197,7 +237,7 @@ Backend uses `SUPABASE_SERVICE_KEY` (bypasses RLS natively) for all writes. The 
 
 ## Supabase Integration
 
-**Status: All 6 tables active with user-scoped RLS.**
+**Status: All 7 tables active with user-scoped RLS.**
 
 | Table | What it stores |
 |-------|---------------|
@@ -206,7 +246,8 @@ Backend uses `SUPABASE_SERVICE_KEY` (bypasses RLS natively) for all writes. The 
 | `positions` | Open positions synced from Alpaca on trade execution |
 | `trades` | Full trade history with action, quantity, price, boundary mode, order_id |
 | `override_log` | Audit trail: every Autonomous mode cancellation recorded with timestamp and reason |
-| `backtest_jobs` | Backtest job metadata: status, tickers, date range, EBC mode, progress %, summary metrics |
+| `backtest_jobs` | Backtest job metadata: status, tickers, date range, EBC mode, progress %, summary metrics, mongo_id |
+| `watchlist` | Per-user ticker watchlist with schedule frequency (`1x`/`3x`/`6x`); `UNIQUE(user_id, ticker)` |
 
 RLS policies on all tables use `auth.jwt() ->> 'sub'` to match Clerk user IDs. Frontend reads use the Clerk JWT with the anon key. Backend writes use the service role key (bypasses RLS).
 
@@ -214,7 +255,7 @@ RLS policies on all tables use `auth.jwt() ->> 'sub'` to match Clerk user IDs. F
 
 ## Database Schema Migrations
 
-**Status: All three migrations deployed to Supabase.**
+**Status: All four migrations deployed to Supabase.**
 
 `20260313054120_initial_schema.sql` — creates the initial 5 tables:
 - `user_id` on every table (multi-tenancy, maps to Clerk user IDs)
@@ -228,27 +269,66 @@ RLS policies on all tables use `auth.jwt() ->> 'sub'` to match Clerk user IDs. F
 
 `20260319120000_backtest_jobs.sql` — adds the `backtest_jobs` table with full RLS (SELECT + INSERT + UPDATE + DELETE scoped to own rows).
 
+`20260405100000_watchlist_table.sql` — adds the `watchlist` table:
+- `(id, user_id, ticker, schedule CHECK IN ('1x','3x','6x'), created_at)`
+- `UNIQUE(user_id, ticker)` constraint
+- RLS: users manage own rows; service role has full access
+
+---
+
+## Scheduler
+
+**Status: Multi-window, always-on, per-user via watchlist.**
+
+`scheduler/runner.py` runs the full agent pipeline at up to 6 ET scan windows per day driven by per-user schedule preferences. Always starts on app startup — no `SCHEDULER_ENABLED` env var.
+
+### Scan Windows
+
+| Schedule | Windows (ET) |
+|----------|-------------|
+| `1x` | 16:30 |
+| `3x` | 08:30, 13:00, 16:30 |
+| `6x` | 06:30, 09:30, 12:00, 13:30, 15:00, 16:30 |
+
+`next_scan_window()` computes the next upcoming window (Mon–Fri market days only). The loop sleeps until that window, then calls `run_all_users(window)` which reads per-user tickers from `watchlist_service.get_tickers_for_window(user_id, window)`.
+
+### Watchlist Service
+
+`services/watchlist_service.py`:
+- `SCHEDULE_WINDOWS` maps schedule codes to `frozenset` of `(hour, minute)` ET tuples
+- `ALL_SCAN_WINDOWS` — sorted union of all windows (drives the main loop)
+- `get_watchlist(user_id)` — reads from Supabase `watchlist` table
+- `save_watchlist(user_id, entries)` — replaces all user's watchlist rows (delete + insert)
+- `get_tickers_for_window(user_id, window)` — returns tickers whose schedule includes the given window
+
+The frontend `AgentTab` persists watchlist entries to Supabase via `PUT /v1/watchlist` on any change, migrating from localStorage on first load.
+
 ---
 
 ## Backtesting Engine
 
-**Status: Fully operational.**
+**Status: Fully operational with checkpoint/resume.**
 
 Replays the real Atlas AI pipeline (live Gemini calls) across historical date ranges and multiple tickers, simulating trade execution without touching Alpaca. Results are persisted to Supabase (job metadata) and MongoDB (full daily runs, equity curve, metrics).
 
 ### Virtual Portfolio
 
 - Single shared `$10,000` capital pool across all tickers (mirrors real single-account behaviour)
-- Fixed `$1,000` notional per trade
+- Position sizing driven by the risk agent's computed `position_value` (capped at virtual `buying_power × 0.95`) — not a hardcoded notional
+- Portfolio state (cash + all positions) is snapshotted before each trading day's pipeline calls and pre-seeded into the graph, so the portfolio agent reasons over all positions simultaneously
 - EBC confidence thresholds mirror live config: conditional ≥ 60%, autonomous ≥ 65%
 - Advisory mode: signals only — no trades, total_trades always 0
 - Execution price: next trading day's open (fetched via yfinance, outside the constrained pipeline call — no look-ahead bias)
 - Short selling not supported — SELL signals only close existing long positions
 - Insufficient cash: signals skipped and logged
 
+### Checkpoint / Resume
+
+After each trading day completes, `save_checkpoint(mongo_id, last_completed_day, cash, positions)` persists the full portfolio state to the MongoDB results document. If a job fails or is cancelled mid-run, `POST /v1/backtest/{id}/resume` reconstructs the `VirtualPortfolio` from the checkpoint and continues from the next day, appending to the same MongoDB document. Progress is computed relative to the full original date range.
+
 ### `as_of_date` Constraint
 
-`run_pipeline_async()` accepts an optional `as_of_date` parameter that constrains all yfinance price and fundamental data to what was available on that historical date. For backtesting, news is fetched from the Alpaca News API with `start`/`end` date params to prevent look-ahead bias in sentiment.
+`run_pipeline_async()` accepts an optional `as_of_date` parameter that constrains all yfinance price and fundamental data to what was available on that historical date. For backtesting, news is fetched from the Alpaca News API with `start`/`end` date params to prevent look-ahead bias in sentiment. Alpaca's trading client (order placement, live positions, live account balance) is never called during backtest runs.
 
 ### Async Runner
 
@@ -256,10 +336,12 @@ Background task (`backtesting/runner.py`) orchestrates the full run:
 
 1. Mark job `running` in Supabase + create MongoDB results document
 2. Compute Mon–Fri trading days via `pd.bdate_range`
-3. For each trading day × ticker: run real Gemini pipeline, simulate execution, append to MongoDB
-4. Progress updated once per trading day (`runs_completed / total_runs * 100`)
-5. Compute aggregate metrics, finalize MongoDB + Supabase records
-6. Job fails only if >50% of pipeline runs error
+3. Snapshot virtual portfolio state; pass as `current_positions` + `account_info` to pipeline
+4. For each trading day × ticker: run real Gemini pipeline, simulate execution, append to MongoDB
+5. Save checkpoint to MongoDB after each day
+6. Progress updated once per trading day (`runs_completed / total_runs * 100`)
+7. Compute aggregate metrics, finalize MongoDB + Supabase records
+8. Job fails only if >50% of pipeline runs error
 
 ### Metrics Computed
 
@@ -275,13 +357,13 @@ Background task (`backtesting/runner.py`) orchestrates the full run:
 
 ### Database
 
-- **Supabase `backtest_jobs`**: status, tickers, date range, EBC mode, progress %, summary metrics (cumulative_return, sharpe_ratio, max_drawdown, win_rate, total_trades, signal_to_execution_rate), completed_at
-- **MongoDB `backtest_results`**: full `daily_runs` array, `equity_curve`, `metrics` (including `per_ticker`), initial_capital
+- **Supabase `backtest_jobs`**: status, tickers, date range, EBC mode, progress %, summary metrics (cumulative_return, sharpe_ratio, max_drawdown, win_rate, total_trades, signal_to_execution_rate), mongo_id, completed_at
+- **MongoDB `backtest_results`**: full `daily_runs` array, `equity_curve`, `metrics` (including `per_ticker`), `checkpoint` (last_completed_day, cash, positions), initial_capital
 
 ### Frontend — Backtest Tab
 
 Three views in the 5th dashboard tab:
-- **Job list** — cards with key metrics, status badges, progress bars for running jobs; auto-polls every 5s
+- **Job list** — cards with key metrics, status badges, progress bars for running jobs; auto-polls every 5s; resume button on failed/cancelled jobs
 - **New job form** — tickers (comma-separated), date pickers, EBC mode radio, cost estimate (`~N AI calls · approx. $X`)
 - **Results detail** — metrics grid, equity curve chart, per-ticker breakdown table, expandable daily runs
 
@@ -292,16 +374,6 @@ Three views in the 5th dashboard tab:
 - Max 90-day date range (cost guardrail)
 - `end_date` must be ≥ 2 calendar days in the past (ensures next-day execution price is available)
 - Role-based limits: superadmin 10 concurrent, admin 5, user 1
-
----
-
-## Scheduler
-
-**Status: Implemented, single-user (v1).**
-
-`scheduler/runner.py` uses APScheduler to run the full pipeline daily at 9:30 AM ET. Tickers and user ID are configured via `SCHEDULER_TICKERS` and `SCHEDULER_USER_ID` env vars. Results are saved to MongoDB. The app lifecycle in `main.py` starts the scheduler on startup.
-
-Known limitation: single-user only. Phase 3 will extend to multi-user scheduling tied to subscription tier and broker connections.
 
 ---
 
@@ -332,8 +404,8 @@ Pages:
 | Overview | Portfolio equity, cash, day P&L, latest signal, open positions snapshot |
 | Signals | Signal list with confidence bars, risk params, approve/reject; calls `/v1/signals` |
 | Positions | Open positions table with unrealised P&L; calls `/v1/portfolio` |
-| Backtest | Job list with progress bars, new job form, results detail with equity curve chart |
-| Settings | Theme toggle, execution mode selector (advisory/autonomous), persisted to Supabase `profiles.boundary_mode` |
+| Backtest | Job list with progress/resume buttons, new job form, results detail with equity curve chart |
+| Settings | Theme toggle, execution mode selector (advisory/autonomous), watchlist editor (ticker + scan frequency persisted to Supabase via `/v1/watchlist`) |
 
 ### Design System
 
@@ -357,7 +429,7 @@ Pages:
 
 Two collections active:
 - `reasoning_traces` — every `POST /v1/pipeline/run` writes a full trace document. `GET /v1/signals` converts traces into the Signal API schema.
-- `backtest_results` — one document per backtest job, storing daily runs, equity curve, and aggregate metrics.
+- `backtest_results` — one document per backtest job, storing daily runs, equity curve, checkpoint, and aggregate metrics.
 
 Indexes on `reasoning_traces`:
 - `{ user_id: 1, created_at: -1 }`
@@ -368,12 +440,21 @@ JSON Schema validation active at `moderate` level.
 
 ### Supabase (PostgreSQL)
 
-Schema deployed 13 March 2026. All 6 tables live with RLS. Backend reads and writes via `SUPABASE_SERVICE_KEY`. Frontend uses anon key with Clerk JWT.
+Schema deployed 13 March 2026. All 7 tables live with RLS. Backend reads and writes via `SUPABASE_SERVICE_KEY`. Frontend uses anon key with Clerk JWT.
 
 | Table | Added |
 |-------|-------|
 | `profiles`, `portfolios`, `positions`, `trades`, `override_log` | 13 March 2026 |
 | `backtest_jobs` | 19 March 2026 |
+| `watchlist` | 5 April 2026 |
+
+---
+
+## CORS
+
+**Status: Local development fully supported.**
+
+`api/middleware/cors.py` auto-includes `http://localhost:3000`, `http://localhost:3001`, `http://127.0.0.1:3000` when `ENVIRONMENT` is `dev` or `development`. `allow_credentials=True` is set to support the `Authorization` header on cross-origin requests. Production origins are controlled via the `CORS_ORIGINS` env var.
 
 ---
 
@@ -398,6 +479,14 @@ Replaced the optimistic `INSERT` + catch-23505-then-`UPDATE` pattern in `AuthSyn
 
 `supabase-py` v2 returns `None` (not a response object) from `.maybe_single().execute()` when no row is found. Fixed `get_profile()`: `if result.data:` → `if result and result.data:`. Prevents `AttributeError: 'NoneType' object has no attribute 'data'` crash on profile lookups for new users.
 
+### CORS OPTIONS returning 400 (5 April 2026)
+
+`CORS_ORIGINS` in the dev `.env` was set to the production Render URL. Fixed by: (1) auto-including localhost origins when `ENVIRONMENT=dev`, (2) adding `allow_credentials=True` (required for `Authorization` header on cross-origin requests).
+
+### `_fetch_current_positions` using wrong broker (5 April 2026)
+
+`graph.py` was calling `get_broker()` (env var, legacy) instead of `get_broker_for_user(user_id)`. In environments where only per-user credentials are configured, this returned `None` and silently skipped live position data. Fixed to call `get_broker_for_user(user_id)` consistently.
+
 ---
 
 ## Known Gaps / Next Priorities
@@ -407,7 +496,7 @@ Replaced the optimistic `INSERT` + catch-23505-then-`UPDATE` pattern in `AuthSyn
 | IBKR broker adapter | Planned — same `BrokerAdapter` protocol, different credentials |
 | Stripe + tier enforcement | Planned — wire Free/Pro/Max limits to Stripe subscriptions |
 | OAuth broker connect | Planned — replace manual API key entry with one-click IBKR OAuth |
-| Scheduler (multi-user) | Partial — single-user only; Phase 3 extends to tier-gated multi-user |
 | RBAC audit | Planned — not all routes enforce roles yet |
+| Push / in-app notifications | Planned — currently email-only via Resend |
 
-*Last updated: 3 April 2026*
+*Last updated: 5 April 2026*

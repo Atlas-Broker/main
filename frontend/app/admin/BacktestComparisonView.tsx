@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { fetchWithAuth } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -16,6 +16,8 @@ type BacktestJob = {
   start_date: string;
   end_date: string;
   ebc_mode: string;
+  philosophy_mode?: string | null;
+  confidence_threshold?: number | null;
   progress: number;
   total_return: number | null;
   sharpe_ratio: number | null;
@@ -40,13 +42,24 @@ type DailyRun = {
   date: string;
   ticker: string;
   action: string;
-  confidence: number;
+  confidence: number | null;
   reasoning?: string;
   executed: boolean;
   simulated_price: number | null;
   pnl: number | null;
   skipped_reason: string | null;
   trace_id: string | null;
+  error?: string;
+};
+
+type ExperimentType = "philosophy" | "threshold" | "mode" | "single" | "multi";
+
+type Experiment = {
+  id: string;            // synthetic id for react key
+  type: ExperimentType;
+  label: string;
+  jobs: BacktestJob[];
+  createdAt: Date;       // most recent job created_at
 };
 
 type BacktestRequest = {
@@ -65,25 +78,28 @@ type ExperimentRun = {
   error: string | null;
 };
 
-type ExperimentType = "philosophy" | "threshold";
-
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const PHILOSOPHIES = ["Lynch", "Soros", "Buffett", "Balanced"] as const;
-const THRESHOLDS = [0.50, 0.65, 0.80, 0.95] as const;
-const EBC_MODES = ["advisory", "autonomous"] as const;
+const PHILOSOPHIES = ["lynch", "soros", "buffett", "balanced"] as const;
+const THRESHOLDS   = [0.50, 0.65, 0.80, 0.95] as const;
+const EBC_MODES    = ["advisory", "autonomous"] as const;
 
-const DEFAULT_START = "2026-03-03";
-const DEFAULT_END   = "2026-03-31";
+const DEFAULT_START   = new Date(Date.now() - 28 * 86400000).toISOString().slice(0, 10);
+const DEFAULT_END     = new Date(Date.now() - 3  * 86400000).toISOString().slice(0, 10);
 const DEFAULT_TICKERS = "AAPL, MSFT, TSLA, NVDA, META";
+
+const STALE_MS = 24 * 60 * 60 * 1000; // 24h — a "running" job older than this is stale
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const fmt = (n: number | null | undefined, decimals = 2) =>
-  n == null ? "—" : n.toFixed(decimals);
+const fmt = (n: number | null | undefined, dec = 2) =>
+  n == null || isNaN(n as number) ? "—" : (n as number).toFixed(dec);
 
 const pct = (n: number | null | undefined) =>
-  n == null ? "—" : `${(n * 100).toFixed(2)}%`;
+  n == null || isNaN(n as number) ? "—" : `${((n as number) * 100).toFixed(2)}%`;
+
+const conf = (n: number | null | undefined) =>
+  n == null || isNaN(n as number) ? "—" : `${Math.round((n as number) * 100)}%`;
 
 const statusColor: Record<JobStatus, string> = {
   queued:    "var(--dim)",
@@ -100,7 +116,95 @@ const modeColor: Record<string, string> = {
   autonomous:           "var(--bull)",
 };
 
-// ── Shared animations ─────────────────────────────────────────────────────────
+const philosophyColors: Record<string, string> = {
+  lynch:    "#6366f1",
+  soros:    "#f59e0b",
+  buffett:  "#10b981",
+  balanced: "var(--brand)",
+};
+
+function relTime(iso: string) {
+  const ms = Date.now() - new Date(iso).getTime();
+  const h = Math.floor(ms / 3600000);
+  if (h < 1) return `${Math.floor(ms / 60000)}m ago`;
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function tradingDayEst(start: string, end: string) {
+  if (!start || !end) return 0;
+  let days = 0;
+  const cur = new Date(start);
+  const e = new Date(end);
+  while (cur <= e) { if (cur.getDay() !== 0 && cur.getDay() !== 6) days++; cur.setDate(cur.getDate() + 1); }
+  return days;
+}
+
+// ── Experiment grouping ───────────────────────────────────────────────────────
+
+function groupIntoExperiments(jobs: BacktestJob[]): Experiment[] {
+  const sorted = [...jobs].sort((a, b) =>
+    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+  const byBase = new Map<string, BacktestJob[]>();
+  for (const job of sorted) {
+    const key = [...job.tickers].sort().join(",") + "|" + job.start_date + "|" + job.end_date;
+    if (!byBase.has(key)) byBase.set(key, []);
+    byBase.get(key)!.push(job);
+  }
+
+  const experiments: Experiment[] = [];
+  let idx = 0;
+
+  for (const baseJobs of byBase.values()) {
+    // Sub-group by time proximity (15-min window)
+    const groups: BacktestJob[][] = [];
+    let currentGroup: BacktestJob[] = [];
+    for (const job of baseJobs) {
+      if (currentGroup.length === 0) {
+        currentGroup.push(job);
+      } else {
+        const lastMs = new Date(currentGroup[currentGroup.length - 1].created_at).getTime();
+        const thisMs = new Date(job.created_at).getTime();
+        if (thisMs - lastMs < 15 * 60 * 1000) {
+          currentGroup.push(job);
+        } else {
+          groups.push(currentGroup);
+          currentGroup = [job];
+        }
+      }
+    }
+    if (currentGroup.length > 0) groups.push(currentGroup);
+
+    for (const group of groups) {
+      const philosophies = new Set(group.map((j) => j.philosophy_mode).filter(Boolean));
+      const thresholds   = new Set(group.map((j) => j.confidence_threshold).filter((v) => v != null));
+      const modes        = new Set(group.map((j) => j.ebc_mode));
+      const createdAt    = new Date(Math.max(...group.map((j) => new Date(j.created_at).getTime())));
+
+      let type: ExperimentType;
+      let label: string;
+      if (group.length === 1) {
+        type = "single"; label = "Single Run";
+      } else if (philosophies.size > 1) {
+        type = "philosophy"; label = "Philosophy Comparison";
+      } else if (thresholds.size > 1) {
+        type = "threshold"; label = "Confidence Threshold Comparison";
+      } else if (modes.size > 1) {
+        type = "mode"; label = "Mode Comparison";
+      } else {
+        type = "multi"; label = `${group.length}-Run Group`;
+      }
+
+      experiments.push({ id: `exp-${idx++}`, type, label, jobs: group, createdAt });
+    }
+  }
+
+  return experiments.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────────
 
 const COMP_STYLES = `
 @keyframes bcv-shimmer {
@@ -116,19 +220,24 @@ const COMP_STYLES = `
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.bcv-fade-in { animation: bcv-fade-in 0.3s ease both; }
+@keyframes bcv-slide-down {
+  from { opacity: 0; max-height: 0; }
+  to   { opacity: 1; max-height: 2000px; }
+}
+.bcv-fade-in { animation: bcv-fade-in 0.25s ease both; }
 .bcv-shimmer-bar {
   background: linear-gradient(90deg, var(--hold) 0%, #f5c542 40%, var(--hold) 100%);
   background-size: 200% 100%;
   animation: bcv-shimmer 1.8s linear infinite;
 }
+.bcv-job-card { transition: box-shadow 0.15s, border-color 0.15s; cursor: pointer; }
+.bcv-job-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); border-color: var(--brand) !important; }
 `;
 
 function StyleInjector() {
-  const injected = useRef(false);
+  const ref = useRef(false);
   useEffect(() => {
-    if (injected.current) return;
-    injected.current = true;
+    if (ref.current) return; ref.current = true;
     const el = document.createElement("style");
     el.textContent = COMP_STYLES;
     document.head.appendChild(el);
@@ -141,11 +250,7 @@ function StyleInjector() {
 function PulsingDot({ color = "var(--hold)" }: { color?: string }) {
   return (
     <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 10, height: 10 }}>
-      <span style={{
-        position: "absolute", width: 10, height: 10, borderRadius: "50%",
-        background: color, opacity: 0.4,
-        animation: "bcv-pulse-ring 1.4s ease-out infinite",
-      }} />
+      <span style={{ position: "absolute", width: 10, height: 10, borderRadius: "50%", background: color, opacity: 0.4, animation: "bcv-pulse-ring 1.4s ease-out infinite" }} />
       <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, position: "relative" }} />
     </span>
   );
@@ -153,53 +258,46 @@ function PulsingDot({ color = "var(--hold)" }: { color?: string }) {
 
 function ProgressBar({ progress, running }: { progress: number; running: boolean }) {
   return (
-    <div style={{ background: "var(--elevated)", borderRadius: 4, height: 4, overflow: "hidden", position: "relative" }}>
+    <div style={{ background: "var(--elevated)", borderRadius: 4, height: 4, overflow: "hidden" }}>
       <div
         className={running ? "bcv-shimmer-bar" : ""}
-        style={{
-          width: `${progress}%`,
-          height: "100%",
-          borderRadius: 4,
-          background: running ? undefined : "var(--bull)",
-          transition: "width 0.6s cubic-bezier(0.4,0,0.2,1)",
-        }}
+        style={{ width: `${progress}%`, height: "100%", borderRadius: 4, background: running ? undefined : "var(--bull)", transition: "width 0.6s cubic-bezier(0.4,0,0.2,1)" }}
       />
     </div>
   );
 }
 
 function ActionBadge({ action }: { action: string }) {
-  const color =
-    action === "BUY"   ? "var(--bull)"  :
-    action === "SELL"  ? "var(--bear)"  :
-    action === "ERROR" ? "var(--bear)"  :
-    "var(--hold)";
-  const bg =
-    action === "BUY"   ? "var(--bull-bg)"  :
-    action === "SELL"  ? "var(--bear-bg)"  :
-    action === "ERROR" ? "var(--bear-bg)"  :
-    "var(--hold-bg)";
+  const [color, bg] =
+    action === "BUY"   ? ["var(--bull)", "var(--bull-bg)"] :
+    action === "SELL"  ? ["var(--bear)", "var(--bear-bg)"] :
+    action === "ERROR" ? ["var(--bear)", "var(--bear-bg)"] :
+    ["var(--hold)", "var(--hold-bg)"];
   return (
-    <span style={{
-      fontFamily: "var(--font-jb)", fontSize: 10, fontWeight: 700,
-      padding: "2px 6px", borderRadius: 3, color, background: bg, flexShrink: 0,
-    }}>
+    <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 3, color, background: bg, flexShrink: 0 }}>
       {action}
     </span>
   );
 }
 
-// ── Field wrapper ─────────────────────────────────────────────────────────────
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function StatusBadge({ status }: { status: JobStatus }) {
   return (
-    <div>
-      <div style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", marginBottom: 6 }}>
-        {label}
-        {hint && <span style={{ marginLeft: 8, opacity: 0.6 }}>{hint}</span>}
-      </div>
-      {children}
-    </div>
+    <span style={{
+      fontSize: 9, fontFamily: "var(--font-jb)", color: statusColor[status],
+      padding: "1px 6px", borderRadius: 3,
+      background: `${statusColor[status]}15`,
+      border: `1px solid ${statusColor[status]}30`,
+    }}>
+      {status}
+    </span>
+  );
+}
+
+function Pill({ label, color }: { label: string; color: string }) {
+  return (
+    <span style={{ fontSize: 10, fontFamily: "var(--font-jb)", color, background: `${color}18`, padding: "2px 8px", borderRadius: 4, border: `1px solid ${color}30` }}>
+      {label}
+    </span>
   );
 }
 
@@ -210,291 +308,347 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-// ── Job mini-card ─────────────────────────────────────────────────────────────
-
-function JobMiniCard({ label, run }: { label: string; run: ExperimentRun }) {
-  if (run.submitting) {
-    return (
-      <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px" }}>
-        <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 6 }}>{label}</div>
-        <div style={{ color: "var(--dim)", fontSize: 12, fontFamily: "var(--font-nunito)" }}>Submitting…</div>
-      </div>
-    );
-  }
-
-  if (run.error) {
-    return (
-      <div style={{ background: "var(--surface)", border: "1px solid var(--bear)40", borderRadius: 8, padding: "10px 12px" }}>
-        <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 4 }}>{label}</div>
-        <div style={{ color: "var(--bear)", fontSize: 12, fontFamily: "var(--font-nunito)" }}>{run.error}</div>
-      </div>
-    );
-  }
-
-  if (!run.job) {
-    return (
-      <div style={{ background: "var(--elevated)", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px", opacity: 0.5 }}>
-        <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)" }}>{label}</div>
-      </div>
-    );
-  }
-
-  const { job } = run;
-  const isActive = job.status === "running" || job.status === "queued";
-
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div style={{
-      background: "var(--surface)",
-      border: `1px solid ${isActive ? "var(--hold)40" : "var(--line)"}`,
-      borderRadius: 8,
-      padding: "10px 12px",
-    }}>
-      <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
-        <span style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)" }}>{label}</span>
-        <div className="flex items-center gap-1.5">
-          {isActive && <PulsingDot />}
-          <span style={{
-            fontSize: 9, fontFamily: "var(--font-jb)", color: statusColor[job.status],
-            padding: "1px 6px", borderRadius: 3,
-            background: `${statusColor[job.status]}15`,
-            border: `1px solid ${statusColor[job.status]}30`,
-          }}>
-            {job.status}
-          </span>
-        </div>
+    <div>
+      <div style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", marginBottom: 6 }}>
+        {label}{hint && <span style={{ marginLeft: 8, opacity: 0.6 }}>{hint}</span>}
       </div>
-      {isActive && (
-        <>
-          <ProgressBar progress={job.progress} running={job.status === "running"} />
-          <div style={{ marginTop: 4, fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}>
-            {job.status === "queued" ? "queued" : `${job.progress}%`}
-          </div>
-        </>
-      )}
-      {job.status === "completed" && (
-        <div className="flex gap-3">
-          {[
-            { label: "RTN", value: pct(job.total_return), pos: (job.total_return ?? 0) >= 0 },
-            { label: "SHP", value: fmt(job.sharpe_ratio), pos: (job.sharpe_ratio ?? 0) >= 1 },
-            { label: "DD",  value: pct(job.max_drawdown), pos: false },
-          ].map((m) => (
-            <div key={m.label} style={{ textAlign: "center" }}>
-              <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-jb)", marginBottom: 1 }}>{m.label}</div>
-              <div style={{
-                color: m.label === "DD" ? "var(--bear)" : m.pos ? "var(--bull)" : "var(--bear)",
-                fontSize: 12, fontFamily: "var(--font-jb)", fontWeight: 700,
-              }}>{m.value}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      {job.status === "failed" && job.error_message && (
-        <div style={{ fontSize: 11, color: "var(--bear)", fontFamily: "var(--font-nunito)" }}>{job.error_message}</div>
-      )}
+      {children}
     </div>
   );
 }
 
-// ── Trace panel ───────────────────────────────────────────────────────────────
+// ── Job label within an experiment ────────────────────────────────────────────
 
-function TracePanel({ jobId, onClose }: { jobId: string; onClose: () => void }) {
-  const [job, setJob] = useState<BacktestJob | null>(null);
+function jobLabel(job: BacktestJob, expType: ExperimentType): string {
+  if (expType === "philosophy" && job.philosophy_mode) {
+    return job.philosophy_mode.charAt(0).toUpperCase() + job.philosophy_mode.slice(1);
+  }
+  if (expType === "threshold" && job.confidence_threshold != null) {
+    return `${(job.confidence_threshold * 100).toFixed(0)}% threshold`;
+  }
+  if (expType === "mode") return job.ebc_mode;
+  return job.tickers.join(", ");
+}
+
+function jobAccentColor(job: BacktestJob, expType: ExperimentType): string {
+  if (expType === "philosophy" && job.philosophy_mode) {
+    return philosophyColors[job.philosophy_mode] ?? "var(--brand)";
+  }
+  return modeColor[job.ebc_mode] ?? "var(--brand)";
+}
+
+// ── Daily logs panel for a single job ─────────────────────────────────────────
+
+function JobLogsPanel({ job, onClose }: { job: BacktestJob; onClose: () => void }) {
+  const [fullJob, setFullJob] = useState<BacktestJob | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    fetchWithAuth(`${API}/v1/backtest/${jobId}`)
-      .then(async (res) => {
-        if (!res || !res.ok) { setError("Failed to load traces"); return; }
-        setJob(await res.json());
-      })
-      .catch(() => setError("Network error"))
+    fetchWithAuth(`${API}/v1/backtest/${job.id}`)
+      .then(async (res) => { if (res?.ok) setFullJob(await res.json()); })
       .finally(() => setLoading(false));
-  }, [jobId]);
+  }, [job.id]);
+
+  const runs = fullJob?.results?.daily_runs ?? [];
+  const errorCount = runs.filter((r) => r.action === "ERROR").length;
+  const executedCount = runs.filter((r) => r.executed).length;
+
+  // Export this job's daily runs as CSV
+  function exportCSV() {
+    const header = "date,ticker,action,confidence,executed,price,pnl,reason\n";
+    const rows = runs.map((r) =>
+      [r.date, r.ticker, r.action, r.confidence ?? "", r.executed, r.simulated_price ?? "", r.pnl ?? "", `"${(r.skipped_reason ?? r.reasoning ?? "").replace(/"/g, "'")}"`].join(",")
+    ).join("\n");
+    const blob = new Blob([header + rows], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url;
+    a.download = `backtest-${job.id.slice(0, 8)}-runs.csv`; a.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
-    <div className="bcv-fade-in" style={{
-      background: "var(--deep)",
-      border: "1px solid var(--line)",
-      borderRadius: 10,
-      padding: "16px 18px",
-      marginTop: 4,
-    }}>
-      <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
-        <span style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-          Daily Traces
-        </span>
-        <button
-          onClick={onClose}
-          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ghost)", fontSize: 16, lineHeight: 1, padding: "0 2px" }}
-        >
-          ×
-        </button>
-      </div>
-
-      {loading && (
-        <div style={{ color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-jb)", textAlign: "center", padding: "16px 0" }}>
-          Loading traces…
-        </div>
-      )}
-      {error && (
-        <div style={{ color: "var(--bear)", fontSize: 12, fontFamily: "var(--font-nunito)" }}>{error}</div>
-      )}
-      {!loading && !error && job && (
-        <div style={{ maxHeight: 320, overflowY: "auto" }}>
-          {(!job.results?.daily_runs || job.results.daily_runs.length === 0) && (
-            <div style={{ color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-nunito)", textAlign: "center", padding: "16px 0" }}>
-              No daily runs available.
+    <div className="bcv-fade-in" style={{ background: "var(--deep)", border: "1px solid var(--line)", borderRadius: 10, padding: "16px 18px", marginTop: 4 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div>
+          <div style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 2 }}>
+            Daily Runs — {job.id.slice(0, 8)}
+          </div>
+          {!loading && runs.length > 0 && (
+            <div style={{ display: "flex", gap: 12, fontSize: 11, fontFamily: "var(--font-nunito)", color: "var(--dim)" }}>
+              <span><span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, color: "var(--bull)" }}>{executedCount}</span> executed</span>
+              {errorCount > 0 && <span><span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, color: "var(--bear)" }}>{errorCount}</span> errors</span>}
+              <span>{runs.length} total signals</span>
             </div>
           )}
-          {job.results?.daily_runs && job.results.daily_runs.length > 0 && (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "var(--font-jb)" }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid var(--line)" }}>
-                  {["Date", "Ticker", "Action", "Conf", "Executed", "PnL"].map((h) => (
-                    <th key={h} style={{ padding: "6px 10px", textAlign: "left", color: "var(--ghost)", fontSize: 9, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {job.results.daily_runs.map((dr, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid var(--line)", opacity: dr.executed ? 1 : 0.55 }}>
-                    <td style={{ padding: "6px 10px", color: "var(--dim)", whiteSpace: "nowrap" }}>{dr.date}</td>
-                    <td style={{ padding: "6px 10px", color: "var(--ink)", fontWeight: 700 }}>{dr.ticker}</td>
-                    <td style={{ padding: "6px 10px" }}><ActionBadge action={dr.action} /></td>
-                    <td style={{ padding: "6px 10px", color: "var(--dim)" }}>{(dr.confidence * 100).toFixed(0)}%</td>
-                    <td style={{ padding: "6px 10px" }}>
-                      <span style={{ color: dr.executed ? "var(--bull)" : "var(--ghost)", fontSize: 10 }}>
-                        {dr.executed ? "✓" : "—"}
-                      </span>
-                    </td>
-                    <td style={{ padding: "6px 10px", color: dr.pnl == null ? "var(--ghost)" : dr.pnl >= 0 ? "var(--bull)" : "var(--bear)" }}>
-                      {dr.pnl == null ? "—" : `${dr.pnl >= 0 ? "+" : ""}${dr.pnl.toFixed(2)}`}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {runs.length > 0 && (
+            <button onClick={exportCSV} style={{ background: "none", border: "1px solid var(--line)", borderRadius: 5, padding: "4px 10px", color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", cursor: "pointer" }}>
+              ↓ CSV
+            </button>
           )}
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ghost)", fontSize: 18, lineHeight: 1, padding: "0 2px" }}>×</button>
+        </div>
+      </div>
+
+      {loading && <div style={{ color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-jb)", textAlign: "center", padding: "16px 0" }}>Loading…</div>}
+
+      {!loading && runs.length === 0 && (
+        <div style={{ color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-nunito)", textAlign: "center", padding: "16px 0" }}>No daily runs recorded yet.</div>
+      )}
+
+      {!loading && runs.length > 0 && (
+        <div style={{ maxHeight: 360, overflowY: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "var(--font-jb)" }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--line)", position: "sticky", top: 0, background: "var(--deep)" }}>
+                {["Date", "Ticker", "Action", "Conf.", "Executed", "Price", "PnL", ""].map((h) => (
+                  <th key={h} style={{ padding: "6px 10px", textAlign: "left", color: "var(--ghost)", fontSize: 9, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((dr, i) => (
+                <React.Fragment key={i}>
+                  <tr
+                    onClick={() => setExpandedRow(expandedRow === i ? null : i)}
+                    style={{ borderBottom: expandedRow === i ? "none" : "1px solid var(--line)", opacity: dr.action === "ERROR" ? 0.5 : dr.executed ? 1 : 0.65, cursor: "pointer" }}
+                  >
+                    <td style={{ padding: "7px 10px", color: "var(--dim)", whiteSpace: "nowrap" }}>{dr.date}</td>
+                    <td style={{ padding: "7px 10px", color: "var(--ink)", fontWeight: 700 }}>{dr.ticker}</td>
+                    <td style={{ padding: "7px 10px" }}><ActionBadge action={dr.action} /></td>
+                    <td style={{ padding: "7px 10px", color: "var(--dim)" }}>{conf(dr.confidence)}</td>
+                    <td style={{ padding: "7px 10px" }}>
+                      <span style={{ color: dr.executed ? "var(--bull)" : "var(--ghost)", fontSize: 11 }}>{dr.executed ? "✓ exec" : "—"}</span>
+                    </td>
+                    <td style={{ padding: "7px 10px", color: "var(--dim)", fontFamily: "var(--font-jb)" }}>
+                      {dr.simulated_price != null ? `$${dr.simulated_price.toFixed(2)}` : "—"}
+                    </td>
+                    <td style={{ padding: "7px 10px", color: dr.pnl == null ? "var(--ghost)" : dr.pnl >= 0 ? "var(--bull)" : "var(--bear)" }}>
+                      {dr.pnl == null ? "—" : `${dr.pnl >= 0 ? "+" : ""}$${dr.pnl.toFixed(2)}`}
+                    </td>
+                    <td style={{ padding: "7px 10px", color: "var(--ghost)", fontSize: 9 }}>{dr.reasoning || dr.skipped_reason ? "▸" : ""}</td>
+                  </tr>
+                  {expandedRow === i && (dr.reasoning || dr.skipped_reason || dr.error) && (
+                    <tr style={{ borderBottom: "1px solid var(--line)", background: "var(--elevated)" }}>
+                      <td colSpan={8} style={{ padding: "8px 10px 10px 38px" }}>
+                        {dr.error && (
+                          <div style={{ color: "var(--bear)", fontSize: 11, fontFamily: "var(--font-nunito)", marginBottom: dr.reasoning ? 6 : 0 }}>
+                            Error: {dr.error}
+                          </div>
+                        )}
+                        {dr.skipped_reason && !dr.executed && (
+                          <div style={{ color: "var(--dim)", fontSize: 11, fontFamily: "var(--font-nunito)", marginBottom: dr.reasoning ? 6 : 0 }}>
+                            Skipped: {dr.skipped_reason}
+                          </div>
+                        )}
+                        {dr.reasoning && (
+                          <div style={{ color: "var(--dim)", fontSize: 11, fontFamily: "var(--font-nunito)", lineHeight: 1.5 }}>
+                            {dr.reasoning}
+                          </div>
+                        )}
+                        {dr.trace_id && (
+                          <div style={{ marginTop: 6, fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}>
+                            trace {dr.trace_id.slice(0, 16)}…
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
   );
 }
 
-// ── Results comparison table ──────────────────────────────────────────────────
+// ── Individual job card inside an experiment ───────────────────────────────────
 
-function ComparisonTable({
-  runs,
-  labelKey,
+function JobCard({
+  job,
+  expType,
+  onCancel,
+  onResume,
 }: {
-  runs: ExperimentRun[];
-  labelKey: "philosophy" | "threshold";
+  job: BacktestJob;
+  expType: ExperimentType;
+  onCancel: () => void;
+  onResume: () => void;
 }) {
-  const [openTraceId, setOpenTraceId] = useState<string | null>(null);
-
-  const completed = runs.filter((r) => r.job?.status === "completed");
-  if (completed.length === 0) return null;
-
-  const sorted = [...completed].sort((a, b) => {
-    const sa = a.job?.sharpe_ratio ?? -Infinity;
-    const sb = b.job?.sharpe_ratio ?? -Infinity;
-    return sb - sa;
-  });
-
-  const bestId  = sorted[0]?.job?.id;
-  const worstId = sorted[sorted.length - 1]?.job?.id;
+  const [showLogs, setShowLogs] = useState(false);
+  const isActive = job.status === "running" || job.status === "queued";
+  const isStale = isActive && (Date.now() - new Date(job.created_at).getTime()) > STALE_MS;
+  const accent = jobAccentColor(job, expType);
+  const label = jobLabel(job, expType);
 
   return (
-    <div className="bcv-fade-in" style={{ marginTop: 20 }}>
-      <div style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
-        Comparison — sorted by Sharpe ↓
+    <div>
+      <div
+        className="bcv-job-card"
+        onClick={() => !isActive && setShowLogs((v) => !v)}
+        style={{
+          background: "var(--surface)",
+          border: `1px solid ${isActive ? "var(--hold)40" : showLogs ? "var(--brand)50" : "var(--line)"}`,
+          borderLeft: `3px solid ${accent}`,
+          borderRadius: 8,
+          padding: "12px 14px",
+          cursor: isActive ? "default" : "pointer",
+        }}
+      >
+        {/* Label + status */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 12, color: accent }}>
+            {label}
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {isActive && <PulsingDot />}
+            <StatusBadge status={isStale ? "failed" : job.status} />
+            {isStale && (
+              <span style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--bear)" }}>stale</span>
+            )}
+          </div>
+        </div>
+
+        {/* Progress */}
+        {isActive && (
+          <div>
+            <ProgressBar progress={job.progress} running={job.status === "running"} />
+            <div style={{ marginTop: 4, fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}>
+              {job.progress}% — {job.status}
+            </div>
+          </div>
+        )}
+
+        {/* Metrics */}
+        {job.status === "completed" && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 4 }}>
+            {[
+              { k: "RETURN", v: pct(job.total_return), pos: (job.total_return ?? 0) >= 0 },
+              { k: "SHARPE", v: fmt(job.sharpe_ratio), pos: (job.sharpe_ratio ?? 0) >= 1 },
+              { k: "MAX DD", v: pct(job.max_drawdown), pos: false },
+            ].map((m) => (
+              <div key={m.k} style={{ textAlign: "center" }}>
+                <div style={{ color: "var(--ghost)", fontSize: 8, fontFamily: "var(--font-jb)", marginBottom: 1 }}>{m.k}</div>
+                <div style={{ fontSize: 12, fontFamily: "var(--font-jb)", fontWeight: 700, color: m.k === "MAX DD" ? "var(--bear)" : m.pos ? "var(--bull)" : "var(--bear)" }}>
+                  {m.v}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Failed */}
+        {job.status === "failed" && (
+          <div style={{ fontSize: 10, color: "var(--bear)", fontFamily: "var(--font-nunito)", marginTop: 4 }}>
+            {job.error_message ?? "Pipeline failed"}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+          {(isActive || isStale) && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onCancel(); }}
+              style={{ fontSize: 10, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--bear)40", color: "var(--bear)", padding: "2px 8px", borderRadius: 4, cursor: "pointer" }}
+            >
+              cancel
+            </button>
+          )}
+          {(job.status === "failed" || job.status === "cancelled") && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onResume(); }}
+              style={{ fontSize: 10, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--brand)40", color: "var(--brand)", padding: "2px 8px", borderRadius: 4, cursor: "pointer" }}
+            >
+              resume
+            </button>
+          )}
+          {job.status === "completed" && (
+            <span style={{ fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)", marginLeft: "auto", opacity: 0.6 }}>
+              {showLogs ? "hide logs ▴" : "view logs ▾"}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Logs panel */}
+      {showLogs && <JobLogsPanel job={job} onClose={() => setShowLogs(false)} />}
+    </div>
+  );
+}
+
+// ── Comparison table ───────────────────────────────────────────────────────────
+
+function ComparisonTable({ experiment, onRefresh }: { experiment: Experiment; onRefresh: () => void }) {
+  const completed = experiment.jobs.filter((j) => j.status === "completed");
+  if (completed.length < 2) return null;
+
+  const sorted = [...completed].sort((a, b) => (b.sharpe_ratio ?? -Infinity) - (a.sharpe_ratio ?? -Infinity));
+  const bestId  = sorted[0]?.id;
+  const worstId = sorted[sorted.length - 1]?.id;
+
+  function exportCSV() {
+    const header = "label,total_return,sharpe,max_drawdown,win_rate,trades,sig_exec\n";
+    const rows = sorted.map((j) =>
+      [jobLabel(j, experiment.type), j.total_return ?? "", j.sharpe_ratio ?? "", j.max_drawdown ?? "", j.win_rate ?? "", j.total_trades ?? "", j.signal_to_execution_rate ?? ""].join(",")
+    ).join("\n");
+    const blob = new Blob([header + rows], { type: "text/csv" });
+    const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url;
+    a.download = `experiment-comparison-${experiment.jobs[0].start_date}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          Comparison — ranked by Sharpe ↓
+        </span>
+        <button onClick={exportCSV} style={{ fontSize: 10, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--line)", color: "var(--ghost)", padding: "3px 10px", borderRadius: 4, cursor: "pointer" }}>
+          ↓ Export CSV
+        </button>
       </div>
       <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: "var(--font-jb)" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "var(--font-jb)" }}>
           <thead>
             <tr style={{ background: "var(--elevated)", borderBottom: "1px solid var(--line)" }}>
-              {[labelKey === "philosophy" ? "Philosophy" : "Threshold", "Cum. Return", "Sharpe", "Max Drawdown", "Win Rate", "Trades", "Signal→Exec", "Dir. Accuracy", ""].map((h) => (
-                <th key={h} style={{ padding: "9px 12px", textAlign: "left", color: "var(--ghost)", fontSize: 9, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+              {[experiment.type === "philosophy" ? "Philosophy" : experiment.type === "threshold" ? "Threshold" : "Variant",
+                "Cum. Return", "Sharpe", "Max Drawdown", "Win Rate", "Trades", "Signal→Exec"].map((h) => (
+                <th key={h} style={{ padding: "8px 12px", textAlign: "left", color: "var(--ghost)", fontSize: 9, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
                   {h}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {sorted.map((run) => {
-              const { job } = run;
-              if (!job) return null;
+            {sorted.map((job) => {
               const isBest  = job.id === bestId;
               const isWorst = job.id === worstId && sorted.length > 1;
-              const rowBg   = isBest ? "color-mix(in srgb, var(--bull) 8%, transparent)" :
-                              isWorst ? "color-mix(in srgb, var(--bear) 8%, transparent)" :
-                              "transparent";
+              const accent  = jobAccentColor(job, experiment.type);
+              const rowBg   = isBest ? "color-mix(in srgb, var(--bull) 6%, transparent)" :
+                              isWorst ? "color-mix(in srgb, var(--bear) 6%, transparent)" : "transparent";
               return (
-                <React.Fragment key={job.id}>
-                  <tr
-                    style={{
-                      borderBottom: openTraceId === job.id ? "none" : "1px solid var(--line)",
-                      background: rowBg,
-                    }}
-                  >
-                    <td style={{ padding: "10px 12px", color: "var(--ink)", fontWeight: 700, whiteSpace: "nowrap" }}>
-                      {isBest && <span style={{ color: "var(--bull)", marginRight: 6, fontSize: 10 }}>▲</span>}
-                      {isWorst && <span style={{ color: "var(--bear)", marginRight: 6, fontSize: 10 }}>▼</span>}
-                      {run.label}
-                    </td>
-                    <td style={{ padding: "10px 12px", color: (job.total_return ?? 0) >= 0 ? "var(--bull)" : "var(--bear)" }}>
-                      {pct(job.total_return)}
-                    </td>
-                    <td style={{ padding: "10px 12px", color: (job.sharpe_ratio ?? 0) >= 1 ? "var(--bull)" : "var(--dim)" }}>
-                      {fmt(job.sharpe_ratio)}
-                    </td>
-                    <td style={{ padding: "10px 12px", color: "var(--bear)" }}>
-                      {pct(job.max_drawdown)}
-                    </td>
-                    <td style={{ padding: "10px 12px", color: "var(--dim)" }}>
-                      {pct(job.win_rate)}
-                    </td>
-                    <td style={{ padding: "10px 12px", color: "var(--dim)" }}>
-                      {job.total_trades ?? "—"}
-                    </td>
-                    <td style={{ padding: "10px 12px", color: "var(--dim)" }}>
-                      {pct(job.signal_to_execution_rate)}
-                    </td>
-                    <td style={{ padding: "10px 12px", color: "var(--dim)" }}>
-                      {pct(job.directional_accuracy)}
-                    </td>
-                    <td style={{ padding: "10px 12px" }}>
-                      <button
-                        onClick={() => setOpenTraceId(openTraceId === job.id ? null : job.id)}
-                        style={{
-                          background: "transparent",
-                          border: "1px solid var(--line)",
-                          borderRadius: 5,
-                          padding: "4px 10px",
-                          color: "var(--ghost)",
-                          fontSize: 11,
-                          fontFamily: "var(--font-jb)",
-                          cursor: "pointer",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {openTraceId === job.id ? "Close" : "View Traces"}
-                      </button>
-                    </td>
-                  </tr>
-                  {openTraceId === job.id && (
-                    <tr style={{ borderBottom: "1px solid var(--line)", background: rowBg }}>
-                      <td colSpan={9} style={{ padding: "0 12px 12px" }}>
-                        <TracePanel jobId={job.id} onClose={() => setOpenTraceId(null)} />
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
+                <tr key={job.id} style={{ borderBottom: "1px solid var(--line)", background: rowBg }}>
+                  <td style={{ padding: "9px 12px", fontWeight: 700, whiteSpace: "nowrap", borderLeft: `3px solid ${accent}` }}>
+                    {isBest  && <span style={{ color: "var(--bull)", marginRight: 5, fontSize: 9 }}>▲</span>}
+                    {isWorst && <span style={{ color: "var(--bear)", marginRight: 5, fontSize: 9 }}>▼</span>}
+                    <span style={{ color: accent }}>{jobLabel(job, experiment.type)}</span>
+                  </td>
+                  <td style={{ padding: "9px 12px", color: (job.total_return ?? 0) >= 0 ? "var(--bull)" : "var(--bear)" }}>{pct(job.total_return)}</td>
+                  <td style={{ padding: "9px 12px", color: (job.sharpe_ratio ?? 0) >= 1 ? "var(--bull)" : "var(--dim)" }}>{fmt(job.sharpe_ratio)}</td>
+                  <td style={{ padding: "9px 12px", color: "var(--bear)" }}>{pct(job.max_drawdown)}</td>
+                  <td style={{ padding: "9px 12px", color: "var(--dim)" }}>{pct(job.win_rate)}</td>
+                  <td style={{ padding: "9px 12px", color: "var(--dim)" }}>{job.total_trades ?? "—"}</td>
+                  <td style={{ padding: "9px 12px", color: "var(--dim)" }}>{pct(job.signal_to_execution_rate)}</td>
+                </tr>
               );
             })}
           </tbody>
@@ -504,331 +658,372 @@ function ComparisonTable({
   );
 }
 
-// ── Experiment section ────────────────────────────────────────────────────────
+// ── Experiment card (expandable) ──────────────────────────────────────────────
 
-function ExperimentSection({
-  title,
-  subtitle,
-  type,
+function ExperimentCard({
+  experiment,
   defaultOpen,
+  onJobsChanged,
 }: {
-  title: string;
-  subtitle: string;
-  type: ExperimentType;
+  experiment: Experiment;
   defaultOpen?: boolean;
+  onJobsChanged: () => void;
 }) {
   const [open, setOpen] = useState(defaultOpen ?? false);
+  const activeCount    = experiment.jobs.filter((j) => j.status === "running" || j.status === "queued").length;
+  const completedCount = experiment.jobs.filter((j) => j.status === "completed").length;
+  const errorCount     = experiment.jobs.filter((j) => j.status === "failed" || j.status === "cancelled").length;
+  const allDone        = experiment.jobs.every((j) => j.status === "completed" || j.status === "failed" || j.status === "cancelled");
 
-  // Config state
-  const [startDate, setStartDate]     = useState(DEFAULT_START);
-  const [endDate, setEndDate]         = useState(DEFAULT_END);
-  const [tickers, setTickers]         = useState(DEFAULT_TICKERS);
-  const [ebcMode, setEbcMode]         = useState<string>("autonomous");
-  const [philosophy, setPhilosophy]   = useState<string>("Balanced");
-  const [confThreshold, setConfThreshold] = useState<number>(0.65);
+  // Stale detection — any running job older than 24h
+  const hasStale = experiment.jobs.some(
+    (j) => (j.status === "running" || j.status === "queued") && Date.now() - new Date(j.created_at).getTime() > STALE_MS
+  );
 
-  // Run state — 4 runs
-  const [runs, setRuns] = useState<ExperimentRun[]>([]);
-  const [launched, setLaunched] = useState(false);
-
-  const tickerList = tickers.split(",").map((t) => t.trim().toUpperCase()).filter(Boolean);
-
-  const runLabels: string[] = type === "philosophy"
-    ? [...PHILOSOPHIES]
-    : THRESHOLDS.map((t) => `${(t * 100).toFixed(0)}%`);
-
-  // Poll while any runs are active
-  useEffect(() => {
-    if (!launched || runs.length === 0) return;
-    const hasActive = runs.some((r) => r.job?.status === "running" || r.job?.status === "queued");
-    if (!hasActive) return;
-
-    const id = setInterval(async () => {
-      const updated = await Promise.all(
-        runs.map(async (r) => {
-          if (!r.job || r.job.status === "completed" || r.job.status === "failed" || r.job.status === "cancelled") {
-            return r;
-          }
-          const res = await fetchWithAuth(`${API}/v1/backtest/${r.job.id}`);
-          if (!res || !res.ok) return r;
-          const fresh: BacktestJob = await res.json();
-          return { ...r, job: fresh };
-        })
-      );
-      setRuns(updated);
-    }, 5000);
-
-    return () => clearInterval(id);
-  }, [launched, runs]);
-
-  async function handleRunExperiment() {
-    setLaunched(true);
-    const initial: ExperimentRun[] = runLabels.map((label) => ({
-      label,
-      job: null,
-      submitting: true,
-      error: null,
-    }));
-    setRuns(initial);
-
-    const requests: BacktestRequest[] = type === "philosophy"
-      ? PHILOSOPHIES.map((p) => ({
-          tickers: tickerList,
-          start_date: startDate,
-          end_date: endDate,
-          ebc_mode: ebcMode,
-          philosophy_mode: p.toLowerCase(),
-          confidence_threshold: confThreshold,
-        }))
-      : THRESHOLDS.map((t) => ({
-          tickers: tickerList,
-          start_date: startDate,
-          end_date: endDate,
-          ebc_mode: ebcMode,
-          philosophy_mode: philosophy.toLowerCase(),
-          confidence_threshold: t,
-        }));
-
-    const results = await Promise.all(
-      requests.map(async (body, i) => {
-        const res = await fetchWithAuth(`${API}/v1/backtest`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-
-        if (!res || !res.ok) {
-          let errMsg = "Failed to start";
-          try {
-            const data = await res?.json();
-            errMsg = data?.detail ?? errMsg;
-          } catch { /* ignore parse error */ }
-          return { label: runLabels[i], job: null, submitting: false, error: errMsg };
-        }
-
-        const job: BacktestJob = await res.json();
-        return { label: runLabels[i], job, submitting: false, error: null };
-      })
-    );
-
-    setRuns(results);
+  async function cancelJob(jobId: string) {
+    await fetchWithAuth(`${API}/v1/backtest/${jobId}/cancel`, { method: "POST" });
+    onJobsChanged();
   }
 
-  const allCompleted = runs.length > 0 && runs.every((r) => r.job?.status === "completed" || r.job?.status === "failed" || r.job?.status === "cancelled" || r.error != null);
-  const anyRunning   = runs.some((r) => r.job?.status === "running" || r.job?.status === "queued" || r.submitting);
+  async function resumeJob(jobId: string) {
+    await fetchWithAuth(`${API}/v1/backtest/${jobId}/resume`, { method: "POST" });
+    onJobsChanged();
+  }
+
+  const typeColor: Record<ExperimentType, string> = {
+    philosophy: philosophyColors.lynch,
+    threshold:  "#f59e0b",
+    mode:       "var(--brand)",
+    single:     "var(--dim)",
+    multi:      "var(--brand)",
+  };
+  const accent = typeColor[experiment.type];
 
   return (
-    <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
+    <div style={{ background: "var(--surface)", border: `1px solid ${open ? "var(--brand)30" : "var(--line)"}`, borderRadius: 10, overflow: "hidden", transition: "border-color 0.2s" }}>
       {/* Accordion header */}
       <button
         onClick={() => setOpen((v) => !v)}
-        style={{
-          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "16px 18px", background: "transparent", border: "none", cursor: "pointer",
-          textAlign: "left",
-        }}
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
       >
-        <div>
-          <div style={{ fontFamily: "var(--font-jb)", fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 2 }}>
-            {title}
+        {/* Left accent stripe */}
+        <div style={{ width: 3, height: 36, borderRadius: 2, background: accent, flexShrink: 0 }} />
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+            <span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>
+              {experiment.label}
+            </span>
+            <Pill label={`${experiment.jobs.length} runs`} color={accent} />
+            {activeCount > 0 && <PulsingDot color="var(--hold)" />}
+            {allDone && completedCount > 0 && <Pill label="complete" color="var(--bull)" />}
+            {hasStale && <Pill label="stale" color="var(--bear)" />}
           </div>
-          <div style={{ fontFamily: "var(--font-nunito)", fontSize: 12, color: "var(--ghost)" }}>
-            {subtitle}
+          <div style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)" }}>
+            {experiment.jobs[0].tickers.join(" · ")} · {experiment.jobs[0].start_date} → {experiment.jobs[0].end_date} · {relTime(experiment.createdAt.toISOString())}
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          {anyRunning && <PulsingDot />}
-          {allCompleted && runs.length > 0 && (
-            <span style={{ fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--bull)", background: "var(--bull-bg)", padding: "2px 8px", borderRadius: 4 }}>
-              done
-            </span>
+
+        {/* Status summary */}
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+          {completedCount > 0 && (
+            <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--bull)" }}>{completedCount} done</span>
           )}
-          <span style={{ fontFamily: "var(--font-jb)", fontSize: 13, color: "var(--ghost)" }}>
-            {open ? "▲" : "▼"}
-          </span>
+          {errorCount > 0 && (
+            <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--bear)" }}>{errorCount} failed</span>
+          )}
+          {activeCount > 0 && (
+            <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--hold)" }}>{activeCount} running</span>
+          )}
+          <span style={{ fontFamily: "var(--font-jb)", fontSize: 12, color: "var(--ghost)", marginLeft: 4 }}>{open ? "▴" : "▾"}</span>
         </div>
       </button>
 
+      {/* Expanded body */}
       {open && (
-        <div style={{ padding: "0 18px 20px", borderTop: "1px solid var(--line)" }}>
-          {/* Config grid */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-              gap: 14,
-              paddingTop: 18,
-              marginBottom: 18,
-            }}
-          >
-            <Field label="START DATE">
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                style={inputStyle}
+        <div style={{ padding: "4px 18px 18px", borderTop: "1px solid var(--line)" }} className="bcv-fade-in">
+          {/* Job cards grid */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: experiment.jobs.length === 1 ? "1fr" : "repeat(auto-fill, minmax(220px, 1fr))",
+            gap: 10,
+            marginTop: 14,
+          }}>
+            {experiment.jobs.map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                expType={experiment.type}
+                onCancel={() => cancelJob(job.id)}
+                onResume={() => resumeJob(job.id)}
               />
-            </Field>
-
-            <Field label="END DATE">
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                style={inputStyle}
-              />
-            </Field>
-
-            <Field label="EBC MODE">
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {EBC_MODES.map((m) => (
-                  <button
-                    key={m} type="button" onClick={() => setEbcMode(m)}
-                    style={{
-                      flex: "1 1 auto",
-                      padding: "7px 8px", borderRadius: 6, textAlign: "center",
-                      fontFamily: "var(--font-nunito)", fontSize: 12,
-                      fontWeight: ebcMode === m ? 700 : 500,
-                      border: `1px solid ${ebcMode === m ? modeColor[m] : "var(--line)"}`,
-                      color: ebcMode === m ? modeColor[m] : "var(--ghost)",
-                      background: ebcMode === m ? `${modeColor[m]}12` : "transparent",
-                      cursor: "pointer", transition: "all 0.15s",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            </Field>
-
-            <Field label="TICKERS" hint="comma-separated">
-              <input
-                value={tickers}
-                onChange={(e) => setTickers(e.target.value)}
-                placeholder="AAPL, MSFT, TSLA, NVDA, META"
-                style={inputStyle}
-              />
-            </Field>
-
-            {/* Experiment-specific config */}
-            {type === "philosophy" && (
-              <Field label="CONFIDENCE THRESHOLD">
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {THRESHOLDS.map((t) => (
-                    <button
-                      key={t} type="button" onClick={() => setConfThreshold(t)}
-                      style={{
-                        flex: "1 1 auto",
-                        padding: "7px 8px", borderRadius: 6, textAlign: "center",
-                        fontFamily: "var(--font-jb)", fontSize: 12,
-                        fontWeight: confThreshold === t ? 700 : 500,
-                        border: `1px solid ${confThreshold === t ? "var(--brand)" : "var(--line)"}`,
-                        color: confThreshold === t ? "var(--brand)" : "var(--ghost)",
-                        background: confThreshold === t ? "var(--brand)12" : "transparent",
-                        cursor: "pointer", transition: "all 0.15s",
-                      }}
-                    >
-                      {(t * 100).toFixed(0)}%
-                    </button>
-                  ))}
-                </div>
-              </Field>
-            )}
-
-            {type === "threshold" && (
-              <Field label="PHILOSOPHY">
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {PHILOSOPHIES.map((p) => (
-                    <button
-                      key={p} type="button" onClick={() => setPhilosophy(p)}
-                      style={{
-                        flex: "1 1 auto",
-                        padding: "7px 8px", borderRadius: 6, textAlign: "center",
-                        fontFamily: "var(--font-nunito)", fontSize: 12,
-                        fontWeight: philosophy === p ? 700 : 500,
-                        border: `1px solid ${philosophy === p ? "var(--brand)" : "var(--line)"}`,
-                        color: philosophy === p ? "var(--brand)" : "var(--ghost)",
-                        background: philosophy === p ? "var(--brand)12" : "transparent",
-                        cursor: "pointer", transition: "all 0.15s",
-                      }}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-            )}
+            ))}
           </div>
-
-          {/* Run labels description */}
-          <div style={{ marginBottom: 14, padding: "10px 14px", background: "var(--elevated)", borderRadius: 8, border: "1px solid var(--line)" }}>
-            <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-              {type === "philosophy" ? "4 Runs:" : "4 Confidence Levels:"}
-            </span>
-            <span style={{ fontFamily: "var(--font-jb)", fontSize: 12, color: "var(--dim)", marginLeft: 10 }}>
-              {runLabels.join("  ·  ")}
-            </span>
-          </div>
-
-          {/* Run button */}
-          <button
-            onClick={handleRunExperiment}
-            disabled={anyRunning}
-            style={{
-              background: anyRunning ? "var(--line)" : "var(--brand)",
-              color: anyRunning ? "var(--ghost)" : "#fff",
-              fontFamily: "var(--font-nunito)", fontWeight: 700, fontSize: 13,
-              padding: "10px 20px", borderRadius: 8, border: "none",
-              cursor: anyRunning ? "not-allowed" : "pointer",
-              transition: "background 0.15s",
-              marginBottom: launched ? 16 : 0,
-            }}
-          >
-            {anyRunning ? "Running Experiment…" : launched ? "Re-run Experiment" : "Run Experiment"}
-          </button>
-
-          {/* Job mini-cards */}
-          {launched && runs.length > 0 && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10, marginTop: 16 }}>
-              {runs.map((run) => (
-                <JobMiniCard key={run.label} label={run.label} run={run} />
-              ))}
-            </div>
-          )}
 
           {/* Comparison table */}
-          {allCompleted && (
-            <ComparisonTable runs={runs} labelKey={type === "philosophy" ? "philosophy" : "threshold"} />
-          )}
+          <ComparisonTable experiment={experiment} onRefresh={onJobsChanged} />
         </div>
       )}
     </div>
   );
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
+// ── New experiment creation ────────────────────────────────────────────────────
+
+function CreateExperimentSection({
+  type,
+  title,
+  subtitle,
+  onCreated,
+}: {
+  type: "philosophy" | "threshold";
+  title: string;
+  subtitle: string;
+  onCreated: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [startDate, setStartDate]   = useState(DEFAULT_START);
+  const [endDate, setEndDate]       = useState(DEFAULT_END);
+  const [tickers, setTickers]       = useState(DEFAULT_TICKERS);
+  const [ebcMode, setEbcMode]       = useState("autonomous");
+  const [confThreshold, setConf]    = useState(0.65);
+  const [philosophy, setPhilosophy] = useState("balanced");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [success, setSuccess]       = useState(false);
+
+  const tickerList = tickers.split(",").map((t) => t.trim().toUpperCase()).filter(Boolean);
+
+  async function handleSubmit() {
+    setSubmitting(true); setError(null);
+
+    const requests: BacktestRequest[] = type === "philosophy"
+      ? PHILOSOPHIES.map((p) => ({ tickers: tickerList, start_date: startDate, end_date: endDate, ebc_mode: ebcMode, philosophy_mode: p, confidence_threshold: confThreshold }))
+      : THRESHOLDS.map((t)  => ({ tickers: tickerList, start_date: startDate, end_date: endDate, ebc_mode: ebcMode, philosophy_mode: philosophy, confidence_threshold: t }));
+
+    const days  = tradingDayEst(startDate, endDate);
+    const calls = days * tickerList.length * requests.length;
+
+    const results = await Promise.allSettled(
+      requests.map((body) =>
+        fetchWithAuth(`${API}/v1/backtest`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+      )
+    );
+
+    const failed = results.filter((r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value?.ok));
+    if (failed.length > 0) {
+      setError(`${failed.length}/${requests.length} jobs failed to start. Partial run may be in progress.`);
+    } else {
+      setSuccess(true);
+      setTimeout(() => { setSuccess(false); setOpen(false); onCreated(); }, 1500);
+    }
+    setSubmitting(false);
+  }
+
+  const days  = tradingDayEst(startDate, endDate);
+  const calls = days * tickerList.length * (type === "philosophy" ? PHILOSOPHIES.length : THRESHOLDS.length);
+
+  return (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
+      >
+        <div>
+          <div style={{ fontFamily: "var(--font-jb)", fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 2 }}>
+            + {title}
+          </div>
+          <div style={{ fontFamily: "var(--font-nunito)", fontSize: 12, color: "var(--ghost)" }}>{subtitle}</div>
+        </div>
+        <span style={{ fontFamily: "var(--font-jb)", fontSize: 12, color: "var(--ghost)" }}>{open ? "▴" : "▾"}</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: "4px 18px 20px", borderTop: "1px solid var(--line)" }} className="bcv-fade-in">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14, paddingTop: 18, marginBottom: 16 }}>
+            <Field label="TICKERS" hint="comma-separated">
+              <input value={tickers} onChange={(e) => setTickers(e.target.value)} placeholder="AAPL, MSFT, TSLA" style={inputStyle} />
+            </Field>
+            <Field label="START DATE">
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inputStyle} />
+            </Field>
+            <Field label="END DATE">
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={inputStyle} />
+            </Field>
+            <Field label="EBC MODE">
+              <div style={{ display: "flex", gap: 6 }}>
+                {EBC_MODES.map((m) => (
+                  <button key={m} type="button" onClick={() => setEbcMode(m)} style={{
+                    flex: 1, padding: "7px 8px", borderRadius: 6, fontFamily: "var(--font-nunito)", fontSize: 12, fontWeight: ebcMode === m ? 700 : 400,
+                    border: `1px solid ${ebcMode === m ? modeColor[m] : "var(--line)"}`, color: ebcMode === m ? modeColor[m] : "var(--ghost)",
+                    background: ebcMode === m ? `${modeColor[m]}12` : "transparent", cursor: "pointer",
+                  }}>{m}</button>
+                ))}
+              </div>
+            </Field>
+            {type === "philosophy" && (
+              <Field label="CONFIDENCE THRESHOLD">
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {THRESHOLDS.map((t) => (
+                    <button key={t} type="button" onClick={() => setConf(t)} style={{
+                      flex: "1 1 auto", padding: "7px 4px", borderRadius: 6, fontFamily: "var(--font-jb)", fontSize: 11,
+                      fontWeight: confThreshold === t ? 700 : 400,
+                      border: `1px solid ${confThreshold === t ? "var(--brand)" : "var(--line)"}`,
+                      color: confThreshold === t ? "var(--brand)" : "var(--ghost)",
+                      background: confThreshold === t ? "var(--brand-bg)" : "transparent", cursor: "pointer",
+                    }}>{(t * 100).toFixed(0)}%</button>
+                  ))}
+                </div>
+              </Field>
+            )}
+            {type === "threshold" && (
+              <Field label="PHILOSOPHY">
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {PHILOSOPHIES.map((p) => (
+                    <button key={p} type="button" onClick={() => setPhilosophy(p)} style={{
+                      flex: "1 1 auto", padding: "7px 4px", borderRadius: 6, fontFamily: "var(--font-jb)", fontSize: 11, fontWeight: philosophy === p ? 700 : 400,
+                      border: `1px solid ${philosophy === p ? (philosophyColors[p] ?? "var(--brand)") : "var(--line)"}`,
+                      color: philosophy === p ? (philosophyColors[p] ?? "var(--brand)") : "var(--ghost)",
+                      background: philosophy === p ? `${philosophyColors[p] ?? "var(--brand)"}12` : "transparent", cursor: "pointer",
+                    }}>{p.charAt(0).toUpperCase() + p.slice(1)}</button>
+                  ))}
+                </div>
+              </Field>
+            )}
+          </div>
+
+          <div style={{ background: "var(--elevated)", border: "1px solid var(--line)", borderRadius: 6, padding: "8px 12px", fontSize: 12, fontFamily: "var(--font-nunito)", color: "var(--dim)", marginBottom: 14 }}>
+            {type === "philosophy" ? PHILOSOPHIES.length : THRESHOLDS.length} variants × {days} days × {tickerList.length} tickers = ~{calls} AI calls
+          </div>
+
+          {error && (
+            <div style={{ color: "var(--bear)", fontSize: 12, fontFamily: "var(--font-nunito)", background: "var(--bear-bg)", border: "1px solid var(--bear)", borderRadius: 6, padding: "8px 12px", marginBottom: 10 }}>
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || success}
+            style={{
+              background: success ? "var(--bull)" : submitting ? "var(--line)" : "var(--brand)", color: "#fff",
+              fontFamily: "var(--font-nunito)", fontWeight: 700, fontSize: 14,
+              padding: "11px 0", borderRadius: 8, border: "none", width: "100%",
+              cursor: submitting || success ? "not-allowed" : "pointer", transition: "background 0.2s",
+            }}
+          >
+            {success ? "✓ Launched" : submitting ? "Launching…" : `Run ${title} (${type === "philosophy" ? PHILOSOPHIES.length : THRESHOLDS.length} backtests)`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export function BacktestComparisonView() {
+  const [allJobs, setAllJobs]         = useState<BacktestJob[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [experiments, setExperiments] = useState<Experiment[]>([]);
+
+  const loadJobs = useCallback(async () => {
+    const res = await fetchWithAuth(`${API}/v1/backtest`);
+    if (!res?.ok) return;
+    const jobs: BacktestJob[] = await res.json();
+    setAllJobs(jobs);
+    setExperiments(groupIntoExperiments(jobs));
+  }, []);
+
+  useEffect(() => {
+    loadJobs().finally(() => setLoading(false));
+  }, [loadJobs]);
+
+  // Poll every 5s while any active jobs exist
+  useEffect(() => {
+    const hasActive = allJobs.some((j) => j.status === "running" || j.status === "queued");
+    if (!hasActive) return;
+    const id = setInterval(loadJobs, 5000);
+    return () => clearInterval(id);
+  }, [allJobs, loadJobs]);
+
+  const activeCount    = allJobs.filter((j) => j.status === "running" || j.status === "queued").length;
+  const completedCount = allJobs.filter((j) => j.status === "completed").length;
+
   return (
     <>
       <StyleInjector />
-      <div className="flex flex-col gap-4 pb-6">
-        <div style={{ fontFamily: "var(--font-nunito)", fontSize: 13, color: "var(--dim)", lineHeight: 1.6, padding: "4px 0 8px" }}>
-          Run multi-philosophy or multi-threshold experiments in parallel and compare results side-by-side.
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingBottom: 32 }}>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+          <div>
+            <div style={{ fontFamily: "var(--font-jb)", fontSize: 11, color: "var(--ghost)", letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 2 }}>
+              EXPERIMENTS — {experiments.length} groups · {allJobs.length} total runs
+            </div>
+            <div style={{ display: "flex", gap: 10, fontSize: 11, fontFamily: "var(--font-nunito)", color: "var(--dim)" }}>
+              {activeCount > 0 && (
+                <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <PulsingDot /> <span style={{ color: "var(--hold)" }}>{activeCount} running</span>
+                </span>
+              )}
+              {completedCount > 0 && <span><span style={{ color: "var(--bull)" }}>{completedCount}</span> complete</span>}
+            </div>
+          </div>
+          <button
+            onClick={loadJobs}
+            style={{ fontSize: 11, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--line)", color: "var(--ghost)", padding: "4px 10px", borderRadius: 5, cursor: "pointer" }}
+          >
+            ↺ Refresh
+          </button>
         </div>
 
-        <ExperimentSection
-          type="philosophy"
-          title="Experiment A — Philosophy Comparison"
-          subtitle="Compare Lynch, Soros, Buffett, and Balanced across the same date range"
-          defaultOpen
-        />
+        {loading && (
+          <div style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)", textAlign: "center", padding: "32px 0" }}>
+            Loading experiments…
+          </div>
+        )}
 
-        <ExperimentSection
+        {/* Auto-grouped experiments */}
+        {!loading && experiments.length === 0 && (
+          <div style={{ textAlign: "center", padding: "32px 24px", color: "var(--ghost)", fontFamily: "var(--font-nunito)", fontSize: 13 }}>
+            <div style={{ fontSize: 24, marginBottom: 10 }}>◈</div>
+            <div style={{ fontWeight: 600, color: "var(--dim)", marginBottom: 6 }}>No experiments yet</div>
+            <div>Use the forms below to launch a philosophy or threshold comparison.</div>
+          </div>
+        )}
+
+        {!loading && experiments.map((exp, i) => (
+          <ExperimentCard
+            key={exp.id}
+            experiment={exp}
+            defaultOpen={i === 0}
+            onJobsChanged={loadJobs}
+          />
+        ))}
+
+        {/* Divider */}
+        <div style={{ borderTop: "1px solid var(--line)", margin: "8px 0", paddingTop: 12 }}>
+          <div style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
+            Launch New Experiment
+          </div>
+        </div>
+
+        {/* Creation forms */}
+        <CreateExperimentSection
+          type="philosophy"
+          title="Philosophy Comparison"
+          subtitle="Run Lynch · Soros · Buffett · Balanced with the same settings"
+          onCreated={loadJobs}
+        />
+        <CreateExperimentSection
           type="threshold"
-          title="Experiment B — Confidence Threshold Comparison"
-          subtitle="Compare 50%, 65%, 80%, and 95% confidence thresholds for a fixed philosophy"
+          title="Confidence Threshold Comparison"
+          subtitle="Run 50% · 65% · 80% · 95% confidence thresholds with the same settings"
+          onCreated={loadJobs}
         />
       </div>
     </>
