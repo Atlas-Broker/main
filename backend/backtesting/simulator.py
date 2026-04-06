@@ -32,6 +32,7 @@ class VirtualPortfolio:
 
     def __post_init__(self) -> None:
         self.cash = self.initial_capital
+        self.max_position_pct: float = 0.15
 
     def process(
         self,
@@ -70,6 +71,10 @@ class VirtualPortfolio:
 
     def _execute_buy(self, date: str, ticker: str, price: float, notional: float | None = None) -> dict:
         trade_notional = notional if notional is not None else NOTIONAL
+        if trade_notional > 0 and price > 0:
+            total_portfolio = self.cash + sum(pos.shares * pos.avg_cost for pos in self.positions.values())
+            max_notional = total_portfolio * self.max_position_pct
+            trade_notional = min(trade_notional, max_notional)
         if self.cash < trade_notional:
             return {"executed": False, "skipped_reason": "insufficient_funds"}
         shares = trade_notional / price

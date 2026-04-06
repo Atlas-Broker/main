@@ -218,9 +218,20 @@ async def _run_trading_day(
     for r in day_runs:
         r["portfolio_value_after"] = total_value
 
+    # Per-ticker position values for stacked chart breakdown
+    positions_value = {
+        ticker: round(pos.shares * current_prices.get(ticker, pos.avg_cost), 2)
+        for ticker, pos in portfolio.positions.items()
+    }
+
     append_day_results(
         mongo_id, day_runs,
-        {"date": day, "value": total_value, "cash": round(portfolio.cash, 2)},
+        {
+            "date": day,
+            "value": total_value,
+            "cash": round(portfolio.cash, 2),
+            "positions": positions_value,
+        },
     )
     save_checkpoint(
         mongo_id,

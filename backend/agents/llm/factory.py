@@ -20,7 +20,7 @@ from google.genai import types
 
 _DEFAULTS = {
     "quick": "gemini-2.5-flash",
-    "deep": "gemini-2.5-flash",
+    "deep": "gemini-2.5-pro",
 }
 
 _client: genai.Client | None = None

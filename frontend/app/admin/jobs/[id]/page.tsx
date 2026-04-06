@@ -36,7 +36,7 @@ type BacktestJob = {
   mongo_id?: string | null;
   results?: {
     daily_runs: DailyRun[];
-    equity_curve: { date: string; value: number; cash: number }[];
+    equity_curve: { date: string; value: number; cash: number; positions?: Record<string, number> }[];
     metrics: Record<string, unknown>;
   };
 };
@@ -264,7 +264,6 @@ function DailyRunsGrouped({
                 <th style={TH}>Conf.</th>
                 <th style={TH}>Shares</th>
                 <th style={TH}>Price</th>
-                <th style={TH}>Trade Value</th>
                 <th style={TH}>P&L</th>
                 <th style={TH}>Portfolio / Cash</th>
                 <th style={TH}></th>
@@ -319,14 +318,14 @@ function DailyRunsGrouped({
 
                     {/* Collapsed: show only executed rows */}
                     {!isOpen && visibleWhenClosed.map((r) => (
-                      <StockRow key={r.ticker} r={r} date={date} jobId={jobId} accent={accent} router={router} dimmed />
+                      <StockRow key={r.ticker} r={r} date={date} jobId={jobId} router={router} dimmed />
                     ))}
 
                     {/* Expanded: show all stock rows + cash row */}
                     {isOpen && (
                       <>
                         {dayRuns.map((r) => (
-                          <StockRow key={r.ticker} r={r} date={date} jobId={jobId} accent={accent} router={router} />
+                          <StockRow key={r.ticker} r={r} date={date} jobId={jobId} router={router} />
                         ))}
                         {/* Cash row */}
                         {cashVal != null && (
@@ -352,15 +351,12 @@ function DailyRunsGrouped({
 }
 
 function StockRow({
-  r, date, jobId, accent, router, dimmed,
+  r, date, jobId, router, dimmed,
 }: {
-  r: DailyRun; date: string; jobId: string; accent: string;
+  r: DailyRun; date: string; jobId: string;
   router: ReturnType<typeof import("next/navigation").useRouter>;
   dimmed?: boolean;
 }) {
-  const tradeVal = (r.executed && r.shares != null && r.simulated_price != null)
-    ? r.shares * r.simulated_price : null;
-  const isBuy = r.action === "BUY";
   const COL: React.CSSProperties = { padding: "8px 14px", whiteSpace: "nowrap" };
   return (
     <tr
@@ -378,9 +374,6 @@ function StockRow({
       </td>
       <td style={{ ...COL, color: "var(--dim)" }}>
         {r.simulated_price != null ? `$${r.simulated_price.toFixed(2)}` : "—"}
-      </td>
-      <td style={{ ...COL, fontWeight: tradeVal != null ? 600 : 400, color: tradeVal == null ? "var(--ghost)" : isBuy ? "var(--bull)" : "var(--bear)" }}>
-        {tradeVal == null ? "—" : `${isBuy ? "+" : "-"}$${tradeVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
       </td>
       <td style={{ ...COL, color: r.pnl == null ? "var(--ghost)" : r.pnl >= 0 ? "var(--bull)" : "var(--bear)" }}>
         {r.pnl == null ? "—" : `${r.pnl >= 0 ? "+" : ""}$${r.pnl.toFixed(2)}`}
@@ -582,29 +575,37 @@ export default function JobDetailPage() {
                 const last  = curve[curve.length - 1];
                 const total = last.value;
                 const cash  = last.cash ?? 0;
-                const stocks = Math.max(0, total - cash);
-                const fmtV = (v: number) => v >= 1_000_000 ? `$${(v/1_000_000).toFixed(2)}M` : v >= 1_000 ? `$${(v/1_000).toFixed(1)}K` : `$${v.toFixed(0)}`;
+                const positions = last.positions ?? {};
+                const tickerEntries = Object.entries(positions).filter(([, v]) => v > 0);
+                const initialCapital = job.initial_capital ?? 100_000;
                 return (
                   <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-                    {/* Breakdown */}
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
-                      {[
-                        { k: "Total Portfolio", v: fmtV(total), color: (total >= (job.initial_capital ?? 100_000)) ? "var(--bull)" : "var(--bear)" },
-                        { k: "Cash",            v: fmtV(cash),  color: "var(--dim)" },
-                        { k: "Positions",       v: fmtV(stocks), color: stocks > 0 ? "var(--hold)" : "var(--ghost)" },
-                      ].map((m) => (
-                        <div key={m.k} style={{ background: "var(--elevated)", borderRadius: 8, padding: "10px 14px", textAlign: "center" }}>
-                          <div style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{m.k}</div>
-                          <div style={{ fontSize: 15, fontFamily: "var(--font-jb)", fontWeight: 700, color: m.color }}>{m.v}</div>
+                    {/* Portfolio breakdown */}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {/* Total */}
+                      <div style={{ background: "var(--elevated)", borderRadius: 8, padding: "10px 14px", minWidth: 130, flex: "1 1 130px" }}>
+                        <div style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Total Portfolio</div>
+                        <div style={{ fontSize: 15, fontFamily: "var(--font-jb)", fontWeight: 700, color: total >= initialCapital ? "var(--bull)" : "var(--bear)" }}>{fmtMoney(total)}</div>
+                      </div>
+                      {/* Cash */}
+                      <div style={{ background: "var(--elevated)", borderRadius: 8, padding: "10px 14px", minWidth: 100, flex: "1 1 100px" }}>
+                        <div style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Cash</div>
+                        <div style={{ fontSize: 15, fontFamily: "var(--font-jb)", fontWeight: 700, color: "var(--dim)" }}>{fmtMoney(cash)}</div>
+                      </div>
+                      {/* Per-ticker */}
+                      {tickerEntries.map(([ticker, val]) => (
+                        <div key={ticker} style={{ background: "var(--elevated)", borderRadius: 8, padding: "10px 14px", minWidth: 100, flex: "1 1 100px" }}>
+                          <div style={{ fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{ticker}</div>
+                          <div style={{ fontSize: 15, fontFamily: "var(--font-jb)", fontWeight: 700, color: "var(--hold)" }}>{fmtMoney(val)}</div>
                         </div>
                       ))}
                     </div>
-                    <EquityChart
+                    <StackedEquityChart
                       curve={curve}
                       startDate={job.start_date}
                       endDate={job.end_date}
-                      initialCapital={job.initial_capital ?? 100_000}
-                      accent={accent}
+                      initialCapital={initialCapital}
+                      tickers={job.tickers}
                     />
                   </div>
                 );
