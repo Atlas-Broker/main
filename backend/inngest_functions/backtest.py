@@ -16,6 +16,9 @@ from typing import Any
 
 import inngest
 import pandas as pd
+from dotenv import load_dotenv
+
+load_dotenv()  # Ensure env vars are loaded even when called from step context
 
 from agents.data.market import fetch_next_open
 from agents.orchestrator import run_pipeline_async
@@ -33,7 +36,7 @@ from services.backtest_service import (
     update_job_metrics,
     update_job_status,
 )
-from db.supabase import get_supabase
+from db.supabase import get_supabase, reset_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -129,16 +132,20 @@ async def _run_trading_day(
     initial_capital: float = 100_000.0,
 ) -> dict[str, Any]:
     """Process all tickers for one trading day. Returns {cancelled, errors}."""
-    # Bail if cancelled via the UI
-    status_result = (
-        get_supabase()
-        .table("backtest_jobs")
-        .select("status")
-        .eq("id", job_id)
-        .execute()
-    )
-    if status_result.data and status_result.data[0]["status"] == "cancelled":
-        return {"cancelled": True}
+    # Bail if cancelled via the UI — tolerate transient Supabase connection errors
+    try:
+        status_result = (
+            get_supabase()
+            .table("backtest_jobs")
+            .select("status")
+            .eq("id", job_id)
+            .execute()
+        )
+        if status_result.data and status_result.data[0]["status"] == "cancelled":
+            return {"cancelled": True}
+    except Exception as exc:
+        logger.warning("Could not check cancellation status for job %s: %s — continuing", job_id, exc)
+        reset_supabase()  # Force fresh client on next call
 
     portfolio = _restore_portfolio(get_checkpoint(mongo_id), initial_capital=initial_capital)
     virtual_positions = {
