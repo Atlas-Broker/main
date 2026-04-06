@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 import { EquityChart } from "@/app/admin/_components/EquityChart";
@@ -174,6 +174,222 @@ function ActionBadge({ action }: { action: string }) {
     <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 3, color, background: bg, flexShrink: 0 }}>
       {action}
     </span>
+  );
+}
+
+// ── Daily Runs grouped by date ────────────────────────────────────────────────
+
+function fmtMoney(v: number) {
+  return v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(2)}M`
+    : v >= 1_000 ? `$${(v / 1_000).toFixed(1)}K`
+    : `$${v.toFixed(0)}`;
+}
+
+function DailyRunsGrouped({
+  runs, equityCurve, jobId, isActive, accent, executed, errors, onExportCSV, router,
+}: {
+  runs: DailyRun[];
+  equityCurve: { date: string; value: number; cash: number }[];
+  jobId: string;
+  isActive: boolean;
+  accent: string;
+  executed: number;
+  errors: number;
+  onExportCSV: () => void;
+  router: ReturnType<typeof import("next/navigation").useRouter>;
+}) {
+  // Group runs by date, preserving sort order
+  const dates = useMemo(() => {
+    const map = new Map<string, DailyRun[]>();
+    for (const r of runs) {
+      if (!map.has(r.date)) map.set(r.date, []);
+      map.get(r.date)!.push(r);
+    }
+    return map;
+  }, [runs]);
+
+  const curveByDate = useMemo(() => {
+    const m = new Map<string, { value: number; cash: number }>();
+    for (const pt of equityCurve) m.set(pt.date, { value: pt.value, cash: pt.cash });
+    return m;
+  }, [equityCurve]);
+
+  // Default: dates that have any executed trade start partially expanded
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+
+  function toggle(date: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(date) ? next.delete(date) : next.add(date);
+      return next;
+    });
+  }
+
+  const COL_STYLE: React.CSSProperties = { padding: "8px 14px", whiteSpace: "nowrap" as const };
+  const TH: React.CSSProperties = { padding: "8px 14px", textAlign: "left", color: "var(--ghost)", fontSize: 9, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" };
+
+  return (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid var(--line)" }}>
+        <div>
+          <div style={{ fontFamily: "var(--font-jb)", fontSize: 11, fontWeight: 700, color: "var(--ink)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Daily Runs</div>
+          {runs.length > 0 && (
+            <div style={{ display: "flex", gap: 12, fontSize: 11, fontFamily: "var(--font-nunito)", color: "var(--dim)" }}>
+              <span><span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, color: "var(--bull)" }}>{executed}</span> executed</span>
+              {errors > 0 && <span><span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, color: "var(--bear)" }}>{errors}</span> errors</span>}
+              <span>{runs.length} total signals</span>
+            </div>
+          )}
+        </div>
+        {runs.length > 0 && (
+          <button onClick={onExportCSV} style={{ fontSize: 10, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--line)", color: "var(--ghost)", padding: "4px 12px", borderRadius: 5, cursor: "pointer" }}>
+            ↓ CSV
+          </button>
+        )}
+      </div>
+
+      {runs.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "32px 0", color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-nunito)" }}>
+          {isActive ? "No runs yet — job is processing…" : "No daily runs recorded."}
+        </div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: "var(--font-jb)" }}>
+            <thead>
+              <tr style={{ background: "var(--elevated)", borderBottom: "1px solid var(--line)" }}>
+                <th style={TH}>Date</th>
+                <th style={TH}>Ticker</th>
+                <th style={TH}>Action</th>
+                <th style={TH}>Conf.</th>
+                <th style={TH}>Shares</th>
+                <th style={TH}>Price</th>
+                <th style={TH}>Trade Value</th>
+                <th style={TH}>P&L</th>
+                <th style={TH}>Portfolio / Cash</th>
+                <th style={TH}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from(dates.entries()).map(([date, dayRuns]) => {
+                const isOpen = expanded.has(date);
+                const equity = curveByDate.get(date);
+                const portfolioVal = equity?.value ?? dayRuns[dayRuns.length - 1]?.portfolio_value_after ?? null;
+                const cashVal = equity?.cash ?? null;
+                const executedRuns = dayRuns.filter((r) => r.executed);
+                const hasExecutions = executedRuns.length > 0;
+                // Rows to show when collapsed: only executed BUY/SELL
+                const visibleWhenClosed = executedRuns;
+
+                return (
+                  <React.Fragment key={date}>
+                    {/* Date header row */}
+                    <tr
+                      onClick={() => toggle(date)}
+                      style={{ background: "var(--elevated)", borderBottom: "1px solid var(--line)", cursor: "pointer" }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--elevated) 80%, var(--line))"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--elevated)"; }}
+                    >
+                      <td style={{ ...COL_STYLE, fontWeight: 700, color: "var(--ink)" }}>{date}</td>
+                      <td style={COL_STYLE}>
+                        {hasExecutions && (
+                          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                            {executedRuns.map((r) => <ActionBadge key={r.ticker} action={r.action} />)}
+                          </div>
+                        )}
+                      </td>
+                      <td style={COL_STYLE} />
+                      <td style={COL_STYLE} />
+                      <td style={COL_STYLE} />
+                      <td style={COL_STYLE} />
+                      <td style={COL_STYLE} />
+                      <td style={COL_STYLE} />
+                      <td style={{ ...COL_STYLE, fontWeight: 700, color: "var(--dim)" }}>
+                        {portfolioVal != null ? fmtMoney(portfolioVal) : "—"}
+                        {cashVal != null && (
+                          <span style={{ fontWeight: 400, color: "var(--ghost)", fontSize: 10, marginLeft: 6 }}>
+                            cash {fmtMoney(cashVal)}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ ...COL_STYLE, color: "var(--ghost)", fontSize: 11, textAlign: "right" }}>
+                        {isOpen ? "▲" : "▼"}
+                      </td>
+                    </tr>
+
+                    {/* Collapsed: show only executed rows */}
+                    {!isOpen && visibleWhenClosed.map((r) => (
+                      <StockRow key={r.ticker} r={r} date={date} jobId={jobId} accent={accent} router={router} dimmed />
+                    ))}
+
+                    {/* Expanded: show all stock rows + cash row */}
+                    {isOpen && (
+                      <>
+                        {dayRuns.map((r) => (
+                          <StockRow key={r.ticker} r={r} date={date} jobId={jobId} accent={accent} router={router} />
+                        ))}
+                        {/* Cash row */}
+                        {cashVal != null && (
+                          <tr style={{ borderBottom: "1px solid var(--line)", background: "rgba(0,0,0,0.02)" }}>
+                            <td style={{ ...COL_STYLE, color: "var(--ghost)", paddingLeft: 32 }} />
+                            <td style={{ ...COL_STYLE, color: "var(--ghost)", fontStyle: "italic" }}>Cash</td>
+                            <td style={COL_STYLE} colSpan={6} />
+                            <td style={{ ...COL_STYLE, color: "var(--dim)", fontWeight: 600 }}>{fmtMoney(cashVal)}</td>
+                            <td style={COL_STYLE} />
+                          </tr>
+                        )}
+                      </>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StockRow({
+  r, date, jobId, accent, router, dimmed,
+}: {
+  r: DailyRun; date: string; jobId: string; accent: string;
+  router: ReturnType<typeof import("next/navigation").useRouter>;
+  dimmed?: boolean;
+}) {
+  const tradeVal = (r.executed && r.shares != null && r.simulated_price != null)
+    ? r.shares * r.simulated_price : null;
+  const isBuy = r.action === "BUY";
+  const COL: React.CSSProperties = { padding: "8px 14px", whiteSpace: "nowrap" };
+  return (
+    <tr
+      onClick={() => router.push(`/admin/jobs/${jobId}/runs/${date}/${r.ticker}`)}
+      style={{ borderBottom: "1px solid var(--line)", cursor: "pointer", opacity: dimmed ? 0.85 : 1 }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--elevated)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ""; }}
+    >
+      <td style={{ ...COL, paddingLeft: 32, color: "var(--ghost)", fontSize: 10 }} />
+      <td style={{ ...COL, color: "var(--ink)", fontWeight: 700 }}>{r.ticker}</td>
+      <td style={COL}><ActionBadge action={r.action} /></td>
+      <td style={{ ...COL, color: "var(--dim)" }}>{conf(r.confidence)}</td>
+      <td style={{ ...COL, color: r.executed ? "var(--dim)" : "var(--ghost)" }}>
+        {r.executed && r.shares != null ? r.shares.toFixed(4) : "—"}
+      </td>
+      <td style={{ ...COL, color: "var(--dim)" }}>
+        {r.simulated_price != null ? `$${r.simulated_price.toFixed(2)}` : "—"}
+      </td>
+      <td style={{ ...COL, fontWeight: tradeVal != null ? 600 : 400, color: tradeVal == null ? "var(--ghost)" : isBuy ? "var(--bull)" : "var(--bear)" }}>
+        {tradeVal == null ? "—" : `${isBuy ? "+" : "-"}$${tradeVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+      </td>
+      <td style={{ ...COL, color: r.pnl == null ? "var(--ghost)" : r.pnl >= 0 ? "var(--bull)" : "var(--bear)" }}>
+        {r.pnl == null ? "—" : `${r.pnl >= 0 ? "+" : ""}$${r.pnl.toFixed(2)}`}
+      </td>
+      <td style={{ ...COL, color: "var(--dim)" }}>
+        {r.portfolio_value_after != null ? fmtMoney(r.portfolio_value_after) : "—"}
+      </td>
+      <td style={{ ...COL, color: "var(--ghost)", fontSize: 13, fontWeight: 700 }}>→</td>
+    </tr>
   );
 }
 
@@ -395,82 +611,18 @@ export default function JobDetailPage() {
               })()}
             </div>
 
-            {/* Daily runs table */}
-            <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid var(--line)" }}>
-                <div>
-                  <div style={{ fontFamily: "var(--font-jb)", fontSize: 11, fontWeight: 700, color: "var(--ink)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>
-                    Daily Runs
-                  </div>
-                  {runs.length > 0 && (
-                    <div style={{ display: "flex", gap: 12, fontSize: 11, fontFamily: "var(--font-nunito)", color: "var(--dim)" }}>
-                      <span><span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, color: "var(--bull)" }}>{executed}</span> executed</span>
-                      {errors > 0 && <span><span style={{ fontFamily: "var(--font-jb)", fontWeight: 700, color: "var(--bear)" }}>{errors}</span> errors</span>}
-                      <span>{runs.length} total signals</span>
-                    </div>
-                  )}
-                </div>
-                {runs.length > 0 && (
-                  <button onClick={exportCSV} style={{ fontSize: 10, fontFamily: "var(--font-jb)", background: "none", border: "1px solid var(--line)", color: "var(--ghost)", padding: "4px 12px", borderRadius: 5, cursor: "pointer" }}>
-                    ↓ CSV
-                  </button>
-                )}
-              </div>
-
-              {runs.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "32px 0", color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-nunito)" }}>
-                  {isActive ? "No runs yet — job is processing…" : "No daily runs recorded."}
-                </div>
-              ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: "var(--font-jb)" }}>
-                    <thead>
-                      <tr style={{ background: "var(--elevated)", borderBottom: "1px solid var(--line)", position: "sticky", top: 0 }}>
-                        {["Date", "Ticker", "Action", "Conf.", "Shares", "Price", "Trade Value", "P&L", "Portfolio", ""].map((h) => (
-                          <th key={h} style={{ padding: "8px 14px", textAlign: "left", color: "var(--ghost)", fontSize: 9, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {runs.map((r, i) => {
-                        const tradeVal = (r.executed && r.shares != null && r.simulated_price != null)
-                          ? r.shares * r.simulated_price : null;
-                        const isBuy = r.action === "BUY";
-                        const portfolioVal = r.portfolio_value_after;
-                        return (
-                          <tr
-                            key={i}
-                            onClick={() => router.push(`/admin/jobs/${id}/runs/${r.date}/${r.ticker}`)}
-                            style={{ borderBottom: "1px solid var(--line)", cursor: "pointer", transition: "background 0.1s" }}
-                            onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = "var(--elevated)"; (e.currentTarget as HTMLTableRowElement).style.borderLeft = `2px solid ${accent}`; }}
-                            onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = ""; (e.currentTarget as HTMLTableRowElement).style.borderLeft = ""; }}
-                          >
-                            <td style={{ padding: "9px 14px", color: "var(--dim)", whiteSpace: "nowrap", opacity: r.action === "ERROR" ? 0.5 : 1 }}>{r.date}</td>
-                            <td style={{ padding: "9px 14px", color: "var(--ink)", fontWeight: 700 }}>{r.ticker}</td>
-                            <td style={{ padding: "9px 14px" }}><ActionBadge action={r.action} /></td>
-                            <td style={{ padding: "9px 14px", color: "var(--dim)" }}>{conf(r.confidence)}</td>
-                            <td style={{ padding: "9px 14px", color: r.executed ? "var(--dim)" : "var(--ghost)" }}>
-                              {r.executed && r.shares != null ? r.shares.toFixed(4) : "—"}
-                            </td>
-                            <td style={{ padding: "9px 14px", color: "var(--dim)" }}>{r.simulated_price != null ? `$${r.simulated_price.toFixed(2)}` : "—"}</td>
-                            <td style={{ padding: "9px 14px", fontWeight: tradeVal != null ? 600 : 400, color: tradeVal == null ? "var(--ghost)" : isBuy ? "var(--bull)" : "var(--bear)" }}>
-                              {tradeVal == null ? "—" : `${isBuy ? "+" : "-"}$${tradeVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                            </td>
-                            <td style={{ padding: "9px 14px", color: r.pnl == null ? "var(--ghost)" : r.pnl >= 0 ? "var(--bull)" : "var(--bear)" }}>
-                              {r.pnl == null ? "—" : `${r.pnl >= 0 ? "+" : ""}$${r.pnl.toFixed(2)}`}
-                            </td>
-                            <td style={{ padding: "9px 14px", color: "var(--dim)" }}>
-                              {portfolioVal != null ? `$${portfolioVal.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—"}
-                            </td>
-                            <td style={{ padding: "9px 14px", color: "var(--ghost)", fontSize: 13, fontWeight: 700 }}>→</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            {/* Daily runs — grouped by date */}
+            <DailyRunsGrouped
+              runs={runs}
+              equityCurve={job.results?.equity_curve ?? []}
+              jobId={id}
+              isActive={isActive}
+              accent={accent}
+              executed={executed}
+              errors={errors}
+              onExportCSV={exportCSV}
+              router={router}
+            />
           </div>
         )}
       </div>
