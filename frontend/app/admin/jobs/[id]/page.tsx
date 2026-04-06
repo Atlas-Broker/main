@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 import { EquityChart } from "@/app/admin/_components/EquityChart";
+import { StackedEquityChart } from "@/app/admin/_components/StackedEquityChart";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
