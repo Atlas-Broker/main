@@ -1,8 +1,13 @@
 "use client";
 
 /**
- * Stacked area chart showing portfolio composition over time:
- * Cash + per-ticker position values stacked to equal total portfolio value.
+ * Stacked area chart — total portfolio value broken into Cash + per-ticker positions.
+ *
+ * Graceful degradation:
+ *   • If equity_curve points have `positions` (new runs) → per-ticker coloured layers
+ *   • If not (old runs)                                  → Cash + inferred "Positions" layer
+ *
+ * Tooltip shows dollar value + % of total for every component.
  */
 
 import {
@@ -22,26 +27,27 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, 
 
 type CurvePoint = {
   date: string;
-  value: number;
+  value: number;   // total portfolio (cash + all positions)
   cash: number;
   positions?: Record<string, number>;
 };
 
-// Distinct colors for up to 10 tickers
+// Distinct colours for up to 10 tickers
 const TICKER_COLORS = [
-  "rgba(99,102,241,",   // indigo
-  "rgba(16,185,129,",   // emerald
-  "rgba(245,158,11,",   // amber
-  "rgba(239,68,68,",    // red
-  "rgba(59,130,246,",   // blue
-  "rgba(168,85,247,",   // purple
-  "rgba(236,72,153,",   // pink
-  "rgba(20,184,166,",   // teal
-  "rgba(251,146,60,",   // orange
-  "rgba(132,204,22,",   // lime
+  "rgba(99,102,241,",    // indigo
+  "rgba(16,185,129,",    // emerald
+  "rgba(245,158,11,",    // amber
+  "rgba(239,68,68,",     // red
+  "rgba(59,130,246,",    // blue
+  "rgba(168,85,247,",    // purple
+  "rgba(236,72,153,",    // pink
+  "rgba(20,184,166,",    // teal
+  "rgba(251,146,60,",    // orange
+  "rgba(132,204,22,",    // lime
 ];
 
-const CASH_COLOR = "rgba(150,150,165,";
+const CASH_COLOR    = "rgba(150,150,165,";
+const EQUITY_COLOR  = "rgba(99,102,241,";   // fallback "Positions" layer
 
 const fmtVal = (v: number) =>
   v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(2)}M`
@@ -63,24 +69,28 @@ export function StackedEquityChart({
 }) {
   if (curve.length === 0) return null;
 
-  const labels = businessDays(startDate, endDate);
-  const byDate = new Map(curve.map((p) => [p.date, p]));
+  const labels  = businessDays(startDate, endDate);
+  const byDate  = new Map(curve.map((p) => [p.date, p]));
 
-  // Collect all tickers that ever had a position
+  // Detect whether any curve point carries per-ticker positions
   const activeTickers = new Set<string>();
   for (const pt of curve) {
     if (pt.positions) Object.keys(pt.positions).forEach((t) => activeTickers.add(t));
   }
-  // Order by the job's ticker list, then any extras
-  const orderedTickers = [
-    ...tickers.filter((t) => activeTickers.has(t)),
-    ...[...activeTickers].filter((t) => !tickers.includes(t)),
-  ];
 
-  // Build datasets — stacked order: cash first (bottom), then tickers
+  const hasBreakdown = activeTickers.size > 0;
+
+  // Ordered: job's ticker list first, then any extras
+  const orderedTickers = hasBreakdown
+    ? [
+        ...tickers.filter((t) => activeTickers.has(t)),
+        ...[...activeTickers].filter((t) => !tickers.includes(t)),
+      ]
+    : [];
+
   const datasets: Parameters<typeof Line>[0]["data"]["datasets"] = [];
 
-  // Cash layer
+  // ── Cash layer (always bottom) ──────────────────────────────────────────────
   datasets.push({
     label: "Cash",
     data: labels.map((d) => byDate.get(d)?.cash ?? null),
@@ -89,31 +99,57 @@ export function StackedEquityChart({
     fill: true,
     borderWidth: 1.5,
     pointRadius: 0,
-    pointHoverRadius: 3,
+    pointHoverRadius: 4,
     spanGaps: false,
     tension: 0.1,
-    // @ts-expect-error chart.js stack option
     stack: "portfolio",
   });
 
-  // Ticker position layers
-  orderedTickers.forEach((ticker, idx) => {
-    const color = TICKER_COLORS[idx % TICKER_COLORS.length];
+  if (hasBreakdown) {
+    // ── Per-ticker layers ─────────────────────────────────────────────────────
+    orderedTickers.forEach((ticker, idx) => {
+      const color = TICKER_COLORS[idx % TICKER_COLORS.length];
+      datasets.push({
+        label: ticker,
+        data: labels.map((d) => {
+          const pt = byDate.get(d);
+          if (!pt) return null;
+          return pt.positions?.[ticker] ?? 0;
+        }),
+        borderColor: `${color}0.9)`,
+        backgroundColor: `${color}0.35)`,
+        fill: true,
+        borderWidth: 1.5,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        spanGaps: false,
+        tension: 0.1,
+        stack: "portfolio",
+      });
+    });
+  } else {
+    // ── Fallback: inferred "Positions" = total − cash ─────────────────────────
     datasets.push({
-      label: ticker,
-      data: labels.map((d) => byDate.get(d)?.positions?.[ticker] ?? (byDate.has(d) ? 0 : null)),
-      borderColor: `${color}0.9)`,
-      backgroundColor: `${color}0.35)`,
+      label: "Positions",
+      data: labels.map((d) => {
+        const pt = byDate.get(d);
+        if (!pt) return null;
+        return Math.max(0, pt.value - pt.cash);
+      }),
+      borderColor: `${EQUITY_COLOR}0.9)`,
+      backgroundColor: `${EQUITY_COLOR}0.3)`,
       fill: true,
       borderWidth: 1.5,
       pointRadius: 0,
-      pointHoverRadius: 3,
+      pointHoverRadius: 4,
       spanGaps: false,
       tension: 0.1,
-      // @ts-expect-error chart.js stack option
       stack: "portfolio",
     });
-  });
+  }
+
+  // Suggestd y-max = 10% above the highest total portfolio value seen
+  const maxVal = Math.max(...curve.map((p) => p.value), initialCapital);
 
   return (
     <div style={{ background: "var(--elevated)", borderRadius: 8, padding: "14px 16px 10px" }}>
@@ -143,16 +179,30 @@ export function StackedEquityChart({
               mode: "index",
               intersect: false,
               callbacks: {
-                title: (items) => items[0]?.label ?? "",
-                label: (item) =>
-                  item.raw != null ? `${item.dataset.label}: ${fmtVal(item.raw as number)}` : "",
+                title: (items) => {
+                  const date = items[0]?.label ?? "";
+                  const pt   = byDate.get(date);
+                  if (!pt) return date;
+                  return [`${date}`, `Total: ${fmtVal(pt.value)}`];
+                },
+                label: (item) => {
+                  if (item.raw == null) return "";
+                  const val  = item.raw as number;
+                  const date = item.label ?? "";
+                  const pt   = byDate.get(date);
+                  const total = pt?.value ?? 1;
+                  const pct  = total > 0 ? ((val / total) * 100).toFixed(1) : "0.0";
+                  if (val === 0) return "";
+                  return `${item.dataset.label}: ${fmtVal(val)} (${pct}%)`;
+                },
               },
-              backgroundColor: "rgba(15,15,20,0.9)",
+              backgroundColor: "rgba(15,15,20,0.92)",
               titleFont: { family: "monospace", size: 11 },
-              bodyFont: { family: "monospace", size: 11 },
-              padding: 10,
+              bodyFont:  { family: "monospace", size: 11 },
+              padding: 12,
               borderColor: "rgba(255,255,255,0.1)",
               borderWidth: 1,
+              itemSort: (a, b) => (b.raw as number) - (a.raw as number),
             },
           },
           scales: {
@@ -167,7 +217,7 @@ export function StackedEquityChart({
             },
             y: {
               min: 0,
-              suggestedMax: initialCapital * 1.1,
+              suggestedMax: maxVal * 1.1,
               stacked: true,
               ticks: {
                 color: "rgba(150,150,160,0.8)",

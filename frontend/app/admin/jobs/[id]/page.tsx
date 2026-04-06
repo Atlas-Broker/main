@@ -215,6 +215,25 @@ function DailyRunsGrouped({
     return m;
   }, [equityCurve]);
 
+  // Cumulative shares held per ticker per date (for market value fallback when equity curve lacks positions)
+  const heldSharesByDate = useMemo(() => {
+    const result = new Map<string, Record<string, number>>();
+    const cumulative: Record<string, number> = {};
+    const sortedDates = Array.from(dates.keys()).sort();
+    for (const date of sortedDates) {
+      for (const r of dates.get(date)!) {
+        if (r.executed && r.shares != null && r.shares > 0) {
+          const prev = cumulative[r.ticker] ?? 0;
+          cumulative[r.ticker] = r.action === "SELL"
+            ? Math.max(0, prev - r.shares)
+            : prev + r.shares;
+        }
+      }
+      result.set(date, { ...cumulative });
+    }
+    return result;
+  }, [dates]);
+
   // Default: dates that have any executed trade start partially expanded
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
@@ -276,6 +295,7 @@ function DailyRunsGrouped({
                 const portfolioVal = equity?.value ?? dayRuns[dayRuns.length - 1]?.portfolio_value_after ?? null;
                 const cashVal = equity?.cash ?? null;
                 const positionsVal = equity?.positions ?? {};
+                const heldShares   = heldSharesByDate.get(date) ?? {};
                 const executedRuns = dayRuns.filter((r) => r.executed);
                 const hasExecutions = executedRuns.length > 0;
                 // Rows to show when collapsed: only executed BUY/SELL
@@ -303,7 +323,6 @@ function DailyRunsGrouped({
                       <td style={COL_STYLE} />
                       <td style={COL_STYLE} />
                       <td style={COL_STYLE} />
-                      <td style={COL_STYLE} />
                       <td style={{ ...COL_STYLE, fontWeight: 700, color: "var(--dim)" }} colSpan={2}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <span>{portfolioVal != null ? fmtMoney(portfolioVal) : "—"}</span>
@@ -321,14 +340,14 @@ function DailyRunsGrouped({
 
                     {/* Collapsed: show only executed rows */}
                     {!isOpen && visibleWhenClosed.map((r) => (
-                      <StockRow key={r.ticker} r={r} date={date} jobId={jobId} router={router} positionsVal={positionsVal} dimmed />
+                      <StockRow key={r.ticker} r={r} date={date} jobId={jobId} router={router} positionsVal={positionsVal} heldShares={heldShares} dimmed />
                     ))}
 
                     {/* Expanded: show all stock rows + cash row */}
                     {isOpen && (
                       <>
                         {dayRuns.map((r) => (
-                          <StockRow key={r.ticker} r={r} date={date} jobId={jobId} router={router} positionsVal={positionsVal} />
+                          <StockRow key={r.ticker} r={r} date={date} jobId={jobId} router={router} positionsVal={positionsVal} heldShares={heldShares} />
                         ))}
                         {/* Cash row */}
                         {cashVal != null && (
@@ -353,15 +372,24 @@ function DailyRunsGrouped({
 }
 
 function StockRow({
-  r, date, jobId, router, positionsVal, dimmed,
+  r, date, jobId, router, positionsVal, heldShares, dimmed,
 }: {
   r: DailyRun; date: string; jobId: string;
   router: ReturnType<typeof import("next/navigation").useRouter>;
-  positionsVal: Record<string, number>;
+  positionsVal: Record<string, number>;    // from equity_curve (preferred)
+  heldShares: Record<string, number>;       // cumulative shares held after this day (fallback)
   dimmed?: boolean;
 }) {
   const COL: React.CSSProperties = { padding: "8px 14px", whiteSpace: "nowrap" };
-  const mktVal = positionsVal[r.ticker];
+
+  // Market value: prefer equity curve positions (backend mark-to-market), fall back to shares × price
+  const mktVal: number | null =
+    positionsVal[r.ticker] != null
+      ? positionsVal[r.ticker]
+      : (heldShares[r.ticker] != null && heldShares[r.ticker] > 0 && r.simulated_price != null)
+        ? heldShares[r.ticker] * r.simulated_price
+        : null;
+
   return (
     <tr
       onClick={() => router.push(`/admin/jobs/${jobId}/runs/${date}/${r.ticker}`)}
@@ -382,8 +410,8 @@ function StockRow({
       <td style={{ ...COL, color: r.pnl == null ? "var(--ghost)" : r.pnl >= 0 ? "var(--bull)" : "var(--bear)" }}>
         {r.pnl == null ? "—" : `${r.pnl >= 0 ? "+" : ""}$${r.pnl.toFixed(2)}`}
       </td>
-      <td style={{ ...COL, color: mktVal != null ? "var(--dim)" : "var(--ghost)" }} colSpan={2}>
-        {mktVal != null ? fmtMoney(mktVal) : "—"}
+      <td style={{ ...COL, color: mktVal != null && mktVal > 0 ? "var(--dim)" : "var(--ghost)" }} colSpan={2}>
+        {mktVal != null && mktVal > 0 ? fmtMoney(mktVal) : "—"}
         <span style={{ color: "var(--ghost)", fontSize: 13, fontWeight: 700, marginLeft: 10 }}>→</span>
       </td>
     </tr>
