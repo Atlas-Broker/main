@@ -190,7 +190,7 @@ function DailyRunsGrouped({
   runs, equityCurve, jobId, isActive, accent, executed, errors, onExportCSV, router,
 }: {
   runs: DailyRun[];
-  equityCurve: { date: string; value: number; cash: number }[];
+  equityCurve: { date: string; value: number; cash: number; positions?: Record<string, number> }[];
   jobId: string;
   isActive: boolean;
   accent: string;
@@ -210,8 +210,8 @@ function DailyRunsGrouped({
   }, [runs]);
 
   const curveByDate = useMemo(() => {
-    const m = new Map<string, { value: number; cash: number }>();
-    for (const pt of equityCurve) m.set(pt.date, { value: pt.value, cash: pt.cash });
+    const m = new Map<string, { value: number; cash: number; positions: Record<string, number> }>();
+    for (const pt of equityCurve) m.set(pt.date, { value: pt.value, cash: pt.cash, positions: pt.positions ?? {} });
     return m;
   }, [equityCurve]);
 
@@ -266,8 +266,7 @@ function DailyRunsGrouped({
                 <th style={TH}>Shares</th>
                 <th style={TH}>Price</th>
                 <th style={TH}>P&L</th>
-                <th style={TH}>Portfolio / Cash</th>
-                <th style={TH}></th>
+                <th style={TH} colSpan={2}>Portfolio / Cash</th>
               </tr>
             </thead>
             <tbody>
@@ -276,6 +275,7 @@ function DailyRunsGrouped({
                 const equity = curveByDate.get(date);
                 const portfolioVal = equity?.value ?? dayRuns[dayRuns.length - 1]?.portfolio_value_after ?? null;
                 const cashVal = equity?.cash ?? null;
+                const positionsVal = equity?.positions ?? {};
                 const executedRuns = dayRuns.filter((r) => r.executed);
                 const hasExecutions = executedRuns.length > 0;
                 // Rows to show when collapsed: only executed BUY/SELL
@@ -304,38 +304,39 @@ function DailyRunsGrouped({
                       <td style={COL_STYLE} />
                       <td style={COL_STYLE} />
                       <td style={COL_STYLE} />
-                      <td style={{ ...COL_STYLE, fontWeight: 700, color: "var(--dim)" }}>
-                        {portfolioVal != null ? fmtMoney(portfolioVal) : "—"}
-                        {cashVal != null && (
-                          <span style={{ fontWeight: 400, color: "var(--ghost)", fontSize: 10, marginLeft: 6 }}>
-                            cash {fmtMoney(cashVal)}
+                      <td style={{ ...COL_STYLE, fontWeight: 700, color: "var(--dim)" }} colSpan={2}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span>{portfolioVal != null ? fmtMoney(portfolioVal) : "—"}</span>
+                          {cashVal != null && (
+                            <span style={{ fontWeight: 400, color: "var(--ghost)", fontSize: 10 }}>
+                              cash {fmtMoney(cashVal)}
+                            </span>
+                          )}
+                          <span style={{ marginLeft: 8, color: "var(--ghost)", fontSize: 10 }}>
+                            {isOpen ? "▲" : "▼"}
                           </span>
-                        )}
-                      </td>
-                      <td style={{ ...COL_STYLE, color: "var(--ghost)", fontSize: 11, textAlign: "right" }}>
-                        {isOpen ? "▲" : "▼"}
+                        </div>
                       </td>
                     </tr>
 
                     {/* Collapsed: show only executed rows */}
                     {!isOpen && visibleWhenClosed.map((r) => (
-                      <StockRow key={r.ticker} r={r} date={date} jobId={jobId} router={router} dimmed />
+                      <StockRow key={r.ticker} r={r} date={date} jobId={jobId} router={router} positionsVal={positionsVal} dimmed />
                     ))}
 
                     {/* Expanded: show all stock rows + cash row */}
                     {isOpen && (
                       <>
                         {dayRuns.map((r) => (
-                          <StockRow key={r.ticker} r={r} date={date} jobId={jobId} router={router} />
+                          <StockRow key={r.ticker} r={r} date={date} jobId={jobId} router={router} positionsVal={positionsVal} />
                         ))}
                         {/* Cash row */}
                         {cashVal != null && (
                           <tr style={{ borderBottom: "1px solid var(--line)", background: "rgba(0,0,0,0.02)" }}>
                             <td style={{ ...COL_STYLE, color: "var(--ghost)", paddingLeft: 32 }} />
                             <td style={{ ...COL_STYLE, color: "var(--ghost)", fontStyle: "italic" }}>Cash</td>
-                            <td style={COL_STYLE} colSpan={6} />
-                            <td style={{ ...COL_STYLE, color: "var(--dim)", fontWeight: 600 }}>{fmtMoney(cashVal)}</td>
-                            <td style={COL_STYLE} />
+                            <td style={COL_STYLE} colSpan={5} />
+                            <td style={{ ...COL_STYLE, color: "var(--dim)", fontWeight: 600 }} colSpan={2}>{fmtMoney(cashVal)}</td>
                           </tr>
                         )}
                       </>
@@ -352,13 +353,15 @@ function DailyRunsGrouped({
 }
 
 function StockRow({
-  r, date, jobId, router, dimmed,
+  r, date, jobId, router, positionsVal, dimmed,
 }: {
   r: DailyRun; date: string; jobId: string;
   router: ReturnType<typeof import("next/navigation").useRouter>;
+  positionsVal: Record<string, number>;
   dimmed?: boolean;
 }) {
   const COL: React.CSSProperties = { padding: "8px 14px", whiteSpace: "nowrap" };
+  const mktVal = positionsVal[r.ticker];
   return (
     <tr
       onClick={() => router.push(`/admin/jobs/${jobId}/runs/${date}/${r.ticker}`)}
@@ -379,10 +382,10 @@ function StockRow({
       <td style={{ ...COL, color: r.pnl == null ? "var(--ghost)" : r.pnl >= 0 ? "var(--bull)" : "var(--bear)" }}>
         {r.pnl == null ? "—" : `${r.pnl >= 0 ? "+" : ""}$${r.pnl.toFixed(2)}`}
       </td>
-      <td style={{ ...COL, color: "var(--dim)" }}>
-        {r.portfolio_value_after != null ? fmtMoney(r.portfolio_value_after) : "—"}
+      <td style={{ ...COL, color: mktVal != null ? "var(--dim)" : "var(--ghost)" }} colSpan={2}>
+        {mktVal != null ? fmtMoney(mktVal) : "—"}
+        <span style={{ color: "var(--ghost)", fontSize: 13, fontWeight: 700, marginLeft: 10 }}>→</span>
       </td>
-      <td style={{ ...COL, color: "var(--ghost)", fontSize: 13, fontWeight: 700 }}>→</td>
     </tr>
   );
 }
