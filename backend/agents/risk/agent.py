@@ -3,8 +3,9 @@
 import time
 
 
-MAX_RISK_PER_TRADE = 0.02   # 2% of portfolio per trade
-STOP_LOSS_PCT = 0.05         # 5% stop-loss below entry
+MAX_RISK_PER_TRADE   = 0.01   # 1% of portfolio at risk per trade (conservative)
+STOP_LOSS_PCT        = 0.05   # 5% stop-loss below entry
+MAX_POSITION_PCT     = 0.15   # hard cap: no trade exceeds 15% of portfolio value
 
 
 def assess(
@@ -32,10 +33,12 @@ def assess(
     position_size = round(max_loss_dollars / risk_per_share, 0) if risk_per_share > 0 else 0
     position_value = round(position_size * current_price, 2)
 
-    # Cap position value to 95% of buying power so we don't drain all buying power on one trade
+    # Hard cap: never exceed MAX_POSITION_PCT of portfolio in a single trade
+    position_value = min(position_value, portfolio_value * MAX_POSITION_PCT)
+    # Also cap to available buying power (leave 10% cash reserve)
     if buying_power is not None:
-        position_value = min(position_value, buying_power * 0.95)
-        position_size = round(position_value / current_price, 0)
+        position_value = min(position_value, buying_power * 0.85)
+    position_size = round(position_value / current_price, 4) if current_price > 0 else 0
 
     position_pct = round(position_value / portfolio_value * 100, 2)
 

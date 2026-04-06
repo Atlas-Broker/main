@@ -165,7 +165,8 @@ async def run_portfolio(state: AgentState) -> dict:
         state["ticker"],
         state["synthesis"],
         state["risk"],
-        current_positions or None,  # pass None if empty so agent prompt skips the portfolio block
+        current_positions or None,
+        state.get("account_info") or None,
     )
     return {"portfolio_decision": result, "current_positions": current_positions}
 

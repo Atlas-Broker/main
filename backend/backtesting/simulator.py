@@ -9,6 +9,10 @@ from dataclasses import dataclass, field
 
 NOTIONAL = 1000.0  # $1,000 per trade — matches live EBC config
 
+# Portfolio risk guardrails
+MAX_POSITION_PCT  = 0.15   # no single ticker exceeds 15% of total portfolio at cost basis
+MIN_CASH_RESERVE_PCT = 0.10  # always keep 10% of portfolio in cash as dry powder
+
 CONFIDENCE_THRESHOLDS: dict[str, float | None] = {
     "advisory":              None,   # never execute
     "autonomous":            0.65,
@@ -32,7 +36,8 @@ class VirtualPortfolio:
 
     def __post_init__(self) -> None:
         self.cash = self.initial_capital
-        self.max_position_pct: float = 0.15
+        self.max_position_pct: float = MAX_POSITION_PCT
+        self.min_cash_reserve_pct: float = MIN_CASH_RESERVE_PCT
 
     def process(
         self,
@@ -73,8 +78,21 @@ class VirtualPortfolio:
         trade_notional = notional if notional is not None else NOTIONAL
         if trade_notional > 0 and price > 0:
             total_portfolio = self.cash + sum(pos.shares * pos.avg_cost for pos in self.positions.values())
+
+            # Cap 1: total position in this ticker (existing cost basis + new purchase) ≤ 15%
+            existing_cost = (self.positions[ticker].shares * self.positions[ticker].avg_cost
+                             if ticker in self.positions else 0.0)
             max_notional = total_portfolio * self.max_position_pct
-            trade_notional = min(trade_notional, max_notional)
+            remaining_capacity = max(0.0, max_notional - existing_cost)
+            trade_notional = min(trade_notional, remaining_capacity)
+
+            # Cap 2: always keep min_cash_reserve_pct of portfolio in cash
+            min_cash = total_portfolio * self.min_cash_reserve_pct
+            max_spend = max(0.0, self.cash - min_cash)
+            trade_notional = min(trade_notional, max_spend)
+
+        if trade_notional <= 0:
+            return {"executed": False, "skipped_reason": "position_cap_reached"}
         if self.cash < trade_notional:
             return {"executed": False, "skipped_reason": "insufficient_funds"}
         shares = trade_notional / price
