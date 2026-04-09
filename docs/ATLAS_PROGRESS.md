@@ -1,6 +1,6 @@
 # Atlas — Progress Log
 
-> What has been built and validated as of 5 April 2026.
+> What has been built and validated as of 9 April 2026.
 
 ---
 
@@ -402,7 +402,7 @@ Pages:
 | Tab | What it shows |
 |-----|---------------|
 | Overview | Portfolio equity, cash, day P&L, latest signal, open positions snapshot |
-| Signals | Signal list with confidence bars, risk params, approve/reject; calls `/v1/signals` |
+| Agent Logs | Signal list grouped by scan window; pastel BUY/SELL/HOLD badges for recommendations, solid-color badges for Alpaca-executed trades; shows recommended shares and price per signal; calls `/v1/signals` |
 | Positions | Open positions table with unrealised P&L; calls `/v1/portfolio` |
 | Backtest | Job list with progress/resume buttons, new job form, results detail with equity curve chart |
 | Settings | Theme toggle, execution mode selector (advisory/autonomous), watchlist editor (ticker + scan frequency persisted to Supabase via `/v1/watchlist`) |
@@ -489,6 +489,72 @@ Replaced the optimistic `INSERT` + catch-23505-then-`UPDATE` pattern in `AuthSyn
 
 ---
 
+## Agent Logs — Pastel/Solid Execution Coloring (9 April 2026)
+
+**Status: Live.**
+
+Agent Logs (formerly "Signals" tab) now visually distinguishes AI recommendations from Alpaca-executed trades:
+
+- **Pastel badges** (outline + tinted background) — agent recommendations not yet executed
+- **Solid badges** (filled background + white text) — trades actually placed on Alpaca
+
+Color map:
+- BUY: green (pastel `var(--bull)` outline / solid `#16a34a`)
+- SELL: red (pastel `var(--bear)` outline / solid `#dc2626`)
+- HOLD: amber `var(--hold)` (same for both)
+
+Each BUY/SELL signal row also displays recommended shares and price sourced from the pipeline's risk analysis.
+
+---
+
+## AI Decision Log — Lean Row-Based Redesign (9 April 2026)
+
+**Status: Live.**
+
+Per-ticker decision log (`/dashboard/stock/[ticker]`) redesigned from paragraph-heavy cards to a compact row-based layout:
+
+- Each row: action badge → dual timezone → confidence bar → detail arrow
+- **Dual timezone**: local time (SGT, `Asia/Singapore`) + US Eastern (`America/New_York`) on the same row
+- Shares and price displayed inline for BUY/SELL signals (in the action's color)
+- Same pastel/solid coloring as Agent Logs
+- Scroll position preserved via `sessionStorage` when navigating to/from signal detail
+- "Show all" button when >10 entries
+
+---
+
+## Equity Curve — Chart.js Rewrite with Live Portfolio (9 April 2026)
+
+**Status: Live.**
+
+Equity curve page (`/dashboard/equity-curve`) rebuilt with Chart.js (`react-chartjs-2`):
+
+- **Chart**: y-axis starts at 0, smooth tension (0.3), green/red line based on total return, touch-friendly hit radius (20px), compact axis labels
+- **Live data point**: today's portfolio value from Alpaca appended to historical equity curve (replaces stale same-day snapshot if present)
+- **Portfolio value header**: large current value, return %, PnL
+- **Key stats row**: Start ($100,000), Peak, Days traded
+- **Current Holdings section**: per-position rows (ticker, shares @ avg cost, market value, PnL with %), Cash row, Total row
+
+All data fetched in parallel: `fetchEquityCurve()` + `fetchWithAuth(/v1/portfolio)`.
+
+---
+
+## Signal Data Enrichment — Shares & Price (9 April 2026)
+
+**Status: Live.**
+
+All signals now include `shares` and `price` fields:
+
+1. **Base data**: every signal gets shares/price from the pipeline's risk analysis (`risk.position_size`, `risk.current_price`) stored in each MongoDB reasoning trace
+2. **Executed override**: signals that were actually traded on Alpaca have their shares/price overridden with actual values from the Supabase `trades` table (matched by `signal_id`)
+
+This enrichment applies to both:
+- `GET /v1/signals` (Agent Logs) — via `signals_service.py`
+- `GET /v1/portfolio/positions/{ticker}/log` (AI Decision Log) — via `portfolio.py`
+
+Previously, shares/price were only available for executed trades. Now all BUY/SELL signals show the recommended position size regardless of execution status.
+
+---
+
 ## Known Gaps / Next Priorities
 
 | Item | Status |
@@ -499,4 +565,4 @@ Replaced the optimistic `INSERT` + catch-23505-then-`UPDATE` pattern in `AuthSyn
 | RBAC audit | Planned — not all routes enforce roles yet |
 | Push / in-app notifications | Planned — currently email-only via Resend |
 
-*Last updated: 5 April 2026*
+*Last updated: 9 April 2026*

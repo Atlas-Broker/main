@@ -53,6 +53,9 @@ export type DecisionLogEntry = {
   reasoning: string;
   created_at: string;
   trace_id?: string | null;
+  executed?: boolean;
+  shares?: number | null;
+  price?: number | null;
 };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";

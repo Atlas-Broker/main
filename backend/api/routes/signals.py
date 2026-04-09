@@ -28,6 +28,8 @@ class Signal(BaseModel):
     created_at: str
     trace: dict[str, Any] | None = None
     execution: dict[str, Any] | None = None
+    shares: float | None = None
+    price: float | None = None
 
 
 @router.get("/signals", response_model=list[Signal])

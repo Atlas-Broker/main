@@ -180,6 +180,9 @@ class TickerDecision(BaseModel):
     reasoning: str
     created_at: str
     trace_id: str | None = None
+    executed: bool = False
+    shares: float | None = None
+    price: float | None = None
 
 
 _mongo_client = None  # module-level singleton — avoids creating a new client per request
@@ -216,6 +219,9 @@ def get_ticker_decision_log(
                  "pipeline_run.final_decision.action": 1,
                  "pipeline_run.final_decision.confidence": 1,
                  "pipeline_run.final_decision.reasoning": 1,
+                 "pipeline_run.risk.position_size": 1,
+                 "pipeline_run.risk.current_price": 1,
+                 "execution.executed": 1,
                  "created_at": 1},
                 sort=[("created_at", DESCENDING)],
             ).limit(limit)
@@ -225,16 +231,48 @@ def get_ticker_decision_log(
         return []
 
     results = []
+    executed_trace_ids: list[str] = []
     for trace in traces:
-        decision = trace.get("pipeline_run", {}).get("final_decision", {})
+        pipeline_run = trace.get("pipeline_run", {})
+        decision = pipeline_run.get("final_decision", {})
+        risk = pipeline_run.get("risk", {})
         created = trace.get("created_at", "")
         created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
+        trace_id = str(trace.get("_id", "")) or None
+        is_executed = bool(trace.get("execution", {}).get("executed", False))
+        if is_executed and trace_id:
+            executed_trace_ids.append(trace_id)
         results.append({
             "action": decision.get("action", "HOLD"),
             "confidence": float(decision.get("confidence", 0.0)),
             "reasoning": decision.get("reasoning", ""),
             "created_at": created_str,
-            "trace_id": str(trace.get("_id", "")) or None,
+            "trace_id": trace_id,
+            "executed": is_executed,
+            "shares": int(risk.get("position_size", 0)) or None,
+            "price": float(risk.get("current_price", 0)) or None,
         })
+
+    # Look up shares/price from Supabase trades for executed signals
+    if executed_trace_ids:
+        try:
+            from db.supabase import get_supabase
+            sb = get_supabase()
+            trades_resp = (
+                sb.table("trades")
+                .select("signal_id, shares, price")
+                .in_("signal_id", executed_trace_ids)
+                .execute()
+            )
+            trade_map = {
+                t["signal_id"]: t for t in (trades_resp.data or [])
+            }
+            for r in results:
+                trade = trade_map.get(r["trace_id"])
+                if trade:
+                    r["shares"] = trade.get("shares")
+                    r["price"] = trade.get("price")
+        except Exception as exc:
+            logger.warning("Failed to fetch trade details for ticker log: %r", exc)
 
     return results

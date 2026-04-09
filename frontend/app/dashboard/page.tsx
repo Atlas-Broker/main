@@ -61,6 +61,14 @@ type Signal = {
   created_at: string;
   status?: "awaiting_approval" | "rejected" | "executed";
   trace?: TracePanel;
+  execution?: {
+    executed: boolean;
+    rejected: boolean;
+    order_id?: string;
+    status: string;
+  };
+  shares?: number | null;
+  price?: number | null;
 };
 
 type Position = {

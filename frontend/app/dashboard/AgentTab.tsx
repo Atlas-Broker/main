@@ -17,6 +17,14 @@ type Signal = {
   boundary_mode: string;
   created_at: string;
   status?: string;
+  execution?: {
+    executed: boolean;
+    rejected: boolean;
+    order_id?: string;
+    status: string;
+  };
+  shares?: number | null;
+  price?: number | null;
 };
 
 type LogGroup = {
@@ -41,9 +49,17 @@ const SCAN_TIMES: Record<Schedule, string[]> = {
   "6x": ["06:30", "09:30", "12:00", "13:30", "15:00", "16:30"],
 };
 
+/** Pastel tones for agent recommendations (not yet executed). */
 const ACTION_COLOR = {
   BUY:  "var(--bull)",
   SELL: "var(--bear)",
+  HOLD: "var(--hold)",
+} as const;
+
+/** Solid / high-saturation tones for signals actually executed on Alpaca. */
+const EXECUTED_COLOR = {
+  BUY:  "#16a34a",   // solid green-600
+  SELL: "#dc2626",   // solid red-600
   HOLD: "var(--hold)",
 } as const;
 
@@ -541,7 +557,8 @@ function LogGroupRow({
       }}>
         {/* BUY / SELL rows */}
         {actions.map((sig, i) => {
-          const c = ACTION_COLOR[sig.action];
+          const executed = sig.execution?.executed === true;
+          const c = executed ? EXECUTED_COLOR[sig.action] : ACTION_COLOR[sig.action];
           const isLast = i === actions.length - 1 && holds.length === 0;
           return (
             <button
@@ -560,32 +577,61 @@ function LogGroupRow({
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                {/* Action badge */}
-                <span style={{
-                  padding: "2px 8px",
-                  borderRadius: 4,
-                  fontSize: 10,
-                  fontFamily: "var(--font-jb)",
-                  fontWeight: 700,
-                  color: c,
-                  background: `${c}15`,
-                  border: `1px solid ${c}35`,
-                  letterSpacing: "0.05em",
-                  minWidth: 36,
-                  textAlign: "center" as const,
-                }}>
-                  {sig.action}
-                </span>
-                {/* Ticker */}
-                <span style={{
-                  fontSize: 15,
-                  fontFamily: "var(--font-jb)",
-                  fontWeight: 700,
-                  color: "var(--ink)",
-                  letterSpacing: "0.02em",
-                }}>
-                  {sig.ticker}
-                </span>
+                {/* Action badge — solid bg for executed, pastel outline for recommendations */}
+                {executed ? (
+                  <span style={{
+                    padding: "2px 8px",
+                    borderRadius: 4,
+                    fontSize: 10,
+                    fontFamily: "var(--font-jb)",
+                    fontWeight: 700,
+                    color: "#fff",
+                    background: c,
+                    letterSpacing: "0.05em",
+                    minWidth: 36,
+                    textAlign: "center" as const,
+                  }}>
+                    {sig.action}
+                  </span>
+                ) : (
+                  <span style={{
+                    padding: "2px 8px",
+                    borderRadius: 4,
+                    fontSize: 10,
+                    fontFamily: "var(--font-jb)",
+                    fontWeight: 700,
+                    color: c,
+                    background: `${c}15`,
+                    border: `1px solid ${c}35`,
+                    letterSpacing: "0.05em",
+                    minWidth: 36,
+                    textAlign: "center" as const,
+                  }}>
+                    {sig.action}
+                  </span>
+                )}
+                {/* Ticker + trade details */}
+                <div>
+                  <span style={{
+                    fontSize: 15,
+                    fontFamily: "var(--font-jb)",
+                    fontWeight: 700,
+                    color: "var(--ink)",
+                    letterSpacing: "0.02em",
+                  }}>
+                    {sig.ticker}
+                  </span>
+                  {sig.action !== "HOLD" && sig.shares != null && sig.price != null && (
+                    <div style={{
+                      fontSize: 10,
+                      fontFamily: "var(--font-jb)",
+                      color: "var(--ghost)",
+                      marginTop: 1,
+                    }}>
+                      {sig.shares % 1 === 0 ? sig.shares : sig.shares.toFixed(2)} sh @ ${sig.price.toFixed(2)}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

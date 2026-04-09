@@ -1,42 +1,191 @@
 // frontend/app/dashboard/equity-curve/page.tsx
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { fetchEquityCurve, type EquityCurvePoint } from "@/lib/api";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+} from "chart.js";
+import { Line } from "react-chartjs-2";
+import { fetchEquityCurve, fetchWithAuth, type EquityCurvePoint } from "@/lib/api";
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const BASE_CAPITAL = 100_000;
 
-function sparkPath(points: EquityCurvePoint[], width: number, height: number): string {
-  if (points.length < 2) return "";
-  const values = points.map((p) => p.value);
-  const minV = Math.min(...values);
-  const maxV = Math.max(...values);
-  const range = maxV - minV || 1;
-  const xs = points.map((_, i) => (i / (points.length - 1)) * width);
-  const ys = points.map((p) => height - ((p.value - minV) / range) * height * 0.9 - height * 0.05);
-  return xs.map((x, i) => `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${ys[i].toFixed(1)}`).join(" ");
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+type Position = {
+  ticker: string;
+  shares: number;
+  avg_cost: number;
+  current_price: number;
+  pnl: number;
+};
+
+type Portfolio = {
+  total_value: number;
+  cash: number;
+  pnl_today: number;
+  pnl_total: number;
+  positions: Position[];
+};
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function fmt(n: number): string {
+  return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+function fmtCompact(n: number): string {
+  if (n >= 1_000_000) return "$" + (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return "$" + (n / 1_000).toFixed(n >= 10_000 ? 0 : 1) + "k";
+  return "$" + n.toFixed(0);
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// ─── Chart component ────────────────────────────────────────────────────────
+
+function EquityChart({ points, positive }: { points: EquityCurvePoint[]; positive: boolean }) {
+  const chartRef = useRef<ChartJS<"line">>(null);
+
+  const lineColor = positive ? "#16a34a" : "#dc2626";
+  const fillColor = positive ? "rgba(22, 163, 74, 0.08)" : "rgba(220, 38, 38, 0.06)";
+
+  const data = useMemo(() => ({
+    labels: points.map((p) => formatDate(p.date)),
+    datasets: [
+      {
+        data: points.map((p) => p.value),
+        borderColor: lineColor,
+        backgroundColor: fillColor,
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        pointHitRadius: 20,
+        pointHoverRadius: 4,
+        pointHoverBackgroundColor: lineColor,
+        pointHoverBorderColor: "#fff",
+        pointHoverBorderWidth: 2,
+        borderWidth: 2,
+      },
+    ],
+  }), [points, lineColor, fillColor]);
+
+  const options = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: "index" as const,
+      intersect: false,
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: "rgba(15, 23, 42, 0.92)",
+        titleFont: { family: "'JetBrains Mono', monospace", size: 11 },
+        bodyFont: { family: "'JetBrains Mono', monospace", size: 12, weight: "bold" as const },
+        padding: { top: 8, bottom: 8, left: 12, right: 12 },
+        cornerRadius: 8,
+        displayColors: false,
+        callbacks: {
+          title: (items: { label: string }[]) => items[0]?.label ?? "",
+          label: (item: { raw: unknown }) =>
+            "$" + (item.raw as number).toLocaleString("en-US", { maximumFractionDigits: 0 }),
+        },
+      },
+    },
+    scales: {
+      x: {
+        grid: { display: false },
+        ticks: {
+          font: { family: "'JetBrains Mono', monospace", size: 10 },
+          color: "rgba(148, 163, 184, 0.6)",
+          maxTicksLimit: 6,
+          maxRotation: 0,
+        },
+        border: { display: false },
+      },
+      y: {
+        min: 0,
+        grid: {
+          color: "rgba(148, 163, 184, 0.08)",
+          drawTicks: false,
+        },
+        ticks: {
+          font: { family: "'JetBrains Mono', monospace", size: 10 },
+          color: "rgba(148, 163, 184, 0.6)",
+          padding: 8,
+          callback: (value: string | number) => fmtCompact(Number(value)),
+          maxTicksLimit: 5,
+        },
+        border: { display: false },
+      },
+    },
+    layout: {
+      padding: { top: 4, right: 4, bottom: 0, left: 0 },
+    },
+  }), []);
+
+  return (
+    <div style={{ height: 220, position: "relative" }}>
+      <Line ref={chartRef} data={data} options={options} />
+    </div>
+  );
+}
+
+// ─── Main page ──────────────────────────────────────────────────────────────
 
 function EquityCurveContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rangeParam = searchParams.get("range") ?? "all";
   const [points, setPoints] = useState<EquityCurvePoint[]>([]);
+  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchEquityCurve(API_URL).then((data) => {
-      setPoints(data);
+    Promise.all([
+      fetchEquityCurve(API_URL),
+      fetchWithAuth(`${API_URL}/v1/portfolio`).then((r) => r?.json() ?? null),
+    ]).then(([curveData, portData]) => {
+      setPoints(curveData);
+      setPortfolio(portData);
       setLoading(false);
     });
   }, []);
 
-  const last = points[points.length - 1];
-  // Find the first point with a nonzero value as the baseline (avoids Infinity when starting with 0 cash)
-  const first = points.find((p) => p.value > 0) ?? points[0];
-  const totalReturn = last && first && first.value > 0 ? ((last.value - first.value) / first.value) * 100 : 0;
+  // Append today's live portfolio value to the chart so it reflects the current state
+  const chartPoints = useMemo(() => {
+    if (!portfolio || points.length === 0) return points;
+    const today = new Date().toISOString().slice(0, 10);
+    const lastDate = points[points.length - 1].date.slice(0, 10);
+    if (lastDate === today) {
+      // Replace today's stale snapshot with live value
+      return [...points.slice(0, -1), { date: today, value: portfolio.total_value }];
+    }
+    return [...points, { date: today, value: portfolio.total_value }];
+  }, [points, portfolio]);
+
+  const first = chartPoints.find((p) => p.value > 0) ?? chartPoints[0];
+  const currentValue = portfolio?.total_value ?? chartPoints[chartPoints.length - 1]?.value ?? 0;
+  const totalReturn = first && first.value > 0
+    ? ((currentValue - first.value) / first.value) * 100
+    : 0;
   const positive = totalReturn >= 0;
+  const pnlTotal = portfolio?.pnl_total ?? (currentValue - BASE_CAPITAL);
+  const peakValue = Math.max(...chartPoints.map((p) => p.value));
 
   return (
     <div style={{ background: "var(--bg)", minHeight: "100vh", maxWidth: 520, margin: "0 auto" }}>
@@ -49,107 +198,189 @@ function EquityCurveContent() {
         <button onClick={() => router.back()} style={{
           background: "transparent", border: "none", cursor: "pointer",
           color: "var(--ghost)", fontSize: 20, padding: 0, lineHeight: 1,
-        }}>←</button>
+        }}>
+          ←
+        </button>
         <span className="font-display font-bold" style={{ fontSize: 17, color: "var(--ink)" }}>
           {rangeParam === "1d" ? "Today" : "All-Time"} Equity Curve
         </span>
       </header>
 
-      <main style={{ padding: "24px 20px" }}>
+      <main style={{ padding: "20px" }}>
         {loading ? (
-          <div style={{ color: "var(--ghost)", fontSize: 13, textAlign: "center", paddingTop: 48 }}>Loading…</div>
+          <div style={{ color: "var(--ghost)", fontSize: 13, textAlign: "center", paddingTop: 48 }}>
+            Loading...
+          </div>
         ) : points.length === 0 ? (
-          <div style={{ color: "var(--ghost)", fontSize: 13, textAlign: "center", paddingTop: 48 }}>No equity data yet.</div>
+          <div style={{ color: "var(--ghost)", fontSize: 13, textAlign: "center", paddingTop: 48 }}>
+            No equity data yet.
+          </div>
         ) : (
           <>
-            {/* Return headline */}
-            <div style={{ marginBottom: 24 }}>
-              <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-mono)", marginBottom: 4 }}>TOTAL RETURN</div>
-              <div className="num font-display font-bold" style={{
-                fontSize: 42, letterSpacing: "-0.03em",
-                color: positive ? "var(--bull)" : "var(--bear)",
+            {/* Portfolio value + return */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{
+                fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)",
+                letterSpacing: "0.1em", textTransform: "uppercase" as const, marginBottom: 6,
               }}>
-                {positive ? "+" : ""}{totalReturn.toFixed(2)}%
+                Portfolio Value
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                <span className="num font-display font-bold" style={{
+                  fontSize: 32, color: "var(--ink)", letterSpacing: "-0.02em",
+                }}>
+                  {fmt(currentValue)}
+                </span>
+                <span style={{
+                  fontSize: 14, fontFamily: "var(--font-jb)", fontWeight: 700,
+                  color: positive ? "var(--bull)" : "var(--bear)",
+                }}>
+                  {positive ? "+" : ""}{totalReturn.toFixed(2)}%
+                </span>
+              </div>
+              <div style={{
+                fontSize: 12, fontFamily: "var(--font-jb)", color: "var(--ghost)", marginTop: 2,
+              }}>
+                PnL {pnlTotal >= 0 ? "+" : ""}{fmt(pnlTotal)}
               </div>
             </div>
 
-            {/* SVG chart with axes */}
+            {/* Chart */}
             <div style={{
               background: "var(--surface)", border: "1px solid var(--line)",
-              borderRadius: 12, padding: "16px 16px 8px 8px", marginBottom: 24, overflow: "hidden",
+              borderRadius: 12, padding: "16px 12px 12px", marginBottom: 20,
+              boxShadow: "var(--card-shadow)",
             }}>
-              {(() => {
-                const W = 460, H = 140, PAD_L = 52, PAD_B = 28, PAD_T = 8;
-                const plotW = W - PAD_L;
-                const plotH = H - PAD_B - PAD_T;
-                const values = points.map(p => p.value);
-                const minV = Math.min(...values);
-                const maxV = Math.max(...values);
-                const range = maxV - minV || 1;
-                // Y gridlines: 4 levels
-                const yTicks = [0, 0.33, 0.66, 1].map(t => ({
-                  frac: t,
-                  val: minV + t * range,
-                  y: PAD_T + plotH - t * plotH,
-                }));
-                // X ticks: ~5 date labels spread evenly
-                const xStep = Math.max(1, Math.floor((points.length - 1) / 4));
-                const xTicks = points
-                  .map((p, i) => ({ i, label: new Date(p.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) }))
-                  .filter((_,i) => i % xStep === 0 || i === points.length - 1);
-                // Build path in plot coords
-                const path = points.map((p, i) => {
-                  const x = PAD_L + (i / (points.length - 1)) * plotW;
-                  const y = PAD_T + plotH - ((p.value - minV) / range) * plotH;
-                  return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-                }).join(" ");
-                const lineColor = positive ? "var(--bull)" : "var(--bear)";
-                return (
-                  <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
-                    {/* Y gridlines + labels */}
-                    {yTicks.map(({ val, y }, i) => (
-                      <g key={i}>
-                        <line x1={PAD_L} x2={W} y1={y} y2={y} stroke="var(--line)" strokeWidth={0.5} strokeDasharray="3,3" />
-                        <text x={PAD_L - 4} y={y + 3.5} textAnchor="end" fontSize={8} fontFamily="var(--font-jb)" fill="var(--ghost)">
-                          ${val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val.toFixed(0)}
-                        </text>
-                      </g>
-                    ))}
-                    {/* X date labels */}
-                    {xTicks.map(({ i, label }) => {
-                      const x = PAD_L + (i / (points.length - 1)) * plotW;
-                      return (
-                        <text key={i} x={x} y={H - 6} textAnchor="middle" fontSize={8} fontFamily="var(--font-jb)" fill="var(--ghost)">
-                          {label}
-                        </text>
-                      );
-                    })}
-                    {/* Equity line */}
-                    <path d={path} fill="none" stroke={lineColor} strokeWidth={2} strokeLinejoin="round" />
-                  </svg>
-                );
-              })()}
+              <EquityChart points={chartPoints} positive={positive} />
             </div>
 
-            {/* Key stats */}
+            {/* Key stats row */}
             <div style={{
-              background: "var(--surface)", border: "1px solid var(--line)",
-              borderRadius: 12, padding: "16px 20px",
+              display: "flex", gap: 8, marginBottom: 20,
             }}>
-              <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-mono)", marginBottom: 12, letterSpacing: "0.06em" }}>KEY STATS</div>
-              <div className="grid grid-cols-3 gap-4">
-                {[
-                  { label: "Current", value: last ? `$${last.value.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—" },
-                  { label: "Peak",    value: points.length ? `$${Math.max(...points.map(p => p.value)).toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—" },
-                  { label: "Days",    value: String(points.length) },
-                ].map((s) => (
-                  <div key={s.label} className="text-center">
-                    <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-mono)", marginBottom: 4 }}>{s.label.toUpperCase()}</div>
-                    <div className="num" style={{ color: "var(--ink)", fontSize: 14, fontWeight: 600 }}>{s.value}</div>
+              {[
+                { label: "Start", value: fmt(BASE_CAPITAL) },
+                { label: "Peak", value: fmt(peakValue) },
+                { label: "Days", value: String(chartPoints.length) },
+              ].map((s) => (
+                <div key={s.label} style={{
+                  flex: 1, background: "var(--surface)", border: "1px solid var(--line)",
+                  borderRadius: 10, padding: "12px 10px", textAlign: "center",
+                  boxShadow: "var(--card-shadow)",
+                }}>
+                  <div style={{
+                    fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)",
+                    letterSpacing: "0.08em", textTransform: "uppercase" as const, marginBottom: 4,
+                  }}>
+                    {s.label}
                   </div>
-                ))}
-              </div>
+                  <div className="num" style={{
+                    fontSize: 13, fontFamily: "var(--font-jb)", fontWeight: 700, color: "var(--ink)",
+                  }}>
+                    {s.value}
+                  </div>
+                </div>
+              ))}
             </div>
+
+            {/* Current holdings */}
+            {portfolio && (
+              <div style={{
+                background: "var(--surface)", border: "1px solid var(--line)",
+                borderRadius: 12, overflow: "hidden", boxShadow: "var(--card-shadow)",
+              }}>
+                <div style={{
+                  padding: "14px 16px 10px",
+                  fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)",
+                  letterSpacing: "0.1em", textTransform: "uppercase" as const,
+                }}>
+                  Current Holdings
+                </div>
+
+                {/* Positions */}
+                {portfolio.positions.map((pos) => {
+                  const mktValue = pos.shares * pos.current_price;
+                  const pnlPct = pos.avg_cost > 0
+                    ? ((pos.current_price - pos.avg_cost) / pos.avg_cost) * 100
+                    : 0;
+                  const posPositive = pos.pnl >= 0;
+
+                  return (
+                    <div key={pos.ticker} style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "10px 16px", borderTop: "1px solid var(--line)",
+                    }}>
+                      <div>
+                        <div style={{
+                          fontSize: 14, fontFamily: "var(--font-jb)", fontWeight: 700,
+                          color: "var(--ink)",
+                        }}>
+                          {pos.ticker}
+                        </div>
+                        <div style={{
+                          fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)",
+                        }}>
+                          {pos.shares % 1 === 0 ? pos.shares : pos.shares.toFixed(2)} sh @ {fmt(pos.avg_cost)}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right" as const }}>
+                        <div className="num" style={{
+                          fontSize: 13, fontFamily: "var(--font-jb)", fontWeight: 700,
+                          color: "var(--ink)",
+                        }}>
+                          {fmt(mktValue)}
+                        </div>
+                        <div className="num" style={{
+                          fontSize: 10, fontFamily: "var(--font-jb)", fontWeight: 600,
+                          color: posPositive ? "var(--bull)" : "var(--bear)",
+                        }}>
+                          {posPositive ? "+" : ""}{fmt(pos.pnl)} ({posPositive ? "+" : ""}{pnlPct.toFixed(1)}%)
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Cash row */}
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "10px 16px", borderTop: "1px solid var(--line)",
+                }}>
+                  <div style={{
+                    fontSize: 14, fontFamily: "var(--font-jb)", fontWeight: 700,
+                    color: "var(--ink)",
+                  }}>
+                    Cash
+                  </div>
+                  <div className="num" style={{
+                    fontSize: 13, fontFamily: "var(--font-jb)", fontWeight: 700,
+                    color: "var(--ink)",
+                  }}>
+                    {fmt(portfolio.cash)}
+                  </div>
+                </div>
+
+                {/* Total row */}
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "12px 16px", borderTop: "1px solid var(--line)",
+                  background: "var(--elevated)",
+                }}>
+                  <div style={{
+                    fontSize: 11, fontFamily: "var(--font-jb)", fontWeight: 700,
+                    color: "var(--dim)", letterSpacing: "0.04em",
+                  }}>
+                    TOTAL
+                  </div>
+                  <div className="num" style={{
+                    fontSize: 15, fontFamily: "var(--font-jb)", fontWeight: 700,
+                    color: "var(--ink)",
+                  }}>
+                    {fmt(portfolio.total_value)}
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </main>

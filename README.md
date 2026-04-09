@@ -94,6 +94,11 @@ Metrics computed: cumulative return, Sharpe ratio (annualised), max drawdown, wi
 
 Six pages: landing (`/`), pricing (`/pricing`), login (`/login`), user dashboard (`/dashboard`, 5 tabs), admin panel (`/admin`), and design system (`/design-system`). Auth gated via Clerk. Light theme; manual dark mode toggle. Pricing shows Free/Pro/Max with annual/monthly toggle. Dashboard settings tab includes watchlist editor (per-ticker scan frequency, persisted to Supabase).
 
+Key UX features:
+- **Agent Logs** — Grouped by scan window with BUY/SELL/HOLD badges. Pastel colors for agent recommendations, solid colors for trades executed on Alpaca. Shows recommended shares and price per signal.
+- **AI Decision Log** — Per-ticker lean row-based log with dual timezone (SGT local + US Eastern), shares/price from risk analysis, and pastel vs solid execution coloring.
+- **Equity Curve** — Chart.js line chart (0 to max, touch-friendly tooltips), live portfolio value appended as today's data point, current holdings breakdown with per-position PnL, cash balance, and total.
+
 ### Databases — both active
 
 - **MongoDB Atlas** — `reasoning_traces` (every pipeline run) and `backtest_results` (full daily runs, equity curve, checkpoint, metrics)

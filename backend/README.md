@@ -77,12 +77,12 @@ The JWKS URL is derived automatically from `CLERK_PUBLISHABLE_KEY` (decodes the 
 |--------|------|-------------|
 | `GET` | `/health` | Health check — returns status, version, env |
 | `POST` | `/v1/pipeline/run` | Runs the full agent pipeline for a ticker |
-| `GET` | `/v1/signals` | Fetches recent signals from MongoDB reasoning traces |
+| `GET` | `/v1/signals` | Fetches recent signals from MongoDB reasoning traces. Each signal includes `shares` and `price` (from risk analysis), and `executed` flag. Executed signals have shares/price overridden with actual Supabase trade data. |
 | `POST` | `/v1/signals/{id}/approve` | Places Alpaca order; marks trace as executed (idempotent) |
 | `POST` | `/v1/signals/{id}/reject` | Persists rejection to MongoDB trace |
 | `GET` | `/v1/portfolio` | Returns live equity, cash, and positions from Alpaca |
 | `GET` | `/v1/portfolio/equity-curve` | Historical equity curve from Alpaca portfolio history API |
-| `GET` | `/v1/portfolio/positions/{ticker}/log` | Decision log for a ticker from MongoDB |
+| `GET` | `/v1/portfolio/positions/{ticker}/log` | Decision log for a ticker from MongoDB. Each entry includes `executed`, `shares`, and `price` fields — sourced from risk analysis, overridden with Supabase trade data for executed signals. |
 | `GET` | `/v1/trades` | Returns trade history from Supabase |
 | `POST` | `/v1/trades/{id}/override` | Cancels Alpaca order; writes to Supabase `override_log` |
 | `GET` | `/v1/watchlist` | Returns user's watchlist with schedule codes |

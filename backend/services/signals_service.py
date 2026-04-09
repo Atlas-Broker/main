@@ -70,16 +70,41 @@ def _trace_to_signal(trace: dict) -> dict:
             "order_id": execution.get("order_id"),
             "status": execution.get("status", "pending"),
         },
+        "shares": int(risk.get("position_size", 0)) or None,
+        "price": float(risk.get("current_price", 0)) or None,
     }
 
 
 def get_recent_signals(user_id: str, limit: int = 20) -> list[dict]:
-    """Return recent signals for the given user only."""
+    """Return recent signals for the given user, enriched with trade data."""
     col = _get_collection()
     traces = list(
         col.find({"user_id": user_id}, sort=[("created_at", DESCENDING)]).limit(limit)
     )
-    return [_trace_to_signal(t) for t in traces]
+    signals = [_trace_to_signal(t) for t in traces]
+
+    # Enrich executed signals with shares/price from Supabase trades
+    executed_ids = [s["id"] for s in signals if s.get("execution", {}).get("executed")]
+    if executed_ids:
+        try:
+            from db.supabase import get_supabase
+            sb = get_supabase()
+            trades_resp = (
+                sb.table("trades")
+                .select("signal_id, shares, price")
+                .in_("signal_id", executed_ids)
+                .execute()
+            )
+            trade_map = {t["signal_id"]: t for t in (trades_resp.data or [])}
+            for s in signals:
+                trade = trade_map.get(s["id"])
+                if trade:
+                    s["shares"] = trade.get("shares")
+                    s["price"] = trade.get("price")
+        except Exception as exc:
+            logger.warning("Failed to enrich signals with trade data: %r", exc)
+
+    return signals
 
 
 def approve_and_execute(signal_id: str, user_id: str) -> dict:
