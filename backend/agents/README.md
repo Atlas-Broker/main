@@ -42,7 +42,7 @@ This directory contains the LangGraph-based multi-agent pipeline that generates 
                                   ▼
                     ┌─────────────────────────┐
                     │  Execution Boundary     │
-                    │  Controller (EBC)       │  advisory / guardrail / autonomous
+                    │  Controller (EBC)       │  advisory / autonomous
                     └─────────────────────────┘
 ```
 
@@ -246,8 +246,7 @@ After the graph completes, `pipeline_service.py` hands the `AgentSignal` to the 
 | Mode | Behaviour |
 |---|---|
 | `advisory` | Signal returned to user for manual review — no order placed |
-| `autonomous_guardrail` | Auto-executes if `confidence ≥ 0.65`; holds for human review otherwise, fires email notification |
-| `autonomous` | Always executes; 5-minute override window returned to frontend |
+| `autonomous` | Auto-executes if `confidence ≥ 0.65`; low-confidence signals held for human review with email notification. 5-minute override window on executed trades. |
 
 Before placing any autonomous order, the EBC calls `broker.get_open_orders(ticker)` and cancels each one to prevent stale orders from accumulating between pipeline runs.
 

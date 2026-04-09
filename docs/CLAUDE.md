@@ -47,10 +47,9 @@ docker run -p 8000:8000 --env-file .env atlas-backend
 `Market Data → [Technical | Fundamental | Sentiment] (parallel) → Synthesis → Risk → Portfolio Decision → Execution Boundary Controller → Broker Adapter`
 
 ### Execution Boundary Controller
-The core differentiator. Three modes (same trading logic, different execution authority):
+The core differentiator. Two modes (same trading logic, different execution authority):
 - **Advisory** — AI signals only, human executes manually
-- **Conditional** — AI proposes, human must approve before execution
-- **Autonomous** — AI executes, human has override window
+- **Autonomous** — AI executes (≥65% confidence auto-executes, lower held for review with email notification), human has override window
 
 ### Databases
 - **Supabase (PostgreSQL)** — users, portfolios, positions, trades, override_log. RLS enabled, `user_id` on every table.

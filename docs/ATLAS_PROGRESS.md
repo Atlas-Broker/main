@@ -53,13 +53,12 @@ In live mode, the graph fetches real account balance and positions from the per-
 
 ## Execution Boundary Controller
 
-**Status: All three modes operational, override window wired.**
+**Status: Both modes operational, override window wired.**
 
 | Mode | Confidence Threshold | Behaviour |
 |------|---------------------|-----------|
 | Advisory | N/A | Returns signal only — human executes manually via approve button |
-| Autonomous Guardrail | ≥ 65% auto-executes; < 65% holds for review | High-confidence signals execute immediately; low-confidence signals queue and fire an email notification via Resend |
-| Autonomous | ≥ 65% | Executes immediately — user has 5-minute override window to cancel |
+| Autonomous | ≥ 65% auto-executes; < 65% held for review | High-confidence signals execute immediately with 5-minute override window; low-confidence signals are held and user is notified via Resend email |
 
 Before each autonomous execution, `pipeline_service.py` fetches and cancels any unfulfilled open orders for that ticker on Alpaca, preventing stale orders from accumulating between runs.
 
@@ -231,7 +230,7 @@ Backend uses `SUPABASE_SERVICE_KEY` (bypasses RLS natively) for all writes. The 
 
 **Status: Live.**
 
-`services/notification_service.py` sends emails via the Resend API. Currently used exclusively by the Autonomous Guardrail EBC mode to notify users when a low-confidence signal is queued for human review. Email includes ticker, action, confidence score, and approve/reject links.
+`services/notification_service.py` sends emails via the Resend API. Used by the Autonomous mode to notify users when a low-confidence signal (below 65%) is held for human review. Email includes ticker, action, confidence score, and approve/reject links.
 
 ---
 
@@ -316,7 +315,7 @@ Replays the real Atlas AI pipeline (live Gemini calls) across historical date ra
 - Single shared `$10,000` capital pool across all tickers (mirrors real single-account behaviour)
 - Position sizing driven by the risk agent's computed `position_value` (capped at virtual `buying_power × 0.95`) — not a hardcoded notional
 - Portfolio state (cash + all positions) is snapshotted before each trading day's pipeline calls and pre-seeded into the graph, so the portfolio agent reasons over all positions simultaneously
-- EBC confidence thresholds mirror live config: conditional ≥ 60%, autonomous ≥ 65%
+- EBC confidence threshold mirrors live config: autonomous ≥ 65%
 - Advisory mode: signals only — no trades, total_trades always 0
 - Execution price: next trading day's open (fetched via yfinance, outside the constrained pipeline call — no look-ahead bias)
 - Short selling not supported — SELL signals only close existing long positions

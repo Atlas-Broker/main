@@ -108,7 +108,7 @@ The JWKS URL is derived automatically from `CLERK_PUBLISHABLE_KEY` (decodes the 
 curl -X POST http://localhost:8000/v1/pipeline/run \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <clerk-jwt>" \
-  -d '{"ticker": "AAPL", "boundary_mode": "conditional"}'
+  -d '{"ticker": "AAPL", "boundary_mode": "advisory"}'
 ```
 
 Returns action, confidence, reasoning, risk parameters (stop-loss, take-profit, position size, R/R ratio), and a MongoDB trace ID.

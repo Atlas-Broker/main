@@ -13,7 +13,7 @@ Most retail AI trading tools are black boxes. Atlas shows its reasoning at every
 | Mode | Behaviour |
 |------|-----------|
 | **Advisory** | AI generates signals — you execute manually. Full reasoning on every signal. |
-| **Autonomous** | AI executes automatically within your risk limits. 5-minute override window on every trade. |
+| **Autonomous** | AI executes automatically within your risk limits. Low-confidence signals (below 65%) are held for review with email notification. 5-minute override window on every trade. |
 
 The trading logic is identical across both modes. Only the execution authority changes.
 
@@ -39,7 +39,7 @@ All analyst and decision nodes are real implementations — no stubs. The risk a
 
 ### Execution Boundary Controller — fully operational
 
-Three modes with confidence thresholds (60% conditional, 65% autonomous). Before each autonomous execution, stale open orders for the ticker are cancelled on Alpaca. Advisory returns the signal only; Conditional marks it `awaiting_approval`; Autonomous executes immediately and opens an override window.
+Two modes with a 65% confidence threshold for autonomous execution. Before each autonomous execution, stale open orders for the ticker are cancelled on Alpaca. Advisory returns the signal only; Autonomous auto-executes signals at or above 65% confidence (lower-confidence signals are held for review with email notification) and opens a 5-minute override window.
 
 ### Backtest / Live Trading Isolation
 
@@ -132,7 +132,7 @@ Run the pipeline directly:
 curl -X POST http://localhost:8000/v1/pipeline/run \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <clerk-jwt>" \
-  -d '{"ticker": "AAPL", "boundary_mode": "conditional"}'
+  -d '{"ticker": "AAPL", "boundary_mode": "advisory"}'
 ```
 
 ## Tech Stack
