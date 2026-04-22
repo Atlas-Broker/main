@@ -5,9 +5,12 @@ import {
   KNOWN_SLUGS,
   appendToSection,
   createSection,
+  deleteSection,
   listRecentChanges,
   listSections,
+  moveSection,
   patchSection,
+  readDoc,
   readSection,
   renameSection,
 } from "@/lib/atlas-docs";
@@ -116,6 +119,54 @@ ${SLUG_GUIDANCE}`,
         expected_version: { type: "integer", minimum: 1 },
       },
       required: ["doc_slug", "heading", "new_heading", "expected_version"],
+    },
+  },
+  {
+    name: "move_section",
+    description: `Reorder a section by updating its position, shifting affected siblings to keep positions contiguous. Insert-at-N semantics: "new_position = N" places the section at N and bumps anything currently at or past N by one slot (same mental model as create_section with an explicit position). Moving down pulls intervening sections up by one; moving up pushes intervening sections down by one. Guarded by expected_version — if the section was patched, renamed, or moved since you read it, returns version_conflict and you must re-read before retrying.
+${SLUG_GUIDANCE}
+Returns { heading, old_position, new_position, version }. Use list_sections afterwards if you want to verify the full new ordering.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        doc_slug: { type: "string", enum: [...KNOWN_SLUGS] },
+        heading: { type: "string" },
+        new_position: {
+          type: "integer",
+          minimum: 0,
+          description: "Zero-indexed target slot. Sections currently at or after this slot shift +1; sections between old and new position shift the other way.",
+        },
+        expected_version: { type: "integer", minimum: 1 },
+      },
+      required: ["doc_slug", "heading", "new_position", "expected_version"],
+    },
+  },
+  {
+    name: "read_doc",
+    description: `Return an entire doc as one assembled markdown blob, with H2 headings emitted in current position order. One call replaces N round-trips of read_section when you need to review or reason over a whole doc. Soft-deleted sections are excluded. Read-only — no expected_version.
+${SLUG_GUIDANCE}
+Returns { doc_slug, content, sections: [{ heading, position, version, updated_at }], generated_at }. The sections array mirrors list_sections (minus content previews) so you can still grab per-section versions for follow-up edits without a second call.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        doc_slug: { type: "string", enum: [...KNOWN_SLUGS] },
+      },
+      required: ["doc_slug"],
+    },
+  },
+  {
+    name: "delete_section",
+    description: `Soft-delete a section by flipping is_current to false. The row and its version history stay in Postgres for recovery, but the section disappears from list_sections, read_section, and read_doc. Guarded by expected_version — matches patch_section / rename_section conflict semantics. Re-deleting an already-deleted heading returns not_found. Other sections' positions are NOT renumbered; if you need a gapless order afterwards, follow up with move_section calls.
+${SLUG_GUIDANCE}
+Returns { heading, deleted: true, version }. Prefer this over patch_section-to-empty for retired content — it keeps the doc clean instead of leaving pointer stubs.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        doc_slug: { type: "string", enum: [...KNOWN_SLUGS] },
+        heading: { type: "string" },
+        expected_version: { type: "integer", minimum: 1 },
+      },
+      required: ["doc_slug", "heading", "expected_version"],
     },
   },
   {
@@ -278,6 +329,29 @@ async function handleToolCall(name: string, args: Record<string, unknown>, actor
         new_heading: section.heading,
         version: section.version,
       });
+    }
+    case "move_section": {
+      const result = await moveSection(
+        String(args.doc_slug),
+        String(args.heading),
+        Number(args.new_position),
+        Number(args.expected_version),
+        actor,
+      );
+      return textContent({ ok: true, ...result });
+    }
+    case "read_doc": {
+      const doc = await readDoc(String(args.doc_slug));
+      return textContent(doc);
+    }
+    case "delete_section": {
+      const result = await deleteSection(
+        String(args.doc_slug),
+        String(args.heading),
+        Number(args.expected_version),
+        actor,
+      );
+      return textContent({ ok: true, ...result });
     }
     case "list_recent_changes": {
       const changes = await listRecentChanges(
