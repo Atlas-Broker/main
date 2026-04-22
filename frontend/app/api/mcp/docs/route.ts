@@ -326,11 +326,19 @@ async function dispatch(req: JsonRpcRequest, httpReq: NextRequest) {
   }
 }
 
+const BASE_URL = (
+  process.env.NEXT_PUBLIC_MCP_BASE_URL ??
+  process.env.NEXT_PUBLIC_BASE_URL ??
+  "https://atlas-broker-uat.vercel.app"
+).replace(/\/$/, "");
+
+const WWW_AUTHENTICATE = `Bearer realm="atlas-mcp-docs", resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`;
+
 export async function POST(req: NextRequest) {
   if (!authorize(req)) {
     return NextResponse.json(
       { jsonrpc: "2.0", id: null, error: { code: -32001, message: "unauthorized" } },
-      { status: 401 },
+      { status: 401, headers: { "WWW-Authenticate": WWW_AUTHENTICATE } },
     );
   }
   let body: unknown;
@@ -356,7 +364,10 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   if (!authorize(req)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { error: "unauthorized" },
+      { status: 401, headers: { "WWW-Authenticate": WWW_AUTHENTICATE } },
+    );
   }
   return NextResponse.json({
     server: SERVER_INFO,
