@@ -1,11 +1,21 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-export type DocSlug = "CONTEXT" | "BUILD" | "INSTRUCTIONS" | "IDEAS";
+export type DocSlug =
+  | "CONTEXT"
+  | "BUILD"
+  | "INSTRUCTIONS"
+  | "IDEAS"
+  | "INTERIM_REPORT"
+  | "FINAL_REPORT"
+  | "BIWEEKLY_LOGS";
 export const KNOWN_SLUGS: readonly DocSlug[] = [
   "CONTEXT",
   "BUILD",
   "INSTRUCTIONS",
   "IDEAS",
+  "INTERIM_REPORT",
+  "FINAL_REPORT",
+  "BIWEEKLY_LOGS",
 ] as const;
 
 export interface Section {

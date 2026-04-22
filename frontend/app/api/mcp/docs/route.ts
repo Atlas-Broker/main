@@ -21,10 +21,13 @@ const SERVER_INFO = {
 };
 
 const SLUG_GUIDANCE = `Valid doc_slug values: ${KNOWN_SLUGS.join(", ")}.
-- CONTEXT = project essence: what Atlas is, architecture snapshot, product decisions, deployment URLs.
-- BUILD = build plan + progress tracking: what has been built, what is planned, open gaps, sprint state.
-- INSTRUCTIONS = workflow guidance for collaborators (Claude Chat, Claude Code, humans): how to work on Atlas, conventions, runbooks.
+- CONTEXT = project essence: vision, mission, problem statement, architecture, product decisions. Stable, slow-changing.
+- BUILD = sprint tracker: specs (by Chat) + close-outs (by Code). Anything that got built, is being built, or is planned to build.
+- INSTRUCTIONS = write discipline + communication conventions between agents, runbooks, how-to guides.
 - IDEAS = captured thoughts, exploratory notes, backlog ideas not yet committed to BUILD. Low-friction inbox; promote to BUILD when ready.
+- INTERIM_REPORT = content for the 12 April 2026 capstone interim submission (submitted, now archival).
+- FINAL_REPORT = content being drafted toward the 19 July 2026 capstone final submission.
+- BIWEEKLY_LOGS = running biweekly progress log for school check-ins.
 Sections are markdown; headings are H2 text without the "## " prefix (e.g. "Agent Pipeline").`;
 
 const TOOLS = [
