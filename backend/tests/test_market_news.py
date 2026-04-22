@@ -1,9 +1,9 @@
 # backend/tests/test_market_news.py
-"""Tests for fetch_news — verifies Alpaca API is used for historical dates
-and yfinance is used for live (no as_of_date) requests."""
+"""Tests for fetch_news — verifies Alpaca News API is used for both backtest
+(as_of_date set) and live (no as_of_date) code paths."""
 
-from datetime import datetime
-from unittest.mock import MagicMock, patch
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, call, patch
 
 
 # ---------------------------------------------------------------------------
@@ -19,13 +19,8 @@ def _make_alpaca_article(headline: str, summary: str, created_at: str) -> MagicM
     return article
 
 
-def _make_yfinance_news_item(title: str, pub_date: str) -> dict:
-    """Build a mock yfinance news dict (nested content structure)."""
-    return {"content": {"title": title, "pubDate": pub_date}}
-
-
 # ---------------------------------------------------------------------------
-# test_fetch_news_with_as_of_date_uses_alpaca
+# Backtest path — as_of_date provided
 # ---------------------------------------------------------------------------
 
 def test_fetch_news_with_as_of_date_uses_alpaca():
@@ -37,7 +32,6 @@ def test_fetch_news_with_as_of_date_uses_alpaca():
 
     mock_news_response = MagicMock()
     mock_news_response.data = {"news": articles}
-    mock_news_response.__iter__ = MagicMock(return_value=iter(articles))
 
     mock_client_instance = MagicMock()
     mock_client_instance.get_news.return_value = mock_news_response
@@ -48,18 +42,13 @@ def test_fetch_news_with_as_of_date_uses_alpaca():
         from agents.data.market import fetch_news
         result = fetch_news("AAPL", as_of_date="2025-01-15")
 
-    # NewsClient must be instantiated
     mock_client_cls.assert_called_once()
-
-    # get_news must be called
     mock_client_instance.get_news.assert_called_once()
 
-    # The NewsRequest end date must match as_of_date
     call_args = mock_client_instance.get_news.call_args
-    request_arg = call_args[0][0]  # positional arg
+    request_arg = call_args[0][0]
     assert request_arg.end == datetime(2025, 1, 15)
 
-    # Result should be a list of dicts with title and published keys
     assert len(result) == 2
     assert result[0]["title"] == "Apple beats earnings"
     assert result[0]["published"] == "2025-01-14T10:00:00"
@@ -67,31 +56,65 @@ def test_fetch_news_with_as_of_date_uses_alpaca():
 
 
 # ---------------------------------------------------------------------------
-# test_fetch_news_without_as_of_date_uses_yfinance
+# Live path — no as_of_date
 # ---------------------------------------------------------------------------
 
-def test_fetch_news_without_as_of_date_uses_yfinance():
-    """When as_of_date is None, yfinance .news should be used (live behavior)."""
-    yf_news = [
-        _make_yfinance_news_item("Apple announces new product", "2025-03-01T09:00:00"),
-        _make_yfinance_news_item("Market rally continues", "2025-03-01T08:00:00"),
+def test_fetch_news_live_uses_alpaca():
+    """When as_of_date is None, Alpaca NewsClient should be used (not yfinance)."""
+    articles = [
+        _make_alpaca_article("Breaking news AAPL", "Big move today", "2026-04-22T10:00:00"),
     ]
+    mock_news_response = MagicMock()
+    mock_news_response.data = {"news": articles}
 
-    mock_ticker = MagicMock()
-    mock_ticker.news = yf_news
+    mock_client_instance = MagicMock()
+    mock_client_instance.get_news.return_value = mock_news_response
 
-    with patch("agents.data.market.yf.Ticker", return_value=mock_ticker) as mock_yf_ticker:
+    env_vars = {"ALPACA_API_KEY": "test-key", "ALPACA_SECRET_KEY": "test-secret"}
+    with patch("agents.data.market.NewsClient", return_value=mock_client_instance) as mock_client_cls, \
+         patch("agents.data.market.yf") as mock_yf, \
+         patch.dict("os.environ", env_vars):
         from agents.data.market import fetch_news
-        result = fetch_news("AAPL")  # no as_of_date
+        result = fetch_news("AAPL")
 
-    mock_yf_ticker.assert_called_once_with("AAPL")
-    assert len(result) == 2
-    assert result[0]["title"] == "Apple announces new product"
-    assert result[1]["title"] == "Market rally continues"
+    mock_client_cls.assert_called_once()
+    mock_client_instance.get_news.assert_called_once()
+    mock_yf.Ticker.assert_not_called()
+
+    assert len(result) == 1
+    assert result[0]["title"] == "Breaking news AAPL"
+
+
+def test_fetch_news_live_applies_7day_lookback():
+    """Live mode should request articles from the past 7 days (no end constraint)."""
+    mock_news_response = MagicMock()
+    mock_news_response.data = {"news": []}
+
+    mock_client_instance = MagicMock()
+    mock_client_instance.get_news.return_value = mock_news_response
+
+    before = datetime.now().replace(tzinfo=None) - timedelta(days=8)
+    after = datetime.now().replace(tzinfo=None) - timedelta(days=6)
+
+    env_vars = {"ALPACA_API_KEY": "test-key", "ALPACA_SECRET_KEY": "test-secret"}
+    with patch("agents.data.market.NewsClient", return_value=mock_client_instance), \
+         patch.dict("os.environ", env_vars):
+        from agents.data.market import fetch_news
+        fetch_news("MSFT")
+
+    call_args = mock_client_instance.get_news.call_args
+    request_arg = call_args[0][0]
+
+    # start should be approximately now - 7 days
+    assert before <= request_arg.start <= after, (
+        f"expected start in [{before}, {after}], got {request_arg.start}"
+    )
+    # end should be unset (None) — no look-ahead-bias boundary in live mode
+    assert request_arg.end is None
 
 
 # ---------------------------------------------------------------------------
-# test_fetch_news_alpaca_error_falls_back_gracefully
+# Error handling
 # ---------------------------------------------------------------------------
 
 def test_fetch_news_alpaca_error_falls_back_gracefully():
@@ -99,8 +122,22 @@ def test_fetch_news_alpaca_error_falls_back_gracefully():
     mock_client_instance = MagicMock()
     mock_client_instance.get_news.side_effect = Exception("Alpaca API unavailable")
 
-    with patch("agents.data.market.NewsClient", return_value=mock_client_instance):
+    with patch("agents.data.market.NewsClient", return_value=mock_client_instance), \
+         patch.dict("os.environ", {"ALPACA_API_KEY": "k", "ALPACA_SECRET_KEY": "s"}):
         from agents.data.market import fetch_news
         result = fetch_news("AAPL", as_of_date="2025-01-15")
+
+    assert result == []
+
+
+def test_fetch_news_live_alpaca_error_falls_back_gracefully():
+    """When Alpaca raises in live mode, fetch_news returns [] without crashing."""
+    mock_client_instance = MagicMock()
+    mock_client_instance.get_news.side_effect = Exception("timeout")
+
+    with patch("agents.data.market.NewsClient", return_value=mock_client_instance), \
+         patch.dict("os.environ", {"ALPACA_API_KEY": "k", "ALPACA_SECRET_KEY": "s"}):
+        from agents.data.market import fetch_news
+        result = fetch_news("TSLA")
 
     assert result == []

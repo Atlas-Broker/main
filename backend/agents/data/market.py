@@ -1,8 +1,8 @@
-"""Market data fetcher — wraps yfinance for OHLCV, fundamentals, and news.
+"""Market data fetcher — wraps yfinance for OHLCV and fundamentals.
 
-For historical (backtest) runs, news is sourced from the Alpaca News API so
-that only articles published before `as_of_date` are included — eliminating
-look-ahead bias.  Live runs continue to use yfinance news.
+News is sourced exclusively from the Alpaca News API for both backtest and live
+runs.  Backtest calls pass an `end` bound equal to `as_of_date` to prevent
+look-ahead bias.  Live calls apply a 7-day `start` bound for recency.
 """
 
 import logging
@@ -131,34 +131,40 @@ def fetch_info(ticker: str) -> dict:
 
 
 def fetch_news(ticker: str, as_of_date: str | None = None) -> list[dict]:
-    """Fetch recent news for *ticker*.
+    """Fetch recent news for *ticker* via Alpaca News API.
 
     Args:
         ticker: Stock ticker symbol (e.g. "AAPL").
-        as_of_date: ISO date string (``"YYYY-MM-DD"``).  When provided, the
-            Alpaca News API is used so that only articles published **before**
-            this date are returned — preventing look-ahead bias in backtests.
-            When ``None``, yfinance is used (live trading, current news).
+        as_of_date: ISO date string (``"YYYY-MM-DD"``).  When provided, only
+            articles published **before** this date are returned — preventing
+            look-ahead bias in backtests.  When ``None`` (live mode), articles
+            from the past 7 days are returned.
 
     Returns:
         List of dicts with ``title`` and ``published`` keys (max 10 items).
         Returns an empty list on error rather than raising.
     """
-    if as_of_date:
-        return _fetch_news_alpaca(ticker, as_of_date)
-    return _fetch_news_yfinance(ticker)
+    return _fetch_news_alpaca(ticker, as_of_date)
 
 
-def _fetch_news_alpaca(ticker: str, as_of_date: str) -> list[dict]:
-    """Use the Alpaca News API to fetch articles published before *as_of_date*."""
+def _fetch_news_alpaca(ticker: str, as_of_date: str | None = None) -> list[dict]:
+    """Fetch news via Alpaca News API.
+
+    Backtest path: ``as_of_date`` set — applies ``end`` bound to prevent look-ahead bias.
+    Live path: ``as_of_date`` is None — applies ``start = now - 7d`` for recency.
+    """
     try:
         api_key = os.environ["ALPACA_API_KEY"]
         secret_key = os.environ["ALPACA_SECRET_KEY"]
-        end_dt = datetime.strptime(as_of_date, "%Y-%m-%d")
         client = NewsClient(api_key=api_key, secret_key=secret_key)
-        request = NewsRequest(symbols=ticker, end=end_dt, limit=10)
+        if as_of_date:
+            end_dt = datetime.strptime(as_of_date, "%Y-%m-%d")
+            request = NewsRequest(symbols=ticker, end=end_dt, limit=10)
+        else:
+            start_dt = datetime.now().replace(tzinfo=None) - timedelta(days=7)
+            request = NewsRequest(symbols=ticker, start=start_dt, limit=10)
         news_set = client.get_news(request)
-        # NewsSet.data is {"news": [News, ...]} — __iter__ yields (field, value) tuples
+        # NewsSet.data is {"news": [News, ...]}
         articles = news_set.data.get("news", []) if hasattr(news_set, "data") else []
         return [
             {
@@ -173,7 +179,16 @@ def _fetch_news_alpaca(ticker: str, as_of_date: str) -> list[dict]:
 
 
 def _fetch_news_yfinance(ticker: str) -> list[dict]:
-    """Use yfinance to fetch current news (live trading path)."""
+    """Deprecated — superseded by _fetch_news_alpaca for all code paths.
+
+    Retained for reference only; not called from fetch_news.
+    """
+    import warnings
+    warnings.warn(
+        "_fetch_news_yfinance is deprecated; use _fetch_news_alpaca instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     t = yf.Ticker(ticker)
     news = t.news or []
     return [
