@@ -7,7 +7,7 @@ Exposes the `CONTEXT` and `BUILD` docs as database-backed sections that Claude C
 `POST /api/mcp/docs` on the Atlas frontend (Vercel). JSON-RPC 2.0. Bearer token auth.
 
 Local: `http://localhost:3000/api/mcp/docs`
-UAT: `https://atlas-broker-frontend-uat.vercel.app/api/mcp/docs`
+UAT: `https://atlas-broker-uat.vercel.app/api/mcp/docs`
 
 ## Required env vars (on Vercel + `.env.local`)
 
@@ -39,7 +39,7 @@ openssl rand -hex 32
 ## Connect from Claude Chat
 
 Settings → Connectors → Add custom connector:
-- **URL**: `https://atlas-broker-frontend-uat.vercel.app/api/mcp/docs`
+- **URL**: `https://atlas-broker-uat.vercel.app/api/mcp/docs`
 - **Auth**: Bearer token → paste `ATLAS_MCP_TOKEN`
 
 Once connected, Claude Chat can call `list_sections`, `read_section`, `patch_section`, etc.
