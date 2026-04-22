@@ -23,6 +23,8 @@ const SERVER_INFO = {
 const SLUG_GUIDANCE = `Valid doc_slug values: ${KNOWN_SLUGS.join(", ")}.
 - CONTEXT = project essence: what Atlas is, architecture snapshot, product decisions, deployment URLs.
 - BUILD = build plan + progress tracking: what has been built, what is planned, open gaps, sprint state.
+- INSTRUCTIONS = workflow guidance for collaborators (Claude Chat, Claude Code, humans): how to work on Atlas, conventions, runbooks.
+- IDEAS = captured thoughts, exploratory notes, backlog ideas not yet committed to BUILD. Low-friction inbox; promote to BUILD when ready.
 Sections are markdown; headings are H2 text without the "## " prefix (e.g. "Agent Pipeline").`;
 
 const TOOLS = [

@@ -1,7 +1,12 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-export type DocSlug = "CONTEXT" | "BUILD";
-export const KNOWN_SLUGS: readonly DocSlug[] = ["CONTEXT", "BUILD"] as const;
+export type DocSlug = "CONTEXT" | "BUILD" | "INSTRUCTIONS" | "IDEAS";
+export const KNOWN_SLUGS: readonly DocSlug[] = [
+  "CONTEXT",
+  "BUILD",
+  "INSTRUCTIONS",
+  "IDEAS",
+] as const;
 
 export interface Section {
   id: string;
