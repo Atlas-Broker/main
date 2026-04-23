@@ -1,0 +1,225 @@
+/**
+ * AlpacaAdapter — live/paper trading implementation of BrokerAdapter.
+ *
+ * Uses @alpacahq/alpaca-trade-api (JS SDK, not alpaca-py).
+ * Reads ALPACA_API_KEY and ALPACA_SECRET_KEY from environment.
+ * Set ALPACA_PAPER=true (default) for paper trading.
+ *
+ * Rate limit: Alpaca paper API is 200 req/min.
+ *
+ * Normalisation notes:
+ *   SDK `order.id`          → Atlas `orderId`
+ *   SDK `order.symbol`      → Atlas `ticker`
+ *   SDK `order.side`        → Atlas `action`  ("buy"→"BUY", "sell"→"SELL")
+ *   SDK `order.status`      → Atlas `status`  (mapped to OrderStatus union)
+ *   SDK `position.symbol`   → Atlas `ticker`
+ *   SDK `position.qty`      → Atlas `qty`      (parsed as float)
+ *   SDK `position.avg_entry_price` → Atlas `avgCost`
+ *   SDK `position.current_price`   → Atlas `currentPrice`
+ *   SDK `position.market_value`    → Atlas `marketValue`
+ *   SDK `position.unrealized_pl`   → Atlas `unrealizedPl`
+ *   SDK `account.equity`    → Atlas `equity`
+ *   SDK `account.cash`      → Atlas `cash`
+ *   SDK `account.buying_power`  → Atlas `buyingPower`
+ *   SDK `account.portfolio_value` → Atlas `portfolioValue`
+ */
+
+import Alpaca from "@alpacahq/alpaca-trade-api";
+import { BrokerAdapter, BrokerError } from "./base";
+import type {
+  Account,
+  Order,
+  OrderFilter,
+  OrderRequest,
+  OrderStatus,
+  Position,
+} from "./types";
+
+const PAPER_BASE_URL = "https://paper-api.alpaca.markets";
+const LIVE_BASE_URL = "https://api.alpaca.markets";
+
+function mapStatus(raw: string): OrderStatus {
+  const s = raw.toLowerCase();
+  if (s === "new" || s === "accepted" || s === "pending_new") return "pending";
+  if (s === "open" || s === "held" || s === "partially_filled") return "open";
+  if (s === "filled" || s === "done_for_day") return "filled";
+  if (s === "canceled" || s === "cancelled") return "cancelled";
+  if (s === "expired") return "expired";
+  if (s === "rejected" || s === "suspended") return "rejected";
+  return "open";
+}
+
+export class AlpacaAdapter implements BrokerAdapter {
+  private readonly client: InstanceType<typeof Alpaca>;
+
+  constructor(
+    apiKey: string = process.env.ALPACA_API_KEY ?? "",
+    secretKey: string = process.env.ALPACA_SECRET_KEY ?? "",
+    paper: boolean = (process.env.ALPACA_PAPER ?? "true") !== "false",
+  ) {
+    if (!apiKey) {
+      throw new BrokerError("AlpacaAdapter: ALPACA_API_KEY is required");
+    }
+    if (!secretKey) {
+      throw new BrokerError("AlpacaAdapter: ALPACA_SECRET_KEY is required");
+    }
+
+    this.client = new Alpaca({
+      keyId: apiKey,
+      secretKey,
+      baseUrl: paper ? PAPER_BASE_URL : LIVE_BASE_URL,
+    });
+  }
+
+  /**
+   * Place a notional market order.
+   */
+  async submitOrder(request: OrderRequest): Promise<Order> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw: any = await this.client.createOrder({
+        symbol: request.ticker.toUpperCase(),
+        notional: String(Math.round(request.notional * 100) / 100),
+        side: request.action.toLowerCase(),
+        type: "market",
+        time_in_force: "day",
+      });
+      return normaliseOrder(raw);
+    } catch (err) {
+      throw new BrokerError(
+        `submitOrder failed for ${request.ticker}: ${errorMessage(err)}`,
+        err,
+      );
+    }
+  }
+
+  /**
+   * Return all open positions.
+   * Handles accounts with >100 positions by fetching all pages.
+   * (The JS SDK returns all positions in one call; noted for future pagination.)
+   */
+  async getPositions(): Promise<Position[]> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw: any[] = await this.client.getPositions();
+      return raw.map(normalisePosition);
+    } catch (err) {
+      throw new BrokerError(`getPositions failed: ${errorMessage(err)}`, err);
+    }
+  }
+
+  /**
+   * Return account equity, cash, and buying power.
+   */
+  async getAccount(): Promise<Account> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw: any = await this.client.getAccount();
+      return {
+        equity: parseFloat(raw.equity),
+        cash: parseFloat(raw.cash),
+        buyingPower: parseFloat(raw.buying_power),
+        portfolioValue: parseFloat(raw.portfolio_value),
+      };
+    } catch (err) {
+      throw new BrokerError(`getAccount failed: ${errorMessage(err)}`, err);
+    }
+  }
+
+  /**
+   * Cancel an open order by ID.
+   */
+  async cancelOrder(orderId: string): Promise<void> {
+    try {
+      await this.client.cancelOrder(orderId);
+    } catch (err) {
+      throw new BrokerError(
+        `cancelOrder failed for ${orderId}: ${errorMessage(err)}`,
+        err,
+      );
+    }
+  }
+
+  /**
+   * List orders, optionally filtered by ticker and/or status.
+   * Fetches up to 500 orders per call (SDK default).
+   * For larger result sets a pagination loop would be added here.
+   */
+  async listOrders(filter?: OrderFilter): Promise<Order[]> {
+    try {
+      // Map Atlas OrderStatus values to Alpaca's query status vocabulary
+      const statusMap: Record<string, string> = {
+        open: "open",
+        pending: "open",
+        filled: "closed",
+        cancelled: "closed",
+        expired: "closed",
+        rejected: "closed",
+      };
+      const queryStatus =
+        filter?.status !== undefined
+          ? (statusMap[filter.status] ?? "all")
+          : "all";
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let orders: any[] = await this.client.getOrders({
+        status: queryStatus,
+        until: undefined,
+        after: undefined,
+        limit: undefined,
+        direction: undefined,
+        nested: undefined,
+        symbols: undefined,
+      } as any);
+
+      if (filter?.ticker !== undefined) {
+        const upper = filter.ticker.toUpperCase();
+        orders = orders.filter((o) => o.symbol === upper);
+      }
+
+      const mapped = orders.map(normaliseOrder);
+
+      // If a finer-grained status filter was requested, apply it in-memory
+      if (filter?.status !== undefined) {
+        return mapped.filter((o) => o.status === filter.status);
+      }
+      return mapped;
+    } catch (err) {
+      throw new BrokerError(`listOrders failed: ${errorMessage(err)}`, err);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normaliseOrder(raw: any): Order {
+  return {
+    orderId: String(raw.id),
+    ticker: String(raw.symbol),
+    action: (raw.side ?? "").toLowerCase() === "sell" ? "SELL" : "BUY",
+    status: mapStatus(String(raw.status ?? "")),
+    notional: raw.notional != null ? parseFloat(raw.notional) : null,
+    qty: raw.qty != null ? parseFloat(raw.qty) : null,
+    createdAt: raw.created_at ? String(raw.created_at) : undefined,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalisePosition(raw: any): Position {
+  return {
+    ticker: String(raw.symbol),
+    qty: parseFloat(raw.qty),
+    avgCost: parseFloat(raw.avg_entry_price),
+    currentPrice: parseFloat(raw.current_price),
+    marketValue: parseFloat(raw.market_value),
+    unrealizedPl: parseFloat(raw.unrealized_pl),
+  };
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}

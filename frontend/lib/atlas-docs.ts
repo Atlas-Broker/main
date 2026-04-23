@@ -1,7 +1,22 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-export type DocSlug = "CONTEXT" | "BUILD";
-export const KNOWN_SLUGS: readonly DocSlug[] = ["CONTEXT", "BUILD"] as const;
+export type DocSlug =
+  | "CONTEXT"
+  | "BUILD"
+  | "INSTRUCTIONS"
+  | "IDEAS"
+  | "INTERIM_REPORT"
+  | "FINAL_REPORT"
+  | "BIWEEKLY_LOGS";
+export const KNOWN_SLUGS: readonly DocSlug[] = [
+  "CONTEXT",
+  "BUILD",
+  "INSTRUCTIONS",
+  "IDEAS",
+  "INTERIM_REPORT",
+  "FINAL_REPORT",
+  "BIWEEKLY_LOGS",
+] as const;
 
 export interface Section {
   id: string;
@@ -31,7 +46,8 @@ export class DocsError extends Error {
       | "content_non_empty"
       | "invalid_slug"
       | "duplicate_heading"
-      | "invalid_input",
+      | "invalid_input"
+      | "invalid_position",
     message: string,
     public detail?: Record<string, unknown>,
   ) {
@@ -42,7 +58,7 @@ export class DocsError extends Error {
 
 function serviceClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
   if (!url || !key) {
     throw new Error("Supabase service credentials not configured");
   }
@@ -301,4 +317,198 @@ export async function renameSection(
   const updated = data as Section;
   await writeVersion(client, updated, "rename");
   return updated;
+}
+
+export interface MoveResult {
+  heading: string;
+  old_position: number;
+  new_position: number;
+  version: number;
+}
+
+export async function moveSection(
+  slug: string,
+  heading: string,
+  newPosition: number,
+  expectedVersion: number,
+  updatedBy: string,
+): Promise<MoveResult> {
+  assertSlug(slug);
+  if (!Number.isInteger(newPosition) || newPosition < 0) {
+    throw new DocsError("invalid_position", "new_position must be a non-negative integer");
+  }
+  const client = serviceClient();
+  const current = await readSection(slug, heading);
+  if (current.version !== expectedVersion) {
+    throw new DocsError("version_conflict", "section was modified since you read it", {
+      actual_version: current.version,
+      expected_version: expectedVersion,
+    });
+  }
+  const oldPosition = current.position;
+  if (oldPosition === newPosition) {
+    return {
+      heading: current.heading,
+      old_position: oldPosition,
+      new_position: newPosition,
+      version: current.version,
+    };
+  }
+
+  // Strategy to avoid unique (doc_slug, position) collisions if one ever exists,
+  // and keep ordering sane: park the moving section at a sentinel negative position,
+  // shift the affected range, then drop the moving section into the target slot.
+  const SENTINEL = -1;
+  const parked = await client
+    .from("atlas_docs_sections")
+    .update({ position: SENTINEL })
+    .eq("id", current.id)
+    .eq("version", expectedVersion)
+    .select("id")
+    .maybeSingle();
+  if (parked.error) throw new Error(`moveSection park failed: ${parked.error.message}`);
+  if (!parked.data) {
+    throw new DocsError("version_conflict", "concurrent update detected");
+  }
+
+  // Shift sibling positions. Moving down (newPosition > oldPosition): sections
+  // with position in (oldPosition, newPosition] shift -1. Moving up
+  // (newPosition < oldPosition): sections with position in [newPosition, oldPosition)
+  // shift +1.
+  const { data: siblings, error: siblingsErr } = await client
+    .from("atlas_docs_sections")
+    .select("id, position")
+    .eq("doc_slug", slug)
+    .eq("is_current", true)
+    .neq("id", current.id);
+  if (siblingsErr) throw new Error(`moveSection siblings failed: ${siblingsErr.message}`);
+
+  const shifts: { id: string; position: number }[] = [];
+  for (const row of siblings ?? []) {
+    const pos = row.position as number;
+    const id = row.id as string;
+    if (newPosition > oldPosition) {
+      if (pos > oldPosition && pos <= newPosition) {
+        shifts.push({ id, position: pos - 1 });
+      }
+    } else {
+      if (pos >= newPosition && pos < oldPosition) {
+        shifts.push({ id, position: pos + 1 });
+      }
+    }
+  }
+
+  // Apply shifts sequentially. To avoid transient collisions when moving up
+  // (positions shift +1), process from highest to lowest; for moving down
+  // (positions shift -1), process from lowest to highest.
+  shifts.sort((a, b) =>
+    newPosition > oldPosition ? a.position - b.position : b.position - a.position,
+  );
+  for (const s of shifts) {
+    const { error: shiftErr } = await client
+      .from("atlas_docs_sections")
+      .update({ position: s.position })
+      .eq("id", s.id);
+    if (shiftErr) throw new Error(`moveSection shift failed: ${shiftErr.message}`);
+  }
+
+  const nextVersion = current.version + 1;
+  const { data, error } = await client
+    .from("atlas_docs_sections")
+    .update({
+      position: newPosition,
+      version: nextVersion,
+      updated_at: new Date().toISOString(),
+      updated_by: updatedBy,
+    })
+    .eq("id", current.id)
+    .select("id, doc_slug, heading, content, position, version, updated_at, updated_by")
+    .single();
+  if (error) throw new Error(`moveSection finalize failed: ${error.message}`);
+  const updated = data as Section;
+  await writeVersion(client, updated, "move");
+  return {
+    heading: updated.heading,
+    old_position: oldPosition,
+    new_position: updated.position,
+    version: updated.version,
+  };
+}
+
+export interface ReadDocResult {
+  doc_slug: DocSlug;
+  content: string;
+  sections: Array<{
+    heading: string;
+    position: number;
+    version: number;
+    updated_at: string;
+  }>;
+  generated_at: string;
+}
+
+export async function readDoc(slug: string): Promise<ReadDocResult> {
+  assertSlug(slug);
+  const sections = await listSections(slug);
+  const content = sections
+    .map((s) => `## ${s.heading}\n\n${s.content}`.trimEnd())
+    .join("\n\n");
+  return {
+    doc_slug: slug as DocSlug,
+    content,
+    sections: sections.map((s) => ({
+      heading: s.heading,
+      position: s.position,
+      version: s.version,
+      updated_at: s.updated_at,
+    })),
+    generated_at: new Date().toISOString(),
+  };
+}
+
+export interface DeleteResult {
+  heading: string;
+  deleted: true;
+  version: number;
+}
+
+export async function deleteSection(
+  slug: string,
+  heading: string,
+  expectedVersion: number,
+  updatedBy: string,
+): Promise<DeleteResult> {
+  assertSlug(slug);
+  const client = serviceClient();
+  const current = await readSection(slug, heading);
+  if (current.version !== expectedVersion) {
+    throw new DocsError("version_conflict", "section was modified since you read it", {
+      actual_version: current.version,
+      expected_version: expectedVersion,
+    });
+  }
+  const nextVersion = current.version + 1;
+  const { data, error } = await client
+    .from("atlas_docs_sections")
+    .update({
+      is_current: false,
+      version: nextVersion,
+      updated_at: new Date().toISOString(),
+      updated_by: updatedBy,
+    })
+    .eq("id", current.id)
+    .eq("version", expectedVersion)
+    .select("id, doc_slug, heading, content, position, version, updated_at, updated_by")
+    .single();
+  if (error) throw new Error(`deleteSection failed: ${error.message}`);
+  if (!data) {
+    throw new DocsError("version_conflict", "concurrent update detected");
+  }
+  const deleted = data as Section;
+  await writeVersion(client, deleted, "delete");
+  return {
+    heading: deleted.heading,
+    deleted: true,
+    version: deleted.version,
+  };
 }
