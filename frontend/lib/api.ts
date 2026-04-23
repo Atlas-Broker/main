@@ -58,7 +58,19 @@ export type DecisionLogEntry = {
   price?: number | null;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+/**
+ * Base URL for all API calls.
+ *
+ * When NEXT_PUBLIC_USE_TS_API=true the frontend routes all calls to the
+ * same-origin Next.js handlers (/api/v1/*) introduced in sprint 013.
+ * Leave the flag unset (or "false") to keep routing to the Render backend.
+ *
+ * The actual switch happens during sprint 014's UAT soak — do NOT flip live yet.
+ */
+const API_URL =
+  process.env.NEXT_PUBLIC_USE_TS_API === "true"
+    ? "" // same-origin /api/v1/*
+    : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000");
 
 export async function fetchMyProfile(): Promise<MyProfile | null> {
   const res = await fetchWithAuth(`${API_URL}/v1/profile/me`);

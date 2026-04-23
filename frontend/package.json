@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "jest",
-    "verify-prompts": "tsx scripts/verify-prompt-hashes.ts"
+    "verify-prompts": "tsx scripts/verify-prompt-hashes.ts",
+    "check-api-parity": "tsx scripts/api-parity-check.ts"
   },
   "dependencies": {
     "@alpacahq/alpaca-trade-api": "^3.1.3",
@@ -19,11 +20,13 @@
     "@langchain/langgraph": "^1.2.9",
     "@supabase/supabase-js": "^2.99.2",
     "chart.js": "^4.5.1",
+    "inngest": "^4.2.4",
     "mongodb": "^7.2.0",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "19.2.3",
+    "resend": "^6.12.2",
     "yahoo-finance2": "^3.14.0",
     "zod": "^4.3.6"
   },

@@ -6,8 +6,11 @@ const config: Config = {
   transform: {
     "^.+\\.(ts|tsx)$": ["ts-jest", { tsconfig: { jsx: "react-jsx" } }],
   },
-  // Force CJS resolution for LangGraph/LangChain packages (avoid browser ESM entry)
+  // Force CJS resolution for ESM-only packages
   moduleNameMapper: {
+    // bson ships an ESM default entry that Jest (CJS) cannot parse; force the CJS bundle
+    "^bson$": "<rootDir>/node_modules/bson/lib/bson.cjs",
+    // LangGraph/LangChain packages (avoid browser ESM entry)
     "^@langchain/langgraph$": "<rootDir>/node_modules/@langchain/langgraph/dist/index.cjs",
     "^@langchain/langgraph/(.*)$": "<rootDir>/node_modules/@langchain/langgraph/dist/$1",
     "^@langchain/google-genai$": "<rootDir>/node_modules/@langchain/google-genai/dist/index.cjs",
