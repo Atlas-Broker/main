@@ -38,11 +38,12 @@ async function requireSuperadmin(req: Request): Promise<{ userId: string } | nul
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { user_id: string } },
+  { params }: { params: Promise<{ user_id: string }> },
 ): Promise<Response> {
   const admin = await requireSuperadmin(req);
   if (!admin) return Response.json({ error: "Forbidden" }, { status: 403 });
 
+  const { user_id } = await params;
   const url = new URL(req.url);
   const field = url.searchParams.get("field");
 
@@ -63,7 +64,7 @@ export async function PATCH(
     const { data, error } = await sb
       .from("profiles")
       .update({ tier: parsed.data.tier })
-      .eq("id", params.user_id)
+      .eq("id", user_id)
       .select()
       .single();
     if (error || !data) return Response.json({ error: "User not found" }, { status: 404 });
@@ -78,7 +79,7 @@ export async function PATCH(
     const { data, error } = await sb
       .from("profiles")
       .update({ role: parsed.data.role })
-      .eq("id", params.user_id)
+      .eq("id", user_id)
       .select()
       .single();
     if (error || !data) return Response.json({ error: "User not found" }, { status: 404 });

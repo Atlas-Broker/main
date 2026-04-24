@@ -85,11 +85,7 @@ export async function POST(req: Request): Promise<Response> {
 
   // Validate credentials before saving
   try {
-    const adapter = new AlpacaAdapter({
-      apiKey: api_key,
-      secretKey: api_secret,
-      paper: environment === "paper",
-    });
+    const adapter = new AlpacaAdapter(api_key, api_secret, environment === "paper");
     await adapter.getAccount();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

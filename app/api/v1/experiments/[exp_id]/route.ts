@@ -26,16 +26,17 @@ async function requireAdmin(req: Request): Promise<{ userId: string } | null> {
 
 export async function GET(
   req: Request,
-  { params }: { params: { exp_id: string } },
+  { params }: { params: Promise<{ exp_id: string }> },
 ): Promise<Response> {
   const admin = await requireAdmin(req);
   if (!admin) return Response.json({ error: "Forbidden" }, { status: 403 });
 
+  const { exp_id } = await params;
   const sb = getServiceClient();
   const { data: exp, error } = await sb
     .from("backtest_experiments")
     .select("*")
-    .eq("id", params.exp_id)
+    .eq("id", exp_id)
     .eq("user_id", admin.userId)
     .maybeSingle();
 
@@ -45,7 +46,7 @@ export async function GET(
   const { data: jobs } = await sb
     .from("backtest_jobs")
     .select("*")
-    .eq("experiment_id", params.exp_id)
+    .eq("experiment_id", exp_id)
     .eq("user_id", admin.userId);
 
   return Response.json({ ...exp, jobs: jobs ?? [] });
@@ -53,16 +54,17 @@ export async function GET(
 
 export async function DELETE(
   req: Request,
-  { params }: { params: { exp_id: string } },
+  { params }: { params: Promise<{ exp_id: string }> },
 ): Promise<Response> {
   const admin = await requireAdmin(req);
   if (!admin) return Response.json({ error: "Forbidden" }, { status: 403 });
 
+  const { exp_id } = await params;
   const sb = getServiceClient();
   const { data: existing } = await sb
     .from("backtest_experiments")
     .select("id")
-    .eq("id", params.exp_id)
+    .eq("id", exp_id)
     .eq("user_id", admin.userId)
     .maybeSingle();
 
@@ -71,7 +73,7 @@ export async function DELETE(
   await sb
     .from("backtest_experiments")
     .delete()
-    .eq("id", params.exp_id)
+    .eq("id", exp_id)
     .eq("user_id", admin.userId);
 
   return Response.json({ deleted: true });

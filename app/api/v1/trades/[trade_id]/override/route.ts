@@ -33,7 +33,7 @@ function getServiceClient() {
 
 export async function POST(
   req: Request,
-  { params }: { params: { trade_id: string } },
+  { params }: { params: Promise<{ trade_id: string }> },
 ): Promise<Response> {
   const user = await getUserFromRequest(req);
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -48,7 +48,7 @@ export async function POST(
   }
 
   const sb = getServiceClient();
-  const { trade_id } = params;
+  const { trade_id } = await params;
 
   const { data: trade, error: fetchError } = await sb
     .from("trades")
@@ -86,11 +86,11 @@ export async function POST(
       .maybeSingle();
 
     if (conn) {
-      const adapter = new AlpacaAdapter({
-        apiKey: String((conn as Record<string, unknown>)["api_key"]),
-        secretKey: String((conn as Record<string, unknown>)["api_secret"]),
-        paper: (conn as Record<string, unknown>)["environment"] === "paper",
-      });
+      const adapter = new AlpacaAdapter(
+        String((conn as Record<string, unknown>)["api_key"]),
+        String((conn as Record<string, unknown>)["api_secret"]),
+        (conn as Record<string, unknown>)["environment"] === "paper",
+      );
       await adapter.cancelOrder(String((trade as Record<string, unknown>)["order_id"]));
       brokerCancelSuccess = true;
     }

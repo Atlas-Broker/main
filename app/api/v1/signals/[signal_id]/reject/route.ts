@@ -11,14 +11,15 @@ const MONGO_DB = process.env.MONGODB_DB_NAME ?? "atlas";
 
 export async function POST(
   req: Request,
-  { params }: { params: { signal_id: string } },
+  { params }: { params: Promise<{ signal_id: string }> },
 ): Promise<Response> {
   const user = await getUserFromRequest(req);
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { signal_id } = await params;
   let oid: ObjectId;
   try {
-    oid = new ObjectId(params.signal_id);
+    oid = new ObjectId(signal_id);
   } catch {
     return Response.json({ error: "Invalid signal ID format" }, { status: 400 });
   }
@@ -36,7 +37,7 @@ export async function POST(
       return Response.json({ error: "Signal has already been executed" }, { status: 409 });
     }
     if (execution["rejected"]) {
-      return Response.json({ signal_id: params.signal_id, status: "rejected", message: "Signal already rejected" });
+      return Response.json({ signal_id, status: "rejected", message: "Signal already rejected" });
     }
 
     await col.updateOne(
@@ -51,7 +52,7 @@ export async function POST(
     );
 
     return Response.json({
-      signal_id: params.signal_id,
+      signal_id,
       status: "rejected",
       message: "Signal rejected and logged",
     });

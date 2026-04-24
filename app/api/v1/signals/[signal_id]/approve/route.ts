@@ -23,14 +23,15 @@ function getServiceClient() {
 
 export async function POST(
   req: Request,
-  { params }: { params: { signal_id: string } },
+  { params }: { params: Promise<{ signal_id: string }> },
 ): Promise<Response> {
   const user = await getUserFromRequest(req);
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { signal_id } = await params;
   let oid: ObjectId;
   try {
-    oid = new ObjectId(params.signal_id);
+    oid = new ObjectId(signal_id);
   } catch {
     return Response.json({ error: "Invalid signal_id format" }, { status: 400 });
   }
@@ -79,11 +80,11 @@ export async function POST(
     }
 
     const connRow = conn as Record<string, unknown>;
-    const adapter = new AlpacaAdapter({
-      apiKey: String(connRow["api_key"]),
-      secretKey: String(connRow["api_secret"]),
-      paper: connRow["environment"] === "paper",
-    });
+    const adapter = new AlpacaAdapter(
+      String(connRow["api_key"]),
+      String(connRow["api_secret"]),
+      connRow["environment"] === "paper",
+    );
 
     const order = await adapter.submitOrder({ ticker, action: action as "BUY" | "SELL", notional: NOTIONAL_USD });
 
@@ -107,7 +108,7 @@ export async function POST(
         price: 0, // filled price not known at order time for market orders
         status: "filled",
         boundary_mode: boundaryMode,
-        signal_id: params.signal_id,
+        signal_id: signal_id,
         order_id: order.orderId,
         executed_at: new Date().toISOString(),
       });
