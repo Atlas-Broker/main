@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SERVER_INFO = { name: "atlas-api", version: "0.1.0" };
+const SERVER_INFO = { name: "atlas-api", version: "1.0.0" };
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY =
@@ -58,6 +58,13 @@ async function authenticate(req: NextRequest): Promise<AuthContext | null> {
 
 type JsonRpcId = string | number | null;
 
+interface JsonRpcRequest {
+  jsonrpc: "2.0";
+  id?: JsonRpcId;
+  method: string;
+  params?: Record<string, unknown>;
+}
+
 function rpcResult(id: JsonRpcId, result: unknown) {
   return { jsonrpc: "2.0" as const, id, result };
 }
@@ -66,31 +73,129 @@ function rpcError(id: JsonRpcId, code: number, message: string) {
   return { jsonrpc: "2.0" as const, id, error: { code, message } };
 }
 
+function forbiddenResult() {
+  return {
+    isError: true,
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ code: "forbidden", message: "Insufficient scope for this tool." }),
+      },
+    ],
+  };
+}
+
+// ─── Tools list ───────────────────────────────────────────────────────────────
+
+async function buildToolsList(ctx: AuthContext) {
+  const { READ_TOOL_DEFS, WRITE_TOOL_DEFS, ADMIN_TOOL_DEFS } = await import("@/lib/mcp-atlas");
+
+  const tools = [
+    ...READ_TOOL_DEFS,
+    ...WRITE_TOOL_DEFS,
+    ...(ctx.role === "superadmin" ? ADMIN_TOOL_DEFS : []),
+  ];
+
+  return tools;
+}
+
+// ─── Tool call dispatch ───────────────────────────────────────────────────────
+
+const READ_TOOL_NAMES = new Set([
+  "get_signals",
+  "get_portfolio",
+  "get_positions",
+  "get_backtest",
+  "list_backtests",
+  "get_scheduler_status",
+  "get_profile",
+]);
+
+const WRITE_TOOL_NAMES = new Set([
+  "run_pipeline",
+  "create_backtest",
+  "approve_signal",
+  "reject_signal",
+  "update_settings",
+]);
+
+const ADMIN_TOOL_NAMES = new Set(["get_admin_stats", "list_users"]);
+
+async function handleToolCall(
+  name: string,
+  args: Record<string, unknown>,
+  ctx: AuthContext,
+) {
+  if (READ_TOOL_NAMES.has(name)) {
+    if (ctx.scope !== "read" && ctx.scope !== "read_write") return forbiddenResult();
+    const { handleReadTool } = await import("@/lib/mcp-atlas");
+    return handleReadTool(name, args, ctx.user_id);
+  }
+
+  if (WRITE_TOOL_NAMES.has(name)) {
+    if (ctx.scope !== "write" && ctx.scope !== "read_write") return forbiddenResult();
+    const { handleWriteTool } = await import("@/lib/mcp-atlas");
+    return handleWriteTool(name, args, ctx.user_id);
+  }
+
+  if (ADMIN_TOOL_NAMES.has(name)) {
+    if (ctx.role !== "superadmin") return forbiddenResult();
+    const { handleAdminTool } = await import("@/lib/mcp-atlas");
+    return handleAdminTool(name, args);
+  }
+
+  return {
+    isError: true,
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ code: "not_found", message: `Unknown tool: ${name}` }),
+      },
+    ],
+  };
+}
+
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
 
-async function dispatch(
-  req: { jsonrpc: "2.0"; id?: JsonRpcId; method: string; params?: Record<string, unknown> },
-  _ctx: AuthContext,
-) {
+async function dispatch(req: JsonRpcRequest, ctx: AuthContext) {
   const id = req.id ?? null;
-  switch (req.method) {
-    case "initialize":
-      return rpcResult(id, {
-        protocolVersion: "2025-06-18",
-        capabilities: { tools: { listChanged: false } },
-        serverInfo: SERVER_INFO,
-        instructions:
-          "Atlas API MCP — provides read/write access to your Atlas account. Tools coming in sprint 018.",
-      });
-    case "notifications/initialized":
-    case "notifications/cancelled":
-      return null;
-    case "tools/list":
-      return rpcResult(id, { tools: [] });
-    case "ping":
-      return rpcResult(id, {});
-    default:
-      return rpcError(id, -32601, `Method not found: ${req.method}`);
+  try {
+    switch (req.method) {
+      case "initialize":
+        return rpcResult(id, {
+          protocolVersion: "2025-06-18",
+          capabilities: { tools: { listChanged: false } },
+          serverInfo: SERVER_INFO,
+          instructions:
+            "Atlas API MCP — provides read/write access to your Atlas account. Read tools require scope=read or read_write. Write tools require scope=write or read_write. Admin tools require role=superadmin.",
+        });
+
+      case "notifications/initialized":
+      case "notifications/cancelled":
+        return null;
+
+      case "tools/list": {
+        const tools = await buildToolsList(ctx);
+        return rpcResult(id, { tools });
+      }
+
+      case "tools/call": {
+        const params = (req.params ?? {}) as { name?: string; arguments?: Record<string, unknown> };
+        if (!params.name) return rpcError(id, -32602, "missing tool name");
+
+        const out = await handleToolCall(params.name, params.arguments ?? {}, ctx);
+        return rpcResult(id, out);
+      }
+
+      case "ping":
+        return rpcResult(id, {});
+
+      default:
+        return rpcError(id, -32601, `Method not found: ${req.method}`);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return rpcError(id, -32603, message);
   }
 }
 
@@ -125,12 +230,12 @@ export async function POST(req: NextRequest) {
 
   if (Array.isArray(body)) {
     const responses = await Promise.all(
-      body.map((m) => dispatch(m as Parameters<typeof dispatch>[0], ctx)),
+      body.map((m) => dispatch(m as JsonRpcRequest, ctx)),
     );
     return NextResponse.json(responses.filter((r) => r !== null));
   }
 
-  const response = await dispatch(body as Parameters<typeof dispatch>[0], ctx);
+  const response = await dispatch(body as JsonRpcRequest, ctx);
   if (response === null) return new NextResponse(null, { status: 204 });
   return NextResponse.json(response);
 }
@@ -143,11 +248,14 @@ export async function GET(req: NextRequest) {
       { status: 401, headers: { "WWW-Authenticate": WWW_AUTHENTICATE } },
     );
   }
+
+  const tools = await buildToolsList(ctx);
+
   return NextResponse.json({
     server: SERVER_INFO,
     transport: "http",
     method: "POST application/json with JSON-RPC 2.0 body",
-    tools: [],
+    tools: tools.map((t) => t.name),
     context: { scope: ctx.scope, role: ctx.role },
   });
 }
