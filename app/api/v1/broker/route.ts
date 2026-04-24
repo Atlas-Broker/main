@@ -96,7 +96,7 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const sb = getServiceClient();
-  await sb.from("broker_connections").upsert(
+  const { error: upsertError } = await sb.from("broker_connections").upsert(
     {
       user_id: user.userId,
       broker: "alpaca",
@@ -109,6 +109,11 @@ export async function POST(req: Request): Promise<Response> {
     },
     { onConflict: "user_id,broker,environment" },
   );
+
+  if (upsertError) {
+    console.error("[broker] upsert failed:", upsertError.message, upsertError.details);
+    return Response.json({ error: "Failed to save broker connection" }, { status: 500 });
+  }
 
   return Response.json({
     connected: true,

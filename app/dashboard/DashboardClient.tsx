@@ -1677,10 +1677,17 @@ export default function UserDashboard({ initialData }: { initialData?: Dashboard
       }
 
       try {
-        if (portRes) { const port = await portRes.json(); setPortfolio(port); }
+        if (portRes) {
+          const port = await portRes.json();
+          if (!portRes.ok) {
+            console.error("[dashboard] portfolio fetch failed:", portRes.status, port);
+          } else {
+            setPortfolio(port);
+          }
+        }
         if (sigsRes) { const sigs = await sigsRes.json(); setSignals(Array.isArray(sigs) ? sigs : []); }
       } catch (err) {
-        console.error("Failed to parse dashboard data", err);
+        console.error("[dashboard] Failed to parse dashboard data", err);
       } finally {
         setLoading(false);
       }

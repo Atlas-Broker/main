@@ -38,7 +38,11 @@ export async function GET(req: Request): Promise<Response> {
     .eq("is_active", true)
     .maybeSingle();
 
+  if (connResult.error) {
+    console.error("[portfolio] broker_connections query error:", connResult.error.message);
+  }
   if (!connResult.data) {
+    console.warn("[portfolio] no active broker connection for user:", user.userId);
     return Response.json({
       total_value: 0,
       cash: 0,
@@ -66,6 +70,8 @@ export async function GET(req: Request): Promise<Response> {
     ]);
 
     if (!accountRes.ok || !positionsRes.ok) {
+      const body = await (accountRes.ok ? positionsRes : accountRes).text();
+      console.error("[portfolio] Alpaca API error:", accountRes.status, positionsRes.status, body);
       return Response.json(
         { error: "Failed to fetch from Alpaca" },
         { status: 502 }
