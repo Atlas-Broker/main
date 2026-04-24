@@ -5,7 +5,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAdminContext } from "../admin-context";
 import { Card, relTime, type ServiceStatus, type SystemStatus } from "../admin-shared";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API = "";
 
 const SERVICES = ["pipeline", "scheduler", "alpaca", "ibkr", "mongodb", "supabase"] as const;
 

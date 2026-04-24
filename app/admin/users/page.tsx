@@ -5,7 +5,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAdminContext } from "../admin-context";
 import { Card, TierBadge, RoleBadge, Modal, fmtDate, type AdminUser, type ConfirmModal } from "../admin-shared";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API = "";
 
 const inputStyle: React.CSSProperties = {
   background: "var(--elevated)", border: "1px solid var(--line)", borderRadius: 7,

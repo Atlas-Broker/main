@@ -17,7 +17,7 @@ import { fetchEquityCurve, fetchWithAuth, type EquityCurvePoint } from "@/lib/ap
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_URL = "";
 const BASE_CAPITAL = 100_000;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -157,7 +157,7 @@ function EquityCurveContent() {
 
   useEffect(() => {
     Promise.all([
-      fetchEquityCurve(API_URL),
+      fetchEquityCurve(),
       fetchWithAuth(`${API_URL}/v1/portfolio`).then((r) => r?.json() ?? null),
     ]).then(([curveData, portData]) => {
       setPoints(curveData);

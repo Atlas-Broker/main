@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 import { ComparisonChart, jobColor, type ChartSeries } from "@/app/admin/_components/ComparisonChart";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API = "";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

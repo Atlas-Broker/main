@@ -58,19 +58,7 @@ export type DecisionLogEntry = {
   price?: number | null;
 };
 
-/**
- * Base URL for all API calls.
- *
- * When NEXT_PUBLIC_USE_TS_API=true the frontend routes all calls to the
- * same-origin Next.js handlers (/api/v1/*) introduced in sprint 013.
- * Leave the flag unset (or "false") to keep routing to the Render backend.
- *
- * The actual switch happens during sprint 014's UAT soak — do NOT flip live yet.
- */
-const API_URL =
-  process.env.NEXT_PUBLIC_USE_TS_API === "true"
-    ? "" // same-origin /api/v1/*
-    : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000");
+const API_URL = "";
 
 export async function fetchMyProfile(): Promise<MyProfile | null> {
   const res = await fetchWithAuth(`${API_URL}/v1/profile/me`);
@@ -78,14 +66,14 @@ export async function fetchMyProfile(): Promise<MyProfile | null> {
   return res.json() as Promise<MyProfile>;
 }
 
-export async function fetchEquityCurve(apiUrl: string): Promise<EquityCurvePoint[]> {
-  const res = await fetchWithAuth(`${apiUrl}/v1/portfolio/equity-curve`);
+export async function fetchEquityCurve(): Promise<EquityCurvePoint[]> {
+  const res = await fetchWithAuth("/api/v1/portfolio/equity-curve");
   if (!res || !res.ok) return [];
   return res.json();
 }
 
-export async function fetchDecisionLog(apiUrl: string, ticker: string, limit = 20): Promise<DecisionLogEntry[]> {
-  const res = await fetchWithAuth(`${apiUrl}/v1/portfolio/positions/${ticker}/log?limit=${limit}`);
+export async function fetchDecisionLog(ticker: string, limit = 20): Promise<DecisionLogEntry[]> {
+  const res = await fetchWithAuth(`/api/v1/portfolio/positions/${ticker}/log?limit=${limit}`);
   if (!res || !res.ok) return [];
   return res.json();
 }

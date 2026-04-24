@@ -8,7 +8,7 @@ import { fetchWithAuth, fetchMyProfile, type UserRole } from "@/lib/api";
 import { AccountDropdown } from "@/components/AccountDropdown";
 import { AgentTab } from "./AgentTab";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_URL = "";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

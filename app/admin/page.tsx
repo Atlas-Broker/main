@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import { Card, SectionLabel, StatCard, relTime, type AdminStats, type SystemStatus } from "./admin-shared";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API = "";
 
 const PLACEHOLDER_RUNS = [
   { ticker: "AAPL",  action: "BUY",  status: "ok",    ts: "2026-03-20T08:14:00Z", duration: "3.2s" },

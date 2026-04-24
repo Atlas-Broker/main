@@ -6,7 +6,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAdminContext } from "../admin-context";
 import { Card, RoleBadge, Modal, type AdminUser, type ConfirmModal } from "../admin-shared";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API = "";
 
 export default function RolesPage() {
   const { isSuperadmin } = useAdminContext();

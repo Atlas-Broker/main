@@ -6,7 +6,7 @@ import { fetchWithAuth } from "@/lib/api";
 import { EquityChart } from "@/app/admin/_components/EquityChart";
 import { StackedEquityChart } from "@/app/admin/_components/StackedEquityChart";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API = "";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

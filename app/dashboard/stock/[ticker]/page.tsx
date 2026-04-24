@@ -52,11 +52,10 @@ export default function StockLogPage({ params }: { params: Promise<{ ticker: str
   const scrollRestoredRef = useRef(false);
 
   useEffect(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
     params.then(({ ticker: t }) => {
       const upper = t.toUpperCase();
       setTicker(upper);
-      fetchDecisionLog(apiUrl, upper, 20).then((data) => {
+      fetchDecisionLog(upper, 20).then((data) => {
         setEntries(data);
         setLoading(false);
       });
