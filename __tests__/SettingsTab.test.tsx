@@ -31,10 +31,10 @@ jest.mock("../components/UserMenu", () => ({
   UserMenu: () => null,
 }));
 
-// Import SettingsTab (named export from dashboard/page.tsx)
-import { SettingsTab } from "../app/dashboard/page";
+// Import SettingsTab (named export from DashboardClient)
+import { SettingsTab } from "../app/dashboard/DashboardClient";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_URL = "";
 
 // Reusable response stubs
 const profileResponse = (overrides: object = {}) =>
