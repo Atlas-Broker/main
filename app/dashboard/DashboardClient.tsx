@@ -7,6 +7,7 @@ import { useAuth } from "@clerk/nextjs";
 import { fetchWithAuth, fetchMyProfile, type UserRole } from "@/lib/api";
 import { AccountDropdown } from "@/components/AccountDropdown";
 import { AgentTab } from "./AgentTab";
+import { ClaudeConnectorSection } from "./ClaudeConnectorSection";
 
 const API_URL = "";
 
@@ -1546,6 +1547,9 @@ export function SettingsTab({
           </button>
         )}
       </div>
+
+      {/* Claude Connector — PAT management */}
+      <ClaudeConnectorSection />
 
       {/* Philosophy — tappable row */}
       <div>

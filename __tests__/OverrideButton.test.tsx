@@ -38,7 +38,7 @@ describe("OverrideButton", () => {
   });
 
   it("renders countdown text when within 300s window", async () => {
-    const { OverrideButton } = await import("../app/dashboard/page");
+    const { OverrideButton } = await import("../app/dashboard/DashboardClient");
     const executedAt = new Date(Date.now() - 60_000).toISOString();
 
     render(
@@ -56,7 +56,7 @@ describe("OverrideButton", () => {
   });
 
   it("disables the button after 300s have elapsed", async () => {
-    const { OverrideButton } = await import("../app/dashboard/page");
+    const { OverrideButton } = await import("../app/dashboard/DashboardClient");
     const executedAt = new Date(Date.now() - 60_000).toISOString();
 
     render(
@@ -77,7 +77,7 @@ describe("OverrideButton", () => {
   });
 
   it("calls POST /v1/trades/{id}/override on click after confirmation", async () => {
-    const { OverrideButton } = await import("../app/dashboard/page");
+    const { OverrideButton } = await import("../app/dashboard/DashboardClient");
     const executedAt = new Date(Date.now() - 60_000).toISOString();
     const onSuccess = jest.fn();
 
@@ -101,7 +101,7 @@ describe("OverrideButton", () => {
   });
 
   it("does not call fetch when user cancels the confirm dialog", async () => {
-    const { OverrideButton } = await import("../app/dashboard/page");
+    const { OverrideButton } = await import("../app/dashboard/DashboardClient");
     jest.spyOn(window, "confirm").mockReturnValue(false);
 
     const executedAt = new Date(Date.now() - 60_000).toISOString();

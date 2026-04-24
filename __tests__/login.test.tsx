@@ -4,7 +4,7 @@ jest.mock("@clerk/nextjs", () => ({
   SignIn: () => <div data-testid="clerk-sign-in">Sign In Component</div>,
 }));
 
-import LoginPage from "../app/login/page";
+import LoginPage from "../app/login/[[...rest]]/page";
 
 describe("LoginPage", () => {
   it("renders without crashing", () => {
