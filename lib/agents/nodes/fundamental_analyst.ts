@@ -5,7 +5,7 @@
  */
 
 import type { AtlasState, FundamentalOutput } from "../state";
-import { FundamentalOutputSchema, validateStateSlice } from "../state";
+import { FundamentalOutputSchema, validateStateSlice, llmConfigFromState } from "../state";
 import { getLlm } from "../llm";
 import { getPhilosophyPrefix } from "../philosophies";
 import type { AtlasTickerInfo } from "@/lib/market";
@@ -53,7 +53,8 @@ Return ONLY valid JSON with this exact structure:
   "upside_to_target_pct": <float or null>
 }`;
 
-  const llm = getLlm("quick");
+  const llmConfig = llmConfigFromState(state);
+  const llm = await getLlm("quick", llmConfig);
   const response = await llm.invoke(prompt);
   const text = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
 
@@ -72,6 +73,8 @@ Return ONLY valid JSON with this exact structure:
       ? Math.round(((target - current) / current) * 100 * 100) / 100
       : (parsed["upside_to_target_pct"] as number | null) ?? null;
 
+  const modelId = llmConfig?.model ?? "gemini-2.5-flash";
+
   const result = validateStateSlice<FundamentalOutput>(
     FundamentalOutputSchema,
     {
@@ -80,7 +83,7 @@ Return ONLY valid JSON with this exact structure:
       valuation: parsed["valuation"] ?? "fairly_valued",
       upside_to_target_pct: upside,
       reasoning: parsed["reasoning"] ?? "",
-      model: "gemini-2.5-flash",
+      model: modelId,
       latency_ms: Date.now() - startMs,
     },
     "fundamental_analyst",

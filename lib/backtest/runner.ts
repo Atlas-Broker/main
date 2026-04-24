@@ -11,6 +11,7 @@
 import { MongoClient } from "mongodb";
 
 import { runGraph } from "../agents";
+import { getModelId } from "../agents/llm";
 import { inngest } from "./inngest-client";
 import { computeMetrics } from "./metrics";
 import type { BacktestMetrics, BacktestRequest, BacktestSlice } from "./types";
@@ -31,6 +32,12 @@ function getMongoClient(): MongoClient {
   return new MongoClient(MONGO_URI);
 }
 
+type LlmMeta = {
+  provider: string;
+  model: string;
+  base_url?: string;
+};
+
 /**
  * Upsert a single backtest slice by (jobId, date, ticker).
  * Uses replaceOne with upsert:true so replayed Inngest steps never duplicate.
@@ -40,6 +47,7 @@ export async function upsertSlice(
   date: string,
   ticker: string,
   decision: unknown,
+  llmMeta?: LlmMeta,
 ): Promise<void> {
   const client = getMongoClient();
   try {
@@ -50,6 +58,7 @@ export async function upsertSlice(
       date,
       ticker,
       decision,
+      llm_config: llmMeta ?? null,
       completedAt: new Date().toISOString(),
     };
     await col.replaceOne({ jobId, date, ticker }, doc, { upsert: true });
@@ -121,7 +130,13 @@ export const runBacktest = inngest.createFunction(
     triggers: [{ event: "app/backtest.requested" }],
   },
   async ({ event, step }: { event: { data: BacktestRequest }; step: { run: <T>(id: string, fn: () => Promise<T>) => Promise<T> } }) => {
-    const { userId, tickers, startDate, endDate, philosophy, jobId } = event.data;
+    const { userId, tickers, startDate, endDate, philosophy, jobId, llmConfig } = event.data;
+
+    // Default to Gemini when no config supplied
+    const resolvedLlmConfig = llmConfig ?? {
+      provider: "gemini" as const,
+      model: getModelId("quick"),
+    };
 
     const dates = generateDateRange(startDate, endDate);
 
@@ -138,9 +153,14 @@ export const runBacktest = inngest.createFunction(
               philosophy,
               isBacktest: true,
               asOfDate: date,
+              llmConfig: resolvedLlmConfig,
             });
 
-            await upsertSlice(jobId, date, ticker, result);
+            await upsertSlice(jobId, date, ticker, result, {
+              provider: resolvedLlmConfig.provider,
+              model: resolvedLlmConfig.model,
+              base_url: resolvedLlmConfig.baseUrl,
+            });
 
             return {
               jobId,

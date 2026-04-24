@@ -5,7 +5,7 @@
  */
 
 import type { AtlasState, SentimentOutput } from "../state";
-import { SentimentOutputSchema, validateStateSlice } from "../state";
+import { SentimentOutputSchema, validateStateSlice, llmConfigFromState } from "../state";
 import { getLlm } from "../llm";
 import { getPhilosophyPrefix } from "../philosophies";
 import type { NewsItem } from "@/lib/market";
@@ -54,7 +54,8 @@ Return ONLY valid JSON with this exact structure:
   "dominant_themes": ["theme1", "theme2"]
 }`;
 
-  const llm = getLlm("quick");
+  const llmConfig = llmConfigFromState(state);
+  const llm = await getLlm("quick", llmConfig);
   const response = await llm.invoke(prompt);
   const text = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
 
@@ -65,6 +66,8 @@ Return ONLY valid JSON with this exact structure:
   } catch {
     parsed = {};
   }
+
+  const modelId = llmConfig?.model ?? "gemini-2.5-flash";
 
   const result = validateStateSlice<SentimentOutput>(
     SentimentOutputSchema,
@@ -78,7 +81,7 @@ Return ONLY valid JSON with this exact structure:
       headline_count: headlines.length,
       reasoning: parsed["reasoning"] ?? "",
       news_articles: newsArticles,
-      model: "gemini-2.5-flash",
+      model: modelId,
       latency_ms: Date.now() - startMs,
     },
     "sentiment_analyst",

@@ -25,6 +25,7 @@ export type {
   RiskOutput,
   PortfolioDecision,
 } from "./state";
+export type { LLMConfig, LLMProvider } from "./llm";
 
 export interface RunGraphOptions {
   /** Clerk user ID */
@@ -37,6 +38,11 @@ export interface RunGraphOptions {
   isBacktest?: boolean;
   /** ISO date string for backtest mode (YYYY-MM-DD) */
   asOfDate?: string;
+  /**
+   * Optional LLM config.  When absent, all nodes default to Gemini.
+   * Only respected in backtest mode — live trading is always Gemini.
+   */
+  llmConfig?: import("./llm").LLMConfig;
 }
 
 /**
@@ -56,9 +62,13 @@ export async function runGraph(
     philosophy = "balanced",
     isBacktest = false,
     asOfDate,
+    llmConfig,
   } = opts;
 
   const graph = getGraph();
+
+  // Live trading is always locked to Gemini — never pass llmConfig there.
+  const resolvedLlmConfig = isBacktest ? llmConfig : undefined;
 
   const initialState: Partial<AtlasState> = {
     ticker: ticker.toUpperCase(),
@@ -67,6 +77,14 @@ export async function runGraph(
     philosophy_mode: philosophy,
     as_of_date: isBacktest
       ? (asOfDate ?? new Date().toISOString().slice(0, 10))
+      : null,
+    llm_config: resolvedLlmConfig
+      ? {
+          provider: resolvedLlmConfig.provider,
+          model: resolvedLlmConfig.model,
+          base_url: resolvedLlmConfig.baseUrl,
+          api_key: resolvedLlmConfig.apiKey,
+        }
       : null,
   };
 

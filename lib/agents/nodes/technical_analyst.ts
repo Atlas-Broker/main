@@ -5,7 +5,7 @@
  */
 
 import type { AtlasState, TechnicalOutput } from "../state";
-import { TechnicalOutputSchema, validateStateSlice } from "../state";
+import { TechnicalOutputSchema, validateStateSlice, llmConfigFromState } from "../state";
 import { getLlm } from "../llm";
 import { getPhilosophyPrefix } from "../philosophies";
 import type { Bar } from "@/lib/market";
@@ -133,7 +133,8 @@ Return ONLY valid JSON with this exact structure:
   "trend": "bullish" or "bearish" or "neutral"
 }`;
 
-  const llm = getLlm("quick");
+  const llmConfig = llmConfigFromState(state);
+  const llm = await getLlm("quick", llmConfig);
   const response = await llm.invoke(prompt);
   const text = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
 
@@ -146,6 +147,8 @@ Return ONLY valid JSON with this exact structure:
     parsed = {};
   }
 
+  const modelId = llmConfig?.model ?? "gemini-2.5-flash";
+
   const result = validateStateSlice<TechnicalOutput>(
     TechnicalOutputSchema,
     {
@@ -154,7 +157,7 @@ Return ONLY valid JSON with this exact structure:
       key_levels: (parsed["key_levels"] as Record<string, number>) ?? {},
       trend: parsed["trend"] ?? "neutral",
       reasoning: parsed["reasoning"] ?? "",
-      model: "gemini-2.5-flash",
+      model: modelId,
       latency_ms: Date.now() - startMs,
     },
     "technical_analyst",

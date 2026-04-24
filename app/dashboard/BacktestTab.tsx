@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
+import { PROVIDER_DEFAULTS } from "@/lib/agents/llm";
+import type { LLMProvider } from "@/lib/agents/llm";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -535,6 +537,19 @@ export function BacktestTab({ role }: { role?: string }) {
 
 // ── New Backtest Form ─────────────────────────────────────────────────────────
 
+const PROVIDER_LABELS_SHORT: Record<LLMProvider, string> = {
+  gemini: "Gemini",
+  groq: "Groq",
+  ollama: "Ollama",
+  "openai-compatible": "Custom",
+};
+
+const COST_TABLE: { provider: LLMProvider; cost: string; time: string }[] = [
+  { provider: "gemini",  cost: "~$0.10–0.20",      time: "~4–6 min" },
+  { provider: "groq",    cost: "Free (rate limit)", time: "~2–4 min" },
+  { provider: "ollama",  cost: "Free",              time: "~20–30 min" },
+];
+
 function NewBacktestForm({
   onBack,
   onCreated,
@@ -552,6 +567,18 @@ function NewBacktestForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // LLM provider state
+  const [llmProvider, setLlmProvider] = useState<LLMProvider>("gemini");
+  const [llmModel, setLlmModel] = useState<string>(PROVIDER_DEFAULTS.gemini.quick);
+  const [llmBaseUrl, setLlmBaseUrl] = useState("");
+  const [llmApiKey, setLlmApiKey] = useState("");
+  const [showLlm, setShowLlm] = useState(false);
+
+  function handleProviderChange(p: LLMProvider) {
+    setLlmProvider(p);
+    setLlmModel(PROVIDER_DEFAULTS[p].quick);
+  }
+
   const tickerList = tickers.split(",").map((t) => t.trim().toUpperCase()).filter(Boolean);
   const days = tradingDayEstimate(startDate, endDate);
   const calls = days * tickerList.length;
@@ -564,15 +591,26 @@ function NewBacktestForm({
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+    const payload: Record<string, unknown> = {
+      tickers: tickerList,
+      start_date: startDate,
+      end_date: endDate,
+      ebc_mode: mode,
+      llm_provider: llmProvider,
+      llm_model: llmModel || PROVIDER_DEFAULTS[llmProvider].quick,
+    };
+    if (llmBaseUrl) payload["llm_base_url"] = llmBaseUrl;
+    if (llmApiKey) payload["llm_api_key"] = llmApiKey;
+
     const res = await fetchWithAuth(`${API}/v1/backtest`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tickers: tickerList, start_date: startDate, end_date: endDate, ebc_mode: mode }),
+      body: JSON.stringify(payload),
     });
     if (!res) { router.push("/login"); return; }
     if (!res.ok) {
       const data = await res.json();
-      setError(data.detail ?? "Failed to start backtest");
+      setError(data.detail ?? data.error ?? "Failed to start backtest");
       setSubmitting(false);
       return;
     }
@@ -641,13 +679,172 @@ function NewBacktestForm({
         </div>
       </div>
 
+      {/* LLM Provider — collapsible */}
+      <div style={{ border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
+        <button
+          type="button"
+          onClick={() => setShowLlm((v) => !v)}
+          style={{
+            width: "100%", padding: "10px 14px", background: "transparent",
+            border: "none", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <span style={{ fontFamily: "var(--font-jb)", fontSize: 10, color: "var(--ghost)", letterSpacing: "0.06em" }}>
+              LLM PROVIDER
+            </span>
+            <span style={{
+              fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--dim)",
+              background: "var(--elevated)", border: "1px solid var(--line)",
+              padding: "1px 6px", borderRadius: 4,
+            }}>
+              {PROVIDER_LABELS_SHORT[llmProvider]} · {llmModel || PROVIDER_DEFAULTS[llmProvider].quick}
+            </span>
+          </div>
+          <span style={{ color: "var(--ghost)", fontSize: 12 }}>{showLlm ? "↑" : "↓"}</span>
+        </button>
+
+        {showLlm && (
+          <div style={{ padding: "0 14px 14px", borderTop: "1px solid var(--line)" }}>
+            {/* Provider selector */}
+            <div style={{ display: "flex", gap: 6, marginTop: 12, marginBottom: 12 }}>
+              {(["gemini", "groq", "ollama", "openai-compatible"] as LLMProvider[]).map((p) => {
+                const active = llmProvider === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => handleProviderChange(p)}
+                    style={{
+                      flex: 1, padding: "6px 4px", borderRadius: 6,
+                      border: `1px solid ${active ? "var(--brand)" : "var(--line)"}`,
+                      background: active ? "var(--brand)18" : "transparent",
+                      color: active ? "var(--brand)" : "var(--ghost)",
+                      fontSize: 11, fontFamily: "var(--font-jb)",
+                      cursor: "pointer", fontWeight: active ? 600 : 400,
+                      whiteSpace: "nowrap" as const, overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {PROVIDER_LABELS_SHORT[p]}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Model input */}
+            <div style={{ marginBottom: 8 }}>
+              <label style={{ display: "block", color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", marginBottom: 4 }}>
+                MODEL
+              </label>
+              <input
+                type="text"
+                value={llmModel}
+                onChange={(e) => setLlmModel(e.target.value)}
+                placeholder={PROVIDER_DEFAULTS[llmProvider].quick}
+                style={inputStyle}
+              />
+            </div>
+
+            {/* Groq API key */}
+            {llmProvider === "groq" && (
+              <div style={{ marginBottom: 8 }}>
+                <label style={{ display: "block", color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", marginBottom: 4 }}>
+                  GROQ API KEY
+                </label>
+                <input
+                  type="password"
+                  value={llmApiKey}
+                  onChange={(e) => setLlmApiKey(e.target.value)}
+                  placeholder="gsk_…"
+                  autoComplete="off"
+                  style={inputStyle}
+                />
+              </div>
+            )}
+
+            {/* Ollama base URL */}
+            {llmProvider === "ollama" && (
+              <div style={{ marginBottom: 8 }}>
+                <label style={{ display: "block", color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", marginBottom: 4 }}>
+                  OLLAMA BASE URL
+                </label>
+                <input
+                  type="text"
+                  value={llmBaseUrl}
+                  onChange={(e) => setLlmBaseUrl(e.target.value)}
+                  placeholder="http://localhost:11434"
+                  style={inputStyle}
+                />
+              </div>
+            )}
+
+            {/* Custom endpoint */}
+            {llmProvider === "openai-compatible" && (
+              <>
+                <div style={{ marginBottom: 8 }}>
+                  <label style={{ display: "block", color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", marginBottom: 4 }}>
+                    BASE URL
+                  </label>
+                  <input
+                    type="text"
+                    value={llmBaseUrl}
+                    onChange={(e) => setLlmBaseUrl(e.target.value)}
+                    placeholder="https://api.your-provider.com/v1"
+                    style={inputStyle}
+                  />
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <label style={{ display: "block", color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-jb)", marginBottom: 4 }}>
+                    API KEY
+                  </label>
+                  <input
+                    type="password"
+                    value={llmApiKey}
+                    onChange={(e) => setLlmApiKey(e.target.value)}
+                    placeholder="sk-…"
+                    autoComplete="off"
+                    style={inputStyle}
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Cost table */}
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, fontFamily: "var(--font-jb)", marginTop: 8 }}>
+              <thead>
+                <tr>
+                  {["Provider", "Cost", "Time"].map((h) => (
+                    <th key={h} style={{ color: "var(--ghost)", textAlign: "left" as const, paddingBottom: 4, fontWeight: 500 }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {COST_TABLE.map((row) => (
+                  <tr key={row.provider} style={{ borderTop: "1px solid var(--line)" }}>
+                    <td style={{ padding: "5px 0", color: llmProvider === row.provider ? "var(--brand)" : "var(--ghost)" }}>
+                      {PROVIDER_LABELS_SHORT[row.provider]}
+                    </td>
+                    <td style={{ padding: "5px 8px 5px 0", color: "var(--dim)" }}>{row.cost}</td>
+                    <td style={{ padding: "5px 0", color: "var(--dim)" }}>{row.time}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <div style={{
         background: "var(--elevated)", border: "1px solid var(--line)",
         borderRadius: 8, padding: "10px 14px",
         fontFamily: "var(--font-nunito)", fontSize: 13, color: "var(--dim)",
       }}>
         ~{calls} AI calls · est. ${costEst}
-        <span style={{ color: "var(--ghost)", fontSize: 11 }}> (Gemini)</span>
+        <span style={{ color: "var(--ghost)", fontSize: 11 }}> ({PROVIDER_LABELS_SHORT[llmProvider]})</span>
       </div>
 
       {error && (

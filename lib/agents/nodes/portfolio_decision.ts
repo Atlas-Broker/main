@@ -5,7 +5,7 @@
  */
 
 import type { AtlasState, PortfolioDecision, AccountInfo } from "../state";
-import { PortfolioDecisionSchema, validateStateSlice } from "../state";
+import { PortfolioDecisionSchema, validateStateSlice, llmConfigFromState } from "../state";
 import { getLlm } from "../llm";
 import { AlpacaAdapter, MockBrokerAdapter } from "@/lib/broker";
 import type { Account, Position } from "@/lib/broker";
@@ -166,7 +166,8 @@ Return ONLY valid JSON:
   "reasoning": "2-3 sentences integrating market signal, risk, and portfolio constraints"
 }`;
 
-  const llm = getLlm("deep");
+  const llmConfig = llmConfigFromState(state);
+  const llm = await getLlm("deep", llmConfig);
   const response = await llm.invoke(prompt);
   const text = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
 

@@ -5,7 +5,7 @@
  */
 
 import type { AtlasState, SynthesisOutput, TechnicalOutput, FundamentalOutput, SentimentOutput } from "../state";
-import { SynthesisOutputSchema, validateStateSlice } from "../state";
+import { SynthesisOutputSchema, validateStateSlice, llmConfigFromState } from "../state";
 import { getLlm } from "../llm";
 
 export async function synthesisNode(
@@ -49,7 +49,8 @@ Construct a bull case and bear case, then give a verdict. Return ONLY valid JSON
   "reasoning": "2-3 sentence synthesis weighing all three analysts"
 }`;
 
-  const llm = getLlm("deep");
+  const llmConfig = llmConfigFromState(state);
+  const llm = await getLlm("deep", llmConfig);
   const response = await llm.invoke(prompt);
   const text = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
 
@@ -61,6 +62,8 @@ Construct a bull case and bear case, then give a verdict. Return ONLY valid JSON
     parsed = {};
   }
 
+  const modelId = llmConfig?.model ?? "gemini-2.5-flash";
+
   const result = validateStateSlice<SynthesisOutput>(
     SynthesisOutputSchema,
     {
@@ -68,7 +71,7 @@ Construct a bull case and bear case, then give a verdict. Return ONLY valid JSON
       bear_case: parsed["bear_case"] ?? "",
       verdict: parsed["verdict"] ?? "HOLD",
       reasoning: parsed["reasoning"] ?? "",
-      model: "gemini-2.5-flash",
+      model: modelId,
       latency_ms: Date.now() - startMs,
     },
     "synthesis",

@@ -10,6 +10,9 @@
 
 import { z } from "zod";
 
+// Re-export for convenience so callers can import from state
+export type { LLMConfig, LLMProvider } from "./llm";
+
 // ── Primitive sub-schemas ────────────────────────────────────────────────────
 
 export const BarSchema = z.object({
@@ -175,6 +178,15 @@ export const AtlasStateSchema = z.object({
   risk: RiskOutputSchema.nullable().optional(),
   portfolio_decision: PortfolioDecisionSchema.nullable().optional(),
   trace_id: z.string().nullable().optional(),
+
+  // Optional LLM config — injected by backtest runner.
+  // When absent, each node defaults to Gemini (backward-compatible).
+  llm_config: z.object({
+    provider: z.enum(["gemini", "groq", "ollama", "openai-compatible"]),
+    model: z.string(),
+    base_url: z.string().optional(),
+    api_key: z.string().optional(),
+  }).nullable().optional(),
 });
 
 // ── TypeScript types ─────────────────────────────────────────────────────────
@@ -191,6 +203,20 @@ export type AccountInfo = z.infer<typeof AccountInfoSchema>;
 export type CurrentPosition = z.infer<typeof CurrentPositionSchema>;
 export type PhilosophyMode = NonNullable<z.infer<typeof PhilosophyModeSchema>>;
 export type BoundaryMode = z.infer<typeof BoundaryModeSchema>;
+
+/**
+ * Extract an LLMConfig from graph state.
+ * Returns undefined when no config was injected — callers fall back to Gemini.
+ */
+export function llmConfigFromState(state: AtlasState): import("./llm").LLMConfig | undefined {
+  if (!state.llm_config) return undefined;
+  return {
+    provider: state.llm_config.provider,
+    model: state.llm_config.model,
+    baseUrl: state.llm_config.base_url,
+    apiKey: state.llm_config.api_key,
+  };
+}
 
 /**
  * Validates a partial state update at a node boundary.

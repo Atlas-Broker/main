@@ -75,6 +75,11 @@ const AtlasStateAnnotation = Annotation.Root({
   trace_id: Annotation<string | null | undefined>({
     reducer: (_prev: any, next: any) => next,
   }),
+
+  // Optional LLM config — flows top-down, never mutated by nodes
+  llm_config: Annotation<AtlasState["llm_config"]>({
+    reducer: (_prev: any, next: any) => next,
+  }),
 });
 
 // ── Graph assembly ───────────────────────────────────────────────────────────

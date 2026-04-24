@@ -7,6 +7,10 @@
  * BacktestJob      — job status document persisted in MongoDB
  */
 
+import type { LLMConfig } from "@/lib/agents/llm";
+
+export type { LLMConfig } from "@/lib/agents/llm";
+
 export interface BacktestRequest {
   userId: string;
   tickers: string[];
@@ -17,6 +21,11 @@ export interface BacktestRequest {
   philosophy: "buffett" | "soros" | "lynch" | "balanced";
   /** Pre-generated UUID — used for idempotency on Inngest replay. */
   jobId: string;
+  /**
+   * Optional LLM provider config.  Defaults to Gemini when absent.
+   * Live trading always ignores this field.
+   */
+  llmConfig?: LLMConfig;
 }
 
 export interface BacktestSlice {

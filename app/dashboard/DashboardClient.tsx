@@ -8,8 +8,9 @@ import { fetchWithAuth, fetchMyProfile, type UserRole } from "@/lib/api";
 import { AccountDropdown } from "@/components/AccountDropdown";
 import { AgentTab } from "./AgentTab";
 import { ClaudeConnectorSection } from "./ClaudeConnectorSection";
+import { LlmProviderSection } from "./LlmProviderSection";
 
-const API_URL = "";
+const API_URL = "/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,7 +95,8 @@ type Portfolio = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmt(n: number, prefix = "$") {
+function fmt(n: number | undefined | null, prefix = "$") {
+  if (n == null || isNaN(n)) return `${prefix}—`;
   return prefix + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
@@ -611,7 +613,7 @@ function PortfolioTab({
         >
           <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginBottom: 6, letterSpacing: "0.06em" }}>TOTAL VALUE</div>
           <div className="num font-display font-bold" style={{ fontSize: 22, color: "var(--ink)", letterSpacing: "-0.02em" }}>
-            {portfolio ? `$${(portfolio.total_value / 1000).toFixed(1)}k` : "—"}
+            {portfolio?.total_value != null && !isNaN(portfolio.total_value) ? `$${(portfolio.total_value / 1000).toFixed(1)}k` : "—"}
           </div>
           <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginTop: 4 }}>tap for curve →</div>
         </button>
@@ -635,16 +637,16 @@ function PortfolioTab({
 
       {/* AI Mode Strip — Pro/Max only */}
       {(tier === "pro" || tier === "max") && portfolio && (
-        <AIModeStrip philosophy={philosophy} positionCount={portfolio.positions.length} boundaryMode={boundaryMode} />
+        <AIModeStrip philosophy={philosophy} positionCount={portfolio.positions?.length ?? 0} boundaryMode={boundaryMode} />
       )}
 
       {/* Positions list */}
       <div>
         <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-mono)", marginBottom: 10, letterSpacing: "0.06em" }}>POSITIONS</div>
-        {!portfolio || portfolio.positions.length === 0 ? (
+        {!portfolio || !portfolio.positions?.length ? (
           <div style={{ color: "var(--ghost)", fontSize: 13, textAlign: "center", padding: "24px 0" }}>No open positions yet.</div>
         ) : (
-          portfolio.positions.map((pos) => (
+          portfolio.positions!.map((pos) => (
             <button
               key={pos.ticker}
               onClick={() => onPositionClick(pos.ticker)}
@@ -897,7 +899,7 @@ function AlpacaConnectionSection() {
         setApiSecret("");
       } else {
         const err = await res.json().catch(() => ({}));
-        setError((err as { detail?: string }).detail ?? "Connection failed. Check your keys and try again.");
+        setError((err as { detail?: string; error?: string }).detail ?? (err as { error?: string }).error ?? "Connection failed. Check your keys and try again.");
       }
     } catch {
       setError("Network error — could not reach the server.");
@@ -1550,6 +1552,9 @@ export function SettingsTab({
 
       {/* Claude Connector — PAT management */}
       <ClaudeConnectorSection />
+
+      {/* LLM Provider — backtest model selector */}
+      <LlmProviderSection />
 
       {/* Philosophy — tappable row */}
       <div>

@@ -9,6 +9,8 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { getUserFromRequest } from "@/lib/auth/context";
 import { inngest } from "@/lib/inngest";
+import { PROVIDER_DEFAULTS } from "@/lib/agents/llm";
+import type { LLMProvider } from "@/lib/agents/llm";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY =
@@ -16,6 +18,7 @@ const SUPABASE_SERVICE_KEY =
 
 const VALID_EBC_MODES = ["advisory", "autonomous_guardrail", "autonomous"] as const;
 const VALID_PHILOSOPHY_MODES = ["balanced", "buffett", "soros", "lynch"] as const;
+const VALID_LLM_PROVIDERS = ["gemini", "groq", "ollama", "openai-compatible"] as const;
 
 const BacktestRequestSchema = z.object({
   tickers: z
@@ -29,6 +32,11 @@ const BacktestRequestSchema = z.object({
   philosophy_mode: z.enum(VALID_PHILOSOPHY_MODES).default("balanced"),
   confidence_threshold: z.number().min(0).max(1).nullable().optional(),
   initial_capital: z.number().positive().default(100_000.0),
+  // LLM provider fields — all optional, default to Gemini
+  llm_provider: z.enum(VALID_LLM_PROVIDERS).default("gemini"),
+  llm_model: z.string().max(128).optional(),
+  llm_base_url: z.string().url("llm_base_url must be a valid URL").nullable().optional(),
+  llm_api_key: z.string().max(512).nullable().optional(),
 });
 
 function getServiceClient() {
@@ -112,6 +120,12 @@ export async function POST(req: Request): Promise<Response> {
 
   const jobId = randomUUID();
 
+  // Resolve LLM model — fall back to provider default when omitted
+  const llmProvider = body.llm_provider as LLMProvider;
+  const llmModel =
+    body.llm_model?.trim() ||
+    PROVIDER_DEFAULTS[llmProvider]["quick"];
+
   // Write pending job to Supabase
   const { error: insertError } = await sb.from("backtest_jobs").insert({
     id: jobId,
@@ -123,6 +137,9 @@ export async function POST(req: Request): Promise<Response> {
     philosophy_mode: body.philosophy_mode,
     confidence_threshold: body.confidence_threshold ?? null,
     initial_capital: body.initial_capital,
+    llm_provider: llmProvider,
+    llm_model: llmModel,
+    llm_base_url: body.llm_base_url ?? null,
     status: "queued",
     created_at: new Date().toISOString(),
   });
@@ -130,6 +147,14 @@ export async function POST(req: Request): Promise<Response> {
   if (insertError) {
     return Response.json({ error: insertError.message }, { status: 500 });
   }
+
+  // Build LLMConfig for Inngest — exclude api_key from Supabase storage
+  const llmConfig = {
+    provider: llmProvider,
+    model: llmModel,
+    ...(body.llm_base_url ? { baseUrl: body.llm_base_url } : {}),
+    ...(body.llm_api_key ? { apiKey: body.llm_api_key } : {}),
+  };
 
   // Publish event to Inngest
   await inngest.send({
@@ -144,6 +169,7 @@ export async function POST(req: Request): Promise<Response> {
       philosophy_mode: body.philosophy_mode,
       confidence_threshold: body.confidence_threshold ?? null,
       initial_capital: body.initial_capital,
+      llmConfig,
     },
   });
 
