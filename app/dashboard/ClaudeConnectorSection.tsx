@@ -80,7 +80,7 @@ function GenerateView({
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetchWithAuth("/v1/pats", {
+      const res = await fetchWithAuth("/api/v1/pats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim(), scope }),
@@ -274,7 +274,7 @@ export function ClaudeConnectorSection() {
   const [revoking, setRevoking] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchWithAuth("/v1/pats")
+    fetchWithAuth("/api/v1/pats")
       .then((r) => r?.json())
       .then((data) => { if (Array.isArray(data)) setPats(data); })
       .catch(() => {})
@@ -284,7 +284,7 @@ export function ClaudeConnectorSection() {
   async function handleRevoke(id: string) {
     setRevoking(id);
     try {
-      await fetchWithAuth(`/v1/pats/${id}`, { method: "DELETE" });
+      await fetchWithAuth(`/api/v1/pats/${id}`, { method: "DELETE" });
       setPats((prev) => prev.filter((p) => p.id !== id));
     } catch {
       // non-fatal

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchWithAuth } from "@/lib/api";
 
-const API_URL = "";
+const API_URL = "/api";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 

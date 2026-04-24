@@ -861,7 +861,7 @@ type BrokerConn = {
   api_secret_masked: string | null;
 };
 
-function AlpacaConnectionSection() {
+function AlpacaConnectionSection({ onConnect }: { onConnect?: () => void }) {
   const [conn, setConn]           = useState<BrokerConn | null>(null);
   const [loading, setLoading]     = useState(true);
   const [apiKey, setApiKey]       = useState("");
@@ -872,7 +872,7 @@ function AlpacaConnectionSection() {
   const [disconnecting, setDisc]  = useState(false);
 
   useEffect(() => {
-    fetchWithAuth(`${API_URL}/v1/broker/connection`)
+    fetchWithAuth(`${API_URL}/v1/broker`)
       .then((r) => r?.json())
       .then((data) => setConn(data ?? { connected: false, broker: null, environment: null, api_key: null, api_secret_masked: null }))
       .catch(() => setConn({ connected: false, broker: null, environment: null, api_key: null, api_secret_masked: null }))
@@ -884,7 +884,7 @@ function AlpacaConnectionSection() {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetchWithAuth(`${API_URL}/v1/broker/connection`, {
+      const res = await fetchWithAuth(`${API_URL}/v1/broker`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret, environment: env }),
@@ -897,6 +897,7 @@ function AlpacaConnectionSection() {
         setConn({ connected: true, broker: "alpaca", environment: env, api_key: apiKey, api_secret_masked: masked });
         setApiKey("");
         setApiSecret("");
+        onConnect?.();
       } else {
         const err = await res.json().catch(() => ({}));
         setError((err as { detail?: string; error?: string }).detail ?? (err as { error?: string }).error ?? "Connection failed. Check your keys and try again.");
@@ -912,7 +913,7 @@ function AlpacaConnectionSection() {
     if (!window.confirm("Disconnect Alpaca? Scheduled runs will pause for your account.")) return;
     setDisc(true);
     try {
-      const res = await fetchWithAuth(`${API_URL}/v1/broker/connection`, { method: "DELETE" });
+      const res = await fetchWithAuth(`${API_URL}/v1/broker`, { method: "DELETE" });
       if (res?.ok) {
         setConn({ connected: false, broker: null, environment: null, api_key: null, api_secret_masked: null });
       }
@@ -1124,10 +1125,12 @@ export function SettingsTab({
   tier,
   initialPhilosophy = "balanced",
   onPhilosophyChange,
+  onBrokerConnect,
 }: {
   tier: "free" | "pro" | "max";
   initialPhilosophy?: PhilosophyMode;
   onPhilosophyChange?: (philosophy: PhilosophyMode) => void;
+  onBrokerConnect?: () => void;
 }) {
   const [settingsView, setSettingsView] = useState<"main" | "execution-mode" | "philosophy">("main");
   const [mode, setMode] = useState<"advisory" | "autonomous" | "autonomous_guardrail">("advisory");
@@ -1163,7 +1166,7 @@ export function SettingsTab({
   ] as const;
 
   useEffect(() => {
-    fetchWithAuth(`${API_URL}/v1/profile`)
+    fetchWithAuth(`${API_URL}/v1/user/settings`)
       .then((res) => res?.json())
       .then((data) => {
         if (data?.boundary_mode) {
@@ -1177,7 +1180,7 @@ export function SettingsTab({
   async function confirmModeChange() {
     setMode(tempMode);
     try {
-      await fetchWithAuth(`${API_URL}/v1/profile`, {
+      await fetchWithAuth(`${API_URL}/v1/user/settings`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ boundary_mode: tempMode }),
@@ -1192,7 +1195,7 @@ export function SettingsTab({
     setPhilosophy(tempPhilosophy);
     onPhilosophyChange?.(tempPhilosophy);
     try {
-      await fetchWithAuth(`${API_URL}/v1/profile`, {
+      await fetchWithAuth(`${API_URL}/v1/user/settings`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ investment_philosophy: tempPhilosophy }),
@@ -1471,7 +1474,7 @@ export function SettingsTab({
       </div>
 
       {/* Alpaca connection */}
-      <AlpacaConnectionSection />
+      <AlpacaConnectionSection onConnect={onBrokerConnect} />
 
       {/* IBKR — coming soon */}
       <div style={{
@@ -1652,17 +1655,16 @@ export default function UserDashboard({ initialData }: { initialData?: Dashboard
   useEffect(() => {
     if (!isLoaded) return;
     if (!isSignedIn) { router.push("/login"); return; }
-    // Skip initial fetch — Server Component pre-populated state via initialData.
-    // This effect only runs if the component is mounted without initialData
-    // (e.g. direct client-side navigation without SSR).
-    if (initialData) return;
 
     async function loadData() {
-      const [portRes, sigsRes, profile] = await Promise.all([
+      // Portfolio always fetched client-side (live Alpaca data, no SSR equivalent).
+      // Signals + profile skip if SSR already populated them via initialData.
+      const fetches: [Promise<Response | null>, Promise<Response | null> | null, Promise<import("@/lib/api").MyProfile | null> | null] = [
         fetchWithAuth(`${API_URL}/v1/portfolio`),
-        fetchWithAuth(`${API_URL}/v1/signals?limit=20`),
-        fetchMyProfile(),
-      ]);
+        initialData ? null : fetchWithAuth(`${API_URL}/v1/signals?limit=20`),
+        initialData ? null : fetchMyProfile(),
+      ];
+      const [portRes, sigsRes, profile] = await Promise.all(fetches);
 
       if (profile) {
         setRole(profile.role);
@@ -1767,6 +1769,7 @@ export default function UserDashboard({ initialData }: { initialData?: Dashboard
                 tier={tier}
                 initialPhilosophy={philosophy}
                 onPhilosophyChange={(p) => setPhilosophy(p)}
+                onBrokerConnect={fetchPortfolio}
               />
             )}
           </>

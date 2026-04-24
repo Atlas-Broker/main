@@ -17,7 +17,7 @@ import { fetchEquityCurve, fetchWithAuth, type EquityCurvePoint } from "@/lib/ap
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
 
-const API_URL = "";
+const API_URL = "/api";
 const BASE_CAPITAL = 100_000;
 
 // ─── Types ──────────────────────────────────────────────────────────────────

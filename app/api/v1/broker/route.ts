@@ -44,7 +44,7 @@ export async function GET(req: Request): Promise<Response> {
     .select("broker, auth_method, environment, api_key, api_secret, created_at, updated_at")
     .eq("user_id", user.userId)
     .eq("environment", environment)
-    .eq("active", true)
+    .eq("is_active", true)
     .maybeSingle();
 
   if (!data) return Response.json({ connected: false, broker: null });
@@ -104,7 +104,7 @@ export async function POST(req: Request): Promise<Response> {
       environment,
       api_key,
       api_secret,
-      active: true,
+      is_active: true,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "user_id,broker,environment" },
@@ -128,7 +128,7 @@ export async function DELETE(req: Request): Promise<Response> {
   const sb = getServiceClient();
   await sb
     .from("broker_connections")
-    .update({ active: false, updated_at: new Date().toISOString() })
+    .update({ is_active: false, updated_at: new Date().toISOString() })
     .eq("user_id", user.userId)
     .eq("environment", environment);
 

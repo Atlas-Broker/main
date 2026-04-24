@@ -10,8 +10,7 @@ export default async function DashboardPage() {
 
   const sb = getServiceClient();
 
-  const [{ data: portfolio }, { data: profile }, signals] = await Promise.all([
-    sb.from("portfolios").select("*").eq("user_id", userId).maybeSingle(),
+  const [{ data: profile }, signals] = await Promise.all([
     sb.from("profiles").select("*").eq("id", userId).maybeSingle(),
     fetchSignals(userId),
   ]);
@@ -22,7 +21,7 @@ export default async function DashboardPage() {
   const tier = (VALID_TIERS.includes(rawTier as typeof VALID_TIERS[number]) ? rawTier : "free") as DashboardInitialData["tier"];
 
   const initialData: DashboardInitialData = {
-    portfolio: portfolio as DashboardInitialData["portfolio"],
+    portfolio: null,
     signals,
     role: (p?.["role"] as DashboardInitialData["role"]) ?? null,
     tier,

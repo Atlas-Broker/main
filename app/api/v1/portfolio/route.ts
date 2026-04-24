@@ -35,6 +35,7 @@ export async function GET(req: Request): Promise<Response> {
     .select("api_key, api_secret, environment")
     .eq("user_id", user.userId)
     .eq("broker", "alpaca")
+    .eq("is_active", true)
     .maybeSingle();
 
   if (!connResult.data) {

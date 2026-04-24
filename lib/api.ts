@@ -58,10 +58,10 @@ export type DecisionLogEntry = {
   price?: number | null;
 };
 
-const API_URL = "";
+const API_URL = "/api";
 
 export async function fetchMyProfile(): Promise<MyProfile | null> {
-  const res = await fetchWithAuth(`${API_URL}/v1/profile/me`);
+  const res = await fetchWithAuth(`${API_URL}/v1/user/settings`);
   if (!res || !res.ok) return null;
   return res.json() as Promise<MyProfile>;
 }
