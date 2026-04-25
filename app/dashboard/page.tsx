@@ -56,7 +56,9 @@ async function fetchSignals(userId: string): Promise<Signal[]> {
         reasoning: String(decision.reasoning ?? ""),
         boundary_mode: String(d.boundary_mode ?? "advisory"),
         risk: (run.risk ?? {}) as Signal["risk"],
-        created_at: String(d.created_at ?? new Date().toISOString()),
+        created_at: d.created_at instanceof Date
+          ? d.created_at.toISOString()
+          : String(d.created_at ?? new Date().toISOString()),
         status: exec.status as Signal["status"],
         execution: d.execution as Signal["execution"],
       };

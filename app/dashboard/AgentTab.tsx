@@ -119,7 +119,8 @@ function groupSignals(signals: Signal[]): LogGroup[] {
   const map = new Map<string, Signal[]>();
 
   for (const sig of signals) {
-    const dateKey = sig.created_at.slice(0, 10); // YYYY-MM-DD
+    const d = new Date(sig.created_at);
+    const dateKey = isNaN(d.getTime()) ? "unknown" : d.toISOString().slice(0, 10);
     const window  = snapToWindow(sig.created_at);
     const key     = `${dateKey}_${window}`;
     if (!map.has(key)) map.set(key, []);

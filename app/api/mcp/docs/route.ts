@@ -31,6 +31,7 @@ const SLUG_GUIDANCE = `Valid doc_slug values: ${KNOWN_SLUGS.join(", ")}.
 - INTERIM_REPORT = content for the 12 April 2026 capstone interim submission (submitted, now archival).
 - FINAL_REPORT = content being drafted toward the 19 July 2026 capstone final submission.
 - BIWEEKLY_LOGS = running biweekly progress log for school check-ins.
+- INBOX = incoming proposals from external agents (e.g. ELZ OS); triaged by Atlas Claude Chat.
 Sections are markdown; headings are H2 text without the "## " prefix (e.g. "Agent Pipeline").`;
 
 const TOOLS = [
