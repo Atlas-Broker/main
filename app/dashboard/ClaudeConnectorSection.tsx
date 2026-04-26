@@ -44,7 +44,7 @@ const SCOPES: { id: Scope; label: string; desc: string }[] = [
   },
 ];
 
-const MCP_URL = "https://atlas-broker-uat.vercel.app/api/mcp/atlas";
+const MCP_URL = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://atlas-broker-uat.vercel.app"}/api/mcp/atlas`;
 
 function formatRelative(iso: string | null): string {
   if (!iso) return "Never";
