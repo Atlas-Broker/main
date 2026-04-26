@@ -588,18 +588,73 @@ function PortfolioTab({
   philosophy,
   boundaryMode,
   onPositionClick,
+  onGoToSettings,
 }: {
   portfolio: Portfolio | null;
   tier: "free" | "pro" | "max";
   philosophy: string;
   boundaryMode: string;
   onPositionClick: (ticker: string) => void;
+  onGoToSettings: () => void;
 }) {
   const router = useRouter();
   const pnlPos = portfolio ? portfolio.pnl_today >= 0 : true;
 
+  const [mcpCalloutDismissed, setMcpCalloutDismissed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("mcp_callout_dismissed") === "1";
+  });
+  const [hasPats, setHasPats] = useState<boolean>(true); // optimistic: assume PATs exist, hide callout
+
+  useEffect(() => {
+    if (tier !== "pro" && tier !== "max") return;
+    if (mcpCalloutDismissed) return;
+    fetchWithAuth("/api/v1/pats")
+      .then((r) => r?.json())
+      .then((data: unknown) => {
+        if (Array.isArray(data) && data.length === 0) setHasPats(false);
+      })
+      .catch(() => {}); // ignore errors
+  }, [tier, mcpCalloutDismissed]);
+
   return (
     <div className="flex flex-col gap-3 pb-6">
+      {/* MCP callout — Pro/Max only, dismissed when PATs exist or user dismisses */}
+      {(tier === "pro" || tier === "max") && !hasPats && !mcpCalloutDismissed && (
+        <div style={{
+          background: "rgba(123,97,255,0.08)",
+          border: "1px solid rgba(123,97,255,0.25)",
+          borderRadius: 10,
+          padding: "12px 16px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          marginBottom: 16,
+          flexWrap: "wrap",
+        }}>
+          <div style={{ fontSize: 12, color: "var(--ink)", lineHeight: 1.5, flex: 1 }}>
+            <strong>New:</strong> Connect Atlas to Claude — ask Claude to analyse your portfolio, run backtests, or summarise signals.{" "}
+            <button
+              onClick={onGoToSettings}
+              style={{ background: "none", border: "none", color: "var(--tier-pro)", cursor: "pointer", fontSize: 12, fontWeight: 600, padding: 0 }}
+            >
+              Set up connector →
+            </button>
+          </div>
+          <button
+            onClick={() => {
+              localStorage.setItem("mcp_callout_dismissed", "1");
+              setMcpCalloutDismissed(true);
+            }}
+            style={{ background: "none", border: "none", color: "var(--ghost)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Split header cards */}
       <div className="grid grid-cols-2 gap-3">
         {/* Total Value */}
@@ -1085,6 +1140,45 @@ function AlpacaConnectionSection({ onConnect }: { onConnect?: () => void }) {
   );
 }
 
+// ─── McpUpsellCard ────────────────────────────────────────────────────────────
+
+function McpUpsellCard() {
+  return (
+    <div style={{
+      background: "var(--elevated)",
+      border: "1px solid var(--line)",
+      borderRadius: 12,
+      padding: "20px 24px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 12,
+    }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>
+        Connect Atlas to Claude
+      </div>
+      <div style={{ fontSize: 12, color: "var(--ghost)", lineHeight: 1.6 }}>
+        Use Claude to query your signals, run backtests, and manage your portfolio via natural language. Available on Pro.
+      </div>
+      <a
+        href="/pricing"
+        style={{
+          display: "inline-block",
+          padding: "8px 16px",
+          borderRadius: 8,
+          background: "var(--tier-pro)",
+          color: "#fff",
+          fontSize: 12,
+          fontWeight: 600,
+          textDecoration: "none",
+          alignSelf: "flex-start",
+        }}
+      >
+        Upgrade to Pro
+      </a>
+    </div>
+  );
+}
+
 // ─── Tab: Settings ────────────────────────────────────────────────────────────
 
 type PhilosophyMode = "balanced" | "buffett" | "soros" | "lynch";
@@ -1553,8 +1647,22 @@ export function SettingsTab({
         )}
       </div>
 
-      {/* Claude Connector — PAT management */}
-      <ClaudeConnectorSection />
+      {/* Claude Integration */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 2 }}>
+            Claude Integration
+          </div>
+          <div style={{ fontSize: 12, color: "var(--ghost)" }}>
+            Connect Atlas to Claude for natural-language portfolio management.
+          </div>
+        </div>
+        {(tier === "pro" || tier === "max") ? (
+          <ClaudeConnectorSection />
+        ) : (
+          <McpUpsellCard />
+        )}
+      </div>
 
       {/* LLM Provider — backtest model selector */}
       <LlmProviderSection />
@@ -1768,6 +1876,7 @@ export default function UserDashboard({ initialData }: { initialData?: Dashboard
                 philosophy={philosophy}
                 boundaryMode={boundaryMode}
                 onPositionClick={handlePositionClick}
+                onGoToSettings={() => setTab("settings")}
               />
             )}
             {tab === "signals"   && <AgentTab signals={signals} loading={loading} />}
