@@ -5,7 +5,7 @@
  * Populates: ohlcv, info, news, current_price, analyst_outputs (empty merge seed).
  */
 
-import { fetchBars, fetchNews, fetchTickerInfo } from "@/lib/market";
+import { fetchBars, fetchNews, fetchTickerInfoCached } from "@/lib/market";
 import type { AtlasState, AnalystOutputs } from "../state";
 import { validateStateSlice, AnalystOutputsSchema } from "../state";
 
@@ -48,7 +48,7 @@ export async function marketDataNode(
     ]);
   }
 
-  const info = await fetchTickerInfo(ticker);
+  const info = await fetchTickerInfoCached(ticker);
 
   const currentPrice =
     info.currentPrice ??

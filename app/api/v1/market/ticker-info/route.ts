@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchTickerInfo } from "@/lib/market";
+import { fetchTickerInfoCached } from "@/lib/market";
 
 /**
  * GET /api/v1/market/ticker-info?symbol=AAPL
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const info = await fetchTickerInfo(symbol.trim().toUpperCase());
+    const info = await fetchTickerInfoCached(symbol.trim().toUpperCase());
     return NextResponse.json({ success: true, data: info, error: null });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";

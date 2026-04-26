@@ -6,6 +6,7 @@
  */
 import YahooFinance from "yahoo-finance2";
 import type { AtlasTickerInfo } from "./types";
+import { getServiceClient } from "@/lib/supabase-server";
 
 const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
@@ -113,4 +114,50 @@ export async function fetchTickerInfo(ticker: string): Promise<AtlasTickerInfo> 
   } catch {
     return empty;
   }
+}
+
+/**
+ * Cached wrapper around fetchTickerInfo. Checks Supabase ticker_info_cache
+ * first (TTL: ttlHours). Falls back to live yahoo-finance2 on miss or DB error.
+ * Never throws — same silent-fail contract as fetchTickerInfo.
+ */
+export async function fetchTickerInfoCached(
+  ticker: string,
+  ttlHours = 6
+): Promise<AtlasTickerInfo> {
+  try {
+    const supabase = getServiceClient();
+    const cutoff = new Date(Date.now() - ttlHours * 3600 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from("ticker_info_cache")
+      .select("data")
+      .eq("ticker", ticker)
+      .gt("fetched_at", cutoff)
+      .maybeSingle();
+
+    if (!error && data) {
+      return data.data as AtlasTickerInfo;
+    }
+  } catch {
+    // DB unavailable — fall through to live call
+  }
+
+  const result = await fetchTickerInfo(ticker);
+
+  // Best-effort upsert — never block the caller on cache write failure
+  try {
+    const supabase = getServiceClient();
+    await supabase.from("ticker_info_cache").upsert(
+      {
+        ticker,
+        data: result as unknown as Record<string, unknown>,
+        fetched_at: new Date().toISOString(),
+      },
+      { onConflict: "ticker" }
+    );
+  } catch {
+    // ignore
+  }
+
+  return result;
 }

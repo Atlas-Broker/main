@@ -3,4 +3,4 @@
  */
 export type { AtlasTickerInfo, Bar, FetchNewsOptions, NewsItem } from "./types";
 export { fetchBars, fetchNews } from "./alpaca";
-export { fetchTickerInfo } from "./fundamentals";
+export { fetchTickerInfo, fetchTickerInfoCached } from "./fundamentals";
