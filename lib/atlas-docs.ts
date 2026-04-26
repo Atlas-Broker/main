@@ -514,3 +514,36 @@ export async function deleteSection(
     version: deleted.version,
   };
 }
+
+export interface DocSummary {
+  slug: DocSlug;
+  section_count: number;
+  last_updated_at: string | null;
+}
+
+export async function listDocs(): Promise<DocSummary[]> {
+  const client = serviceClient();
+  const { data, error } = await client
+    .from("atlas_docs_sections")
+    .select("doc_slug, updated_at")
+    .eq("is_current", true)
+    .order("doc_slug", { ascending: true });
+  if (error) throw new Error(`listDocs failed: ${error.message}`);
+
+  const grouped = new Map<string, { count: number; latest: string | null }>();
+  for (const row of data ?? []) {
+    const slug = row.doc_slug as string;
+    const entry = grouped.get(slug) ?? { count: 0, latest: null };
+    const rowAt = row.updated_at as string | null;
+    grouped.set(slug, {
+      count: entry.count + 1,
+      latest: !entry.latest || (rowAt && rowAt > entry.latest) ? rowAt : entry.latest,
+    });
+  }
+
+  return [...grouped.entries()].map(([slug, { count, latest }]) => ({
+    slug: slug as DocSlug,
+    section_count: count,
+    last_updated_at: latest,
+  }));
+}

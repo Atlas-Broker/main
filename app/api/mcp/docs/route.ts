@@ -6,6 +6,7 @@ import {
   appendToSection,
   createSection,
   deleteSection,
+  listDocs,
   listRecentChanges,
   listSections,
   moveSection,
@@ -179,6 +180,22 @@ Returns { heading, deleted: true, version }. Prefer this over patch_section-to-e
         doc_slug: { type: "string", enum: [...KNOWN_SLUGS] },
         limit: { type: "integer", minimum: 1, maximum: 100, default: 20 },
       },
+    },
+  },
+  {
+    name: "list_docs",
+    description: `List all known docs with their section counts and last-updated timestamps. No parameters. Use this to orient before diving into a specific doc — tells you what exists and how active each doc is. Returns { docs: [{ slug, section_count, last_updated_at }] } sorted alphabetically by slug.`,
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "describe_tools",
+    description: `Return the full tool catalogue — all tools with their names, descriptions, and input schemas. No parameters. Use this to inspect the MCP surface programmatically, e.g. before deciding which tool to call or to verify a schema change was applied.`,
+    inputSchema: {
+      type: "object",
+      properties: {},
     },
   },
 ];
@@ -360,6 +377,13 @@ async function handleToolCall(name: string, args: Record<string, unknown>, actor
         typeof args.limit === "number" ? args.limit : 20,
       );
       return textContent(changes);
+    }
+    case "list_docs": {
+      const docs = await listDocs();
+      return textContent({ docs });
+    }
+    case "describe_tools": {
+      return textContent(TOOLS);
     }
     default:
       throw new DocsError("invalid_input", `Unknown tool: ${name}`);
