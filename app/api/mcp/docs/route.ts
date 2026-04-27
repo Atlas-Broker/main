@@ -33,6 +33,7 @@ const SLUG_GUIDANCE = `Valid doc_slug values: ${KNOWN_SLUGS.join(", ")}.
 - FINAL_REPORT = content being drafted toward the 19 July 2026 capstone final submission.
 - BIWEEKLY_LOGS = running biweekly progress log for school check-ins.
 - INBOX = incoming proposals from external agents (e.g. ELZ OS); triaged by Atlas Claude Chat.
+- PROPOSAL = archival record of the original BAC3004 capstone project proposal submitted to SIT.
 Sections are markdown; headings are H2 text without the "## " prefix (e.g. "Agent Pipeline").`;
 
 const TOOLS = [
