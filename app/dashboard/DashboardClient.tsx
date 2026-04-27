@@ -582,7 +582,7 @@ function AIModeStrip({ philosophy, positionCount, boundaryMode }: { philosophy: 
   );
 }
 
-function PortfolioTab({
+export function PortfolioTab({
   portfolio,
   tier,
   philosophy,
