@@ -1215,6 +1215,39 @@ const PHILOSOPHY_OPTIONS: {
   },
 ];
 
+function ManageBillingButton() {
+  const [loading, setLoading] = useState(false);
+
+  async function handleClick() {
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/v1/stripe/portal", { method: "POST" });
+      const data = await res?.json() as { url?: string } | undefined;
+      if (data?.url) window.location.href = data.url;
+    } catch {
+      // non-fatal
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={loading}
+      style={{
+        fontSize: 11, fontFamily: "var(--font-jb)",
+        color: "var(--ghost)", background: "none",
+        border: "1px solid var(--line)", borderRadius: 4,
+        padding: "2px 8px", cursor: loading ? "default" : "pointer",
+        letterSpacing: "0.04em",
+      }}
+    >
+      {loading ? "Loading…" : "Manage billing"}
+    </button>
+  );
+}
+
 export function SettingsTab({
   tier,
   initialPhilosophy = "balanced",
@@ -1531,8 +1564,8 @@ export function SettingsTab({
   // ─── Main settings view ────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-4 pb-6">
-      {/* Tier badge */}
-      <div className="flex items-center gap-2">
+      {/* Tier badge + billing management */}
+      <div className="flex items-center justify-between gap-2">
         <span style={{
           fontSize: 10,
           fontFamily: "var(--font-jb)",
@@ -1545,6 +1578,9 @@ export function SettingsTab({
         }}>
           {tier}
         </span>
+        {(tier === "pro" || tier === "max") && (
+          <ManageBillingButton />
+        )}
       </div>
 
       {/* About */}

@@ -7,7 +7,7 @@
  * Port of backend/api/routes/pipeline.py.
  */
 import { z } from "zod";
-import { getUserFromRequest } from "@/lib/auth/context";
+import { getUserFromRequest, requireTier } from "@/lib/auth/context";
 import { inngest } from "@/lib/inngest";
 import { createClient } from "@supabase/supabase-js";
 
@@ -50,6 +50,12 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const { ticker, boundary_mode, philosophy_mode } = parsed.data;
+
+  // Autonomous mode requires Pro tier
+  if (boundary_mode === "autonomous" || boundary_mode === "autonomous_guardrail") {
+    const tierCheck = await requireTier(req, "pro");
+    if (tierCheck instanceof Response) return tierCheck;
+  }
 
   // Resolve philosophy: use provided value or fall back to user's profile setting
   let resolvedPhilosophy: string = philosophy_mode ?? "balanced";

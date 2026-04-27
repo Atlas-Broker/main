@@ -7,6 +7,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { getUserFromRequest } from "@/lib/auth/context";
+import { getServiceClient as _getServiceClientForTier } from "@/lib/supabase-server";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY =
@@ -62,6 +63,23 @@ export async function PUT(req: Request): Promise<Response> {
       { error: "Validation error", details: parsed.error.flatten() },
       { status: 422 },
     );
+  }
+
+  // Free tier: cap at 5 tickers
+  if (parsed.data.entries.length > 5) {
+    const sbTier = _getServiceClientForTier();
+    const { data: prof } = await sbTier
+      .from("profiles")
+      .select("tier")
+      .eq("id", user.userId)
+      .maybeSingle();
+    const tier = (prof as Record<string, unknown> | null)?.["tier"] as string ?? "free";
+    if (tier === "free") {
+      return Response.json(
+        { error: "Free plan limited to 5 tickers", upgrade_url: "/pricing" },
+        { status: 403 }
+      );
+    }
   }
 
   const sb = getServiceClient();

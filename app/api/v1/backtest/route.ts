@@ -7,7 +7,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { getUserFromRequest } from "@/lib/auth/context";
+import { getUserFromRequest, requireTier } from "@/lib/auth/context";
 import { inngest } from "@/lib/inngest";
 import { PROVIDER_DEFAULTS } from "@/lib/agents/llm";
 import type { LLMProvider } from "@/lib/agents/llm";
@@ -48,10 +48,9 @@ function getServiceClient() {
 // ─── POST ─────────────────────────────────────────────────────────────────────
 
 export async function POST(req: Request): Promise<Response> {
-  const user = await getUserFromRequest(req);
-  if (!user) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const tierCheck = await requireTier(req, "pro");
+  if (tierCheck instanceof Response) return tierCheck;
+  const user = tierCheck;
 
   let rawBody: unknown;
   try {

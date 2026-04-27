@@ -10,7 +10,6 @@ interface Feature {
   desc?: string;
   free: Cell;
   pro: Cell;
-  max: Cell;
 }
 
 interface Section {
@@ -22,46 +21,44 @@ const SECTIONS: Section[] = [
   {
     title: "Signal Engine",
     features: [
-      { name: "AI-generated signals",          desc: "Multi-agent analysis on every ticker",    free: "✓", pro: "✓", max: "✓" },
-      { name: "Advisory mode",                 desc: "Signals surfaced for your review",        free: "✓", pro: "✓", max: "✓" },
-      { name: "Autonomous trading",            desc: "Atlas executes trades automatically",     free: "—", pro: "✓", max: "✓" },
-      { name: "Guardrail confidence threshold",desc: "Hold trades below your confidence floor", free: "—", pro: "✓", max: "✓" },
+      { name: "AI-generated signals",          desc: "Multi-agent analysis on every ticker",    free: "✓", pro: "✓" },
+      { name: "Advisory mode",                 desc: "Signals surfaced for your review",        free: "✓", pro: "✓" },
+      { name: "Autonomous trading",            desc: "Atlas executes trades automatically",     free: "—", pro: "✓" },
+      { name: "Guardrail confidence threshold",desc: "Hold trades below your confidence floor", free: "—", pro: "✓" },
     ],
   },
   {
     title: "Portfolio",
     features: [
-      { name: "Ticker watchlist",              free: "5 tickers", pro: "Unlimited", max: "Unlimited" },
-      { name: "Equity curve & P&L tracking",  free: "✓", pro: "✓", max: "✓" },
-      { name: "Decision log (AI reasoning)",   desc: "Full audit trail of every signal",        free: "—", pro: "✓", max: "✓" },
-      { name: "Backtesting engine",            desc: "Test strategies on historical data",      free: "—", pro: "✓", max: "✓" },
+      { name: "Ticker watchlist",              free: "5 tickers", pro: "Unlimited" },
+      { name: "Equity curve & P&L tracking",  free: "✓", pro: "✓" },
+      { name: "Decision log (AI reasoning)",   desc: "Full audit trail of every signal",        free: "—", pro: "✓" },
+      { name: "Backtesting engine",            desc: "Test strategies on historical data",      free: "—", pro: "✓" },
     ],
   },
   {
     title: "Broker & Integrations",
     features: [
-      { name: "Alpaca (paper & live)",         free: "✓", pro: "✓", max: "✓" },
-      { name: "Interactive Brokers (IBKR)",    free: "—", pro: "—", max: "✓" },
-      { name: "OAuth broker connect",          desc: "One-click broker authentication",         free: "—", pro: "—", max: "✓" },
+      { name: "Alpaca (paper & live)",         free: "✓", pro: "✓" },
+      { name: "Interactive Brokers (IBKR)",    free: "—", pro: "Coming soon" },
+      { name: "Claude AI connector",           desc: "Natural-language portfolio management",   free: "—", pro: "✓" },
     ],
   },
   {
     title: "Support",
     features: [
-      { name: "Email support",                 free: "✓",  pro: "Priority", max: "Priority" },
-      { name: "Onboarding call",               free: "—",  pro: "—",        max: "✓" },
+      { name: "Email support", free: "✓", pro: "Priority" },
     ],
   },
 ];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-function CellValue({ value, col }: { value: Cell; col: "free" | "pro" | "max" }) {
+function CellValue({ value, col }: { value: Cell; col: "free" | "pro" }) {
   const color =
-    value === "✓" ? (col === "free" ? "var(--bull)" : col === "pro" ? "var(--tier-pro)" : "var(--tier-max)") :
+    value === "✓" ? (col === "free" ? "var(--bull)" : "var(--tier-pro)") :
     value === "—" ? "#2a3a50" :
     col === "pro"  ? "var(--tier-pro)" :
-    col === "max"  ? "var(--tier-max)" :
     "var(--ghost)";
 
   return (
@@ -123,30 +120,30 @@ export default function PricingPage() {
 
         {/* ── Feature comparison table ── */}
         <section style={{ padding: "0 20px 80px" }}>
-          <div style={{ maxWidth: 780, margin: "0 auto", overflowX: "auto" }}>
+          <div style={{ maxWidth: 560, margin: "0 auto", overflowX: "auto" }}>
             <table style={{
               width: "100%", borderCollapse: "collapse",
               border: "1px solid var(--line)", borderTop: "none",
               borderRadius: "0 0 14px 14px", overflow: "hidden",
-              minWidth: 540,
+              minWidth: 380,
             }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--line)" }}>
                   <th style={{
-                    width: "46%", padding: "14px 20px", textAlign: "left",
+                    width: "56%", padding: "14px 20px", textAlign: "left",
                     fontSize: 11, fontWeight: 700, textTransform: "uppercase",
                     letterSpacing: "1px", color: "var(--ghost)",
                     background: "var(--surface)",
                   }}>Features</th>
-                  {(["Free", "Pro", "Max"] as const).map((tier) => (
+                  {(["Free", "Pro"] as const).map((tier) => (
                     <th
                       key={tier}
                       className={tier === "Pro" ? "pr-pro-col" : undefined}
                       style={{
-                        width: "18%", padding: "14px 16px", textAlign: "center",
+                        width: "22%", padding: "14px 16px", textAlign: "center",
                         fontSize: 11, fontWeight: 700, textTransform: "uppercase",
                         letterSpacing: "1px",
-                        color: tier === "Pro" ? "var(--tier-pro)" : tier === "Max" ? "var(--tier-max)" : "var(--ghost)",
+                        color: tier === "Pro" ? "var(--tier-pro)" : "var(--ghost)",
                         background: tier === "Pro" ? "rgba(123,97,255,0.06)" : "var(--surface)",
                       }}
                     >{tier}</th>
@@ -170,7 +167,6 @@ export default function PricingPage() {
                       </td>
                       <td style={{ borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }} />
                       <td className="pr-pro-col" style={{ borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }} />
-                      <td style={{ borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }} />
                     </tr>
 
                     {section.features.map((feat) => (
@@ -196,9 +192,6 @@ export default function PricingPage() {
                         </td>
                         <td className="pr-pro-col" style={{ padding: "13px 16px", verticalAlign: "middle" }}>
                           <CellValue value={feat.pro} col="pro" />
-                        </td>
-                        <td style={{ padding: "13px 16px", verticalAlign: "middle" }}>
-                          <CellValue value={feat.max} col="max" />
                         </td>
                       </tr>
                     ))}

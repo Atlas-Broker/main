@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 
 const PRICES = {
-  monthly: { pro: 49,  max: 149 },
-  annual:  { pro: 39,  max: 119 },
+  monthly: { pro: 49 },
+  annual:  { pro: 39 },
 } as const;
 
 type Billing = keyof typeof PRICES;
@@ -20,7 +21,40 @@ const fmtAnnual = (monthly: number): string =>
 
 export function BillingToggle() {
   const [billing, setBilling] = useState<Billing>("annual");
+  const [loading, setLoading] = useState(false);
+  const { isSignedIn } = useAuth();
   const p = PRICES[billing];
+
+  async function handleProClick() {
+    if (!isSignedIn) {
+      window.location.href = "/login";
+      return;
+    }
+    const priceId =
+      billing === "annual"
+        ? process.env.NEXT_PUBLIC_STRIPE_PRO_ANNUAL_PRICE_ID
+        : process.env.NEXT_PUBLIC_STRIPE_PRO_MONTHLY_PRICE_ID;
+
+    if (!priceId) {
+      window.location.href = "/login";
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/v1/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ price_id: priceId }),
+      });
+      const data = await res.json() as { url?: string; error?: string };
+      if (data.url) window.location.href = data.url;
+    } catch {
+      // fall through
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <>
@@ -80,8 +114,8 @@ export function BillingToggle() {
 
       {/* ── Pricing cards ── */}
       <div className="pr-cards-wrap" style={{
-        display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
-        maxWidth: 780, margin: "0 auto",
+        display: "grid", gridTemplateColumns: "repeat(2, 1fr)",
+        maxWidth: 520, margin: "0 auto",
       }}>
 
         {/* Free */}
@@ -149,49 +183,21 @@ export function BillingToggle() {
           <div style={{ fontSize: 11, color: "var(--ghost)", marginBottom: 20 }}>
             {billing === "annual" ? fmtAnnual(PRICES.annual.pro) : "Switch to annual to save 20%"}
           </div>
-          <Link href="/login" style={{
-            display: "block", width: "100%", padding: "10px 16px",
-            borderRadius: 8, textAlign: "center",
-            background: "var(--tier-pro)", color: "#fff",
-            fontSize: 13, fontWeight: 600, textDecoration: "none",
-            boxShadow: "0 2px 12px rgba(123,97,255,0.3)",
-            boxSizing: "border-box",
-          }}>
-            Start Pro trial
-          </Link>
-        </div>
-
-        {/* Max */}
-        <div style={{
-          background: "var(--surface)",
-          border: "1px solid rgba(245,166,35,0.25)",
-          borderLeft: "none", borderRadius: "0 14px 0 0",
-          padding: "28px 24px 24px",
-        }}>
-          <div style={{
-            fontSize: 11, fontWeight: 700, textTransform: "uppercase",
-            letterSpacing: "1.5px", color: "var(--tier-max)", marginBottom: 14,
-          }}>Max</div>
-          <div style={{
-            fontSize: 34, fontWeight: 800, letterSpacing: "-1.5px",
-            lineHeight: 1, marginBottom: 4,
-          }}>
-            <sup style={{ fontSize: 16, fontWeight: 700, verticalAlign: "super", letterSpacing: 0 }}>$</sup>
-            {p.max}
-            <sub style={{ fontSize: 13, fontWeight: 400, color: "var(--ghost)", verticalAlign: "baseline" }}>/mo</sub>
-          </div>
-          <div style={{ fontSize: 11, color: "var(--ghost)", marginBottom: 20 }}>
-            {billing === "annual" ? fmtAnnual(PRICES.annual.max) : "Switch to annual to save 20%"}
-          </div>
-          <Link href="/login" style={{
-            display: "block", width: "100%", padding: "10px 16px",
-            borderRadius: 8, textAlign: "center",
-            background: "var(--tier-max)", color: "var(--bg)",
-            fontSize: 13, fontWeight: 600, textDecoration: "none",
-            boxSizing: "border-box",
-          }}>
-            Start Max trial
-          </Link>
+          <button
+            type="button"
+            onClick={handleProClick}
+            disabled={loading}
+            style={{
+              display: "block", width: "100%", padding: "10px 16px",
+              borderRadius: 8, textAlign: "center",
+              background: loading ? "var(--dim)" : "var(--tier-pro)", color: "#fff",
+              fontSize: 13, fontWeight: 600,
+              boxShadow: loading ? "none" : "0 2px 12px rgba(123,97,255,0.3)",
+              boxSizing: "border-box", border: "none", cursor: loading ? "default" : "pointer",
+            }}
+          >
+            {loading ? "Loading…" : "Start Pro trial"}
+          </button>
         </div>
 
       </div>
