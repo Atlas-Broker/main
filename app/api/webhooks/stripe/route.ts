@@ -1,9 +1,11 @@
 import Stripe from "stripe";
 import { getServiceClient } from "@/lib/supabase-server";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
-  apiVersion: "2026-04-22.dahlia",
-});
+function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
+  return new Stripe(key, { apiVersion: "2026-04-22.dahlia" });
+}
 
 // POST /api/webhooks/stripe — Stripe event handler (no Clerk auth — verified by signature)
 export async function POST(req: Request): Promise<Response> {
@@ -13,7 +15,7 @@ export async function POST(req: Request): Promise<Response> {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+    event = getStripe().webhooks.constructEvent(rawBody, sig, webhookSecret);
   } catch {
     return Response.json({ error: "Invalid signature" }, { status: 400 });
   }

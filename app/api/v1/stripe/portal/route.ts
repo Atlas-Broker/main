@@ -2,9 +2,11 @@ import Stripe from "stripe";
 import { getUserFromRequest } from "@/lib/auth/context";
 import { getServiceClient } from "@/lib/supabase-server";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
-  apiVersion: "2026-04-22.dahlia",
-});
+function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
+  return new Stripe(key, { apiVersion: "2026-04-22.dahlia" });
+}
 
 // POST /api/v1/stripe/portal — create a Stripe billing portal session
 export async function POST(req: Request): Promise<Response> {
@@ -25,7 +27,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const origin = req.headers.get("origin") ?? "https://atlas-broker-uat.vercel.app";
 
-  const session = await stripe.billingPortal.sessions.create({
+  const session = await getStripe().billingPortal.sessions.create({
     customer: customerId,
     return_url: `${origin}/dashboard`,
   });

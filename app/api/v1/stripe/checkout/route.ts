@@ -1,9 +1,11 @@
 import Stripe from "stripe";
 import { getUserFromRequest } from "@/lib/auth/context";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
-  apiVersion: "2026-04-22.dahlia",
-});
+function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
+  return new Stripe(key, { apiVersion: "2026-04-22.dahlia" });
+}
 
 // POST /api/v1/stripe/checkout — create a Stripe Checkout Session for Pro
 export async function POST(req: Request): Promise<Response> {
@@ -24,7 +26,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const origin = req.headers.get("origin") ?? "https://atlas-broker-uat.vercel.app";
 
-  const session = await stripe.checkout.sessions.create({
+  const session = await getStripe().checkout.sessions.create({
     mode: "subscription",
     client_reference_id: user.userId,
     metadata: { userId: user.userId },
