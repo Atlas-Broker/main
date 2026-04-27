@@ -101,6 +101,22 @@ export const READ_TOOL_DEFS = [
       required: ["id"],
     },
   },
+  {
+    name: "get_signal",
+    description: "Get full details of a specific signal by ID, including the complete pipeline reasoning trace.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        signal_id: { type: "string", description: "The MongoDB ObjectId of the signal." },
+      },
+      required: ["signal_id"],
+    },
+  },
+  {
+    name: "get_watchlist",
+    description: "Get the user's watchlist — tickers and their analysis schedule frequency (1x/3x/6x per day).",
+    inputSchema: { type: "object", properties: {} },
+  },
 ] as const;
 
 function textContent(payload: unknown) {
@@ -381,6 +397,40 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
         if (error) return toolError(error.message);
         if (!data) return toolError("Tournament not found", "not_found");
         return textContent(data);
+      }
+
+      case "get_signal": {
+        const signalId = String(args.signal_id ?? "").trim();
+        if (!signalId) return toolError("signal_id is required", "invalid_input");
+
+        let oid: ObjectId;
+        try {
+          oid = new ObjectId(signalId);
+        } catch {
+          return toolError("Invalid signal_id — must be a MongoDB ObjectId", "invalid_input");
+        }
+
+        const col = getMongoCollection();
+        const trace = (await col.findOne({ _id: oid, user_id: userId })) as Record<string, unknown> | null;
+        if (!trace) return toolError("Signal not found", "not_found");
+
+        const id =
+          trace["_id"] instanceof ObjectId
+            ? trace["_id"].toHexString()
+            : String(trace["_id"] ?? "");
+
+        return textContent({ ...trace, _id: id });
+      }
+
+      case "get_watchlist": {
+        const sb = getServiceClient();
+        const { data, error } = await sb
+          .from("watchlist")
+          .select("ticker, schedule")
+          .eq("user_id", userId)
+          .order("created_at");
+        if (error) return toolError(error.message);
+        return textContent(data ?? []);
       }
 
       default:

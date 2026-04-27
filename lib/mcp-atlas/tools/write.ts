@@ -151,6 +151,54 @@ export const WRITE_TOOL_DEFS = [
       },
     },
   },
+  {
+    name: "update_watchlist",
+    description:
+      "Replace the user's watchlist (full overwrite). Each entry needs a ticker and a schedule frequency. Requires confirmation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        entries: {
+          type: "array",
+          description: "New watchlist entries.",
+          items: {
+            type: "object",
+            properties: {
+              ticker: { type: "string", description: "Stock ticker symbol (e.g. AAPL)." },
+              schedule: { type: "string", enum: ["1x", "3x", "6x"], description: "Analysis runs per trading day." },
+            },
+            required: ["ticker", "schedule"],
+          },
+        },
+        confirmed: { type: "boolean", default: false },
+      },
+      required: ["entries"],
+    },
+  },
+  {
+    name: "update_schedules",
+    description:
+      "Enable or disable pipeline schedule windows (premarket, open, midmorning, midday, afternoon, close). Requires confirmation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        schedules: {
+          type: "array",
+          description: "Schedule windows to update.",
+          items: {
+            type: "object",
+            properties: {
+              window: { type: "string", description: "Schedule window name (e.g. premarket, open, midmorning, midday, afternoon, close)." },
+              enabled: { type: "boolean" },
+            },
+            required: ["window", "enabled"],
+          },
+        },
+        confirmed: { type: "boolean", default: false },
+      },
+      required: ["schedules"],
+    },
+  },
 ] as const;
 
 function textContent(payload: unknown) {
@@ -627,6 +675,101 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
 
         await inngest.send({ name: "atlas/tournament.requested", data: { tournament_id: id, user_id: userId } });
         return textContent({ id, status: "pending", message: "Tournament queued. Poll get_tournament for results." });
+      }
+
+      case "update_watchlist": {
+        const entries = Array.isArray(args.entries) ? args.entries : [];
+        const confirmed = args.confirmed === true;
+
+        const parsed = entries.map((e) => {
+          const raw = e as Record<string, unknown>;
+          const ticker = String(raw["ticker"] ?? "").trim().toUpperCase();
+          const schedule = String(raw["schedule"] ?? "");
+          return { ticker, schedule };
+        });
+
+        const VALID_SCHEDULES = ["1x", "3x", "6x"];
+        for (const e of parsed) {
+          if (!/^[A-Z]{1,5}$/.test(e.ticker)) {
+            return toolError(`Invalid ticker: ${e.ticker}`, "invalid_input");
+          }
+          if (!VALID_SCHEDULES.includes(e.schedule)) {
+            return toolError(`Invalid schedule '${e.schedule}' for ${e.ticker} — must be 1x, 3x, or 6x`, "invalid_input");
+          }
+        }
+
+        if (!confirmed) {
+          return textContent({
+            confirmation_required: true,
+            description: `Replace watchlist with ${parsed.length} ticker(s)`,
+            details: { entries: parsed },
+          });
+        }
+
+        const sb = getServiceClient();
+
+        if (parsed.length > 5) {
+          const { data: prof } = await sb
+            .from("profiles")
+            .select("tier")
+            .eq("id", userId)
+            .maybeSingle();
+          const tier = (prof as Record<string, unknown> | null)?.["tier"] as string ?? "free";
+          if (tier === "free") {
+            return toolError("Free plan limited to 5 tickers", "forbidden");
+          }
+        }
+
+        await sb.from("watchlist").delete().eq("user_id", userId);
+
+        if (parsed.length > 0) {
+          const rows = parsed.map((e) => ({ user_id: userId, ticker: e.ticker, schedule: e.schedule }));
+          const { error } = await sb.from("watchlist").insert(rows);
+          if (error) return toolError(error.message);
+        }
+
+        const { data, error } = await sb
+          .from("watchlist")
+          .select("ticker, schedule")
+          .eq("user_id", userId)
+          .order("created_at");
+
+        if (error) return toolError(error.message);
+        return textContent(data ?? []);
+      }
+
+      case "update_schedules": {
+        const rawSchedules = Array.isArray(args.schedules) ? args.schedules : [];
+        const confirmed = args.confirmed === true;
+
+        const VALID_WINDOWS = ["premarket", "open", "midmorning", "midday", "afternoon", "close"];
+        const parsed = rawSchedules.map((s) => {
+          const row = s as Record<string, unknown>;
+          return { window: String(row["window"] ?? ""), enabled: Boolean(row["enabled"]) };
+        });
+
+        for (const s of parsed) {
+          if (!VALID_WINDOWS.includes(s.window)) {
+            return toolError(`Invalid window '${s.window}' — must be one of: ${VALID_WINDOWS.join(", ")}`, "invalid_input");
+          }
+        }
+
+        if (!confirmed) {
+          return textContent({
+            confirmation_required: true,
+            description: "Update pipeline schedule windows",
+            details: { schedules: parsed },
+          });
+        }
+
+        const sb = getServiceClient();
+        await sb.from("user_schedules").delete().eq("user_id", userId);
+
+        const rows = parsed.map((s) => ({ user_id: userId, window: s.window, enabled: s.enabled }));
+        const { data, error } = await sb.from("user_schedules").insert(rows).select("window, enabled");
+        if (error) return toolError(error.message);
+
+        return textContent(data ?? []);
       }
 
       default:
