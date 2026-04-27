@@ -85,6 +85,54 @@ export const WRITE_TOOL_DEFS = [
     },
   },
   {
+    name: "run_tournament",
+    description:
+      "Run a cross-model LLM tournament: multiple philosophy×mode variants compete across one or more LLM provider rounds, ranked by Sharpe / CAGR / Calmar. Requires confirmation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tickers: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 10 },
+        start_date: { type: "string", description: "YYYY-MM-DD" },
+        end_date: { type: "string", description: "YYYY-MM-DD" },
+        variants: {
+          type: "array",
+          description: "Philosophy × mode combinations to test.",
+          items: {
+            type: "object",
+            properties: {
+              philosophy: { type: "string", enum: ["growth", "value", "momentum", "balanced"] },
+              mode: { type: "string", enum: ["advisory", "autonomous"] },
+              label: { type: "string" },
+            },
+            required: ["philosophy", "mode", "label"],
+          },
+        },
+        rounds: {
+          type: "array",
+          description: "LLM provider rounds (e.g. groq round 1, gemini round 2).",
+          items: {
+            type: "object",
+            properties: {
+              provider: {
+                type: "object",
+                properties: {
+                  provider: { type: "string", enum: ["gemini", "groq", "ollama", "openai-compatible"] },
+                  model: { type: "string" },
+                },
+                required: ["provider", "model"],
+              },
+              top_n: { type: "integer", minimum: 1, maximum: 4 },
+            },
+            required: ["provider", "top_n"],
+          },
+        },
+        rank_by: { type: "string", enum: ["sharpe", "cagr", "calmar"], default: "sharpe" },
+        confirmed: { type: "boolean", default: false },
+      },
+      required: ["tickers", "start_date", "end_date", "variants", "rounds"],
+    },
+  },
+  {
     name: "update_settings",
     description:
       "Update user profile settings: boundary_mode and/or investment_philosophy. Requires confirmation.",
@@ -538,6 +586,47 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
         if (error || !data) return toolError("Settings updated but failed to re-fetch", "internal_error");
 
         return textContent(data);
+      }
+
+      case "run_tournament": {
+        const confirmed = args.confirmed === true;
+        const tickers = (Array.isArray(args.tickers) ? args.tickers : []).map((t) =>
+          String(t).trim().toUpperCase(),
+        );
+        const startDate = String(args.start_date ?? "");
+        const endDate = String(args.end_date ?? "");
+        const variants = Array.isArray(args.variants) ? args.variants : [];
+        const rounds = Array.isArray(args.rounds) ? args.rounds : [];
+        const rankBy = typeof args.rank_by === "string" ? args.rank_by : "sharpe";
+
+        if (!tickers.length) return toolError("tickers required", "invalid_input");
+        if (!variants.length) return toolError("variants required", "invalid_input");
+        if (!rounds.length) return toolError("rounds required", "invalid_input");
+
+        if (!confirmed) {
+          return textContent({
+            confirmation_required: true,
+            description: `Run tournament: ${variants.length} variants × ${rounds.length} rounds on ${tickers.join(", ")}`,
+            details: { tickers, start_date: startDate, end_date: endDate, variants, rounds, rank_by: rankBy },
+          });
+        }
+
+        const id = randomUUID();
+        const sb = getServiceClient();
+        const { error: insertErr } = await sb.from("tournament_jobs").insert({
+          id,
+          user_id: userId,
+          status: "pending",
+          config: { id, user_id: userId, tickers, start_date: startDate, end_date: endDate, variants, rounds, rank_by: rankBy },
+          current_round: 0,
+          total_rounds: rounds.length,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        if (insertErr) return toolError(insertErr.message);
+
+        await inngest.send({ name: "atlas/tournament.requested", data: { tournament_id: id, user_id: userId } });
+        return textContent({ id, status: "pending", message: "Tournament queued. Poll get_tournament for results." });
       }
 
       default:

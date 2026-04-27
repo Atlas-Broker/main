@@ -64,6 +64,43 @@ export const READ_TOOL_DEFS = [
     description: "Get the user's profile: boundary_mode, investment_philosophy, tier, role.",
     inputSchema: { type: "object", properties: {} },
   },
+  {
+    name: "health_check",
+    description: "Verify the Atlas API is reachable and returning a healthy response.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_ticker_info",
+    description: "Get fundamental and market data for a ticker (P/E, sector, price, analyst targets etc).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "Stock ticker symbol (e.g. AAPL)." },
+      },
+      required: ["symbol"],
+    },
+  },
+  {
+    name: "get_trades",
+    description: "List the user's executed trade history, most recent first.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+      },
+    },
+  },
+  {
+    name: "get_tournament",
+    description: "Get the status and results of a tournament job by its ID.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Tournament job UUID." },
+      },
+      required: ["id"],
+    },
+  },
 ] as const;
 
 function textContent(payload: unknown) {
@@ -299,6 +336,50 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
 
         if (error) return toolError(error.message);
         if (!data) return toolError("Profile not found", "not_found");
+        return textContent(data);
+      }
+
+      case "health_check": {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_APP_URL ?? "https://atlas-broker-uat.vercel.app"}/api/v1/health`,
+        );
+        const body = await res.json() as Record<string, unknown>;
+        return textContent({ status: res.ok ? "healthy" : "degraded", http_status: res.status, ...body });
+      }
+
+      case "get_ticker_info": {
+        const symbol = String(args.symbol ?? "").trim().toUpperCase();
+        if (!symbol) return toolError("symbol is required", "invalid_input");
+        const { fetchTickerInfoCached } = await import("@/lib/market/fundamentals");
+        const info = await fetchTickerInfoCached(symbol);
+        return textContent({ symbol, ...info });
+      }
+
+      case "get_trades": {
+        const limit = Math.min(typeof args.limit === "number" ? args.limit : 20, 100);
+        const sb = getServiceClient();
+        const { data, error } = await sb
+          .from("trades")
+          .select("id, ticker, action, shares, price, status, boundary_mode, executed_at, order_id")
+          .eq("user_id", userId)
+          .order("executed_at", { ascending: false })
+          .limit(limit);
+        if (error) return toolError(error.message);
+        return textContent(data ?? []);
+      }
+
+      case "get_tournament": {
+        const id = String(args.id ?? "").trim();
+        if (!id) return toolError("id is required", "invalid_input");
+        const sb = getServiceClient();
+        const { data, error } = await sb
+          .from("tournament_jobs")
+          .select("*")
+          .eq("id", id)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (error) return toolError(error.message);
+        if (!data) return toolError("Tournament not found", "not_found");
         return textContent(data);
       }
 

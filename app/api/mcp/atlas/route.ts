@@ -109,6 +109,10 @@ const READ_TOOL_NAMES = new Set([
   "list_backtests",
   "get_scheduler_status",
   "get_profile",
+  "health_check",
+  "get_ticker_info",
+  "get_trades",
+  "get_tournament",
 ]);
 
 const WRITE_TOOL_NAMES = new Set([
@@ -117,6 +121,7 @@ const WRITE_TOOL_NAMES = new Set([
   "approve_signal",
   "reject_signal",
   "update_settings",
+  "run_tournament",
 ]);
 
 const ADMIN_TOOL_NAMES = new Set(["get_admin_stats", "list_users"]);
