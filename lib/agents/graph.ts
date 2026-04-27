@@ -20,6 +20,7 @@ import { marketDataNode } from "./nodes/market_data";
 import { technicalAnalystNode } from "./nodes/technical_analyst";
 import { fundamentalAnalystNode } from "./nodes/fundamental_analyst";
 import { sentimentAnalystNode } from "./nodes/sentiment_analyst";
+import { reviewAnalystNode } from "./nodes/review_analyst";
 import { synthesisNode } from "./nodes/synthesis";
 import { fetchAccountNode } from "./nodes/fetch_account";
 import { riskNode } from "./nodes/risk";
@@ -93,22 +94,25 @@ function buildGraph() {
   builder.addNode("technical_analyst", technicalAnalystNode);
   builder.addNode("fundamental_analyst", fundamentalAnalystNode);
   builder.addNode("sentiment_analyst", sentimentAnalystNode);
+  builder.addNode("review_analyst", reviewAnalystNode);
   builder.addNode("synthesis", synthesisNode);
   builder.addNode("fetch_account", fetchAccountNode);
   builder.addNode("risk", riskNode);
   builder.addNode("portfolio", portfolioDecisionNode);
   builder.addNode("save_trace", saveTraceNode);
 
-  // Fan-out: fetch_data → all three analysts in parallel
+  // Fan-out: fetch_data → all four analysts in parallel
   builder.addEdge(START, "fetch_data");
   builder.addEdge("fetch_data", "technical_analyst");
   builder.addEdge("fetch_data", "fundamental_analyst");
   builder.addEdge("fetch_data", "sentiment_analyst");
+  builder.addEdge("fetch_data", "review_analyst");
 
-  // Fan-in: all three analysts → synthesis (LangGraph waits for all three)
+  // Fan-in: all four analysts → synthesis (LangGraph waits for all four)
   builder.addEdge("technical_analyst", "synthesis");
   builder.addEdge("fundamental_analyst", "synthesis");
   builder.addEdge("sentiment_analyst", "synthesis");
+  builder.addEdge("review_analyst", "synthesis");
 
   // Sequential tail
   builder.addEdge("synthesis", "fetch_account");

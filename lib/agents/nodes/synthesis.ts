@@ -4,7 +4,7 @@
  * Mirrors backend/agents/synthesis/agent.py exactly.
  */
 
-import type { AtlasState, SynthesisOutput, TechnicalOutput, FundamentalOutput, SentimentOutput } from "../state";
+import type { AtlasState, SynthesisOutput, TechnicalOutput, FundamentalOutput, SentimentOutput, ReviewOutput } from "../state";
 import { SynthesisOutputSchema, validateStateSlice, llmConfigFromState } from "../state";
 import { getLlm } from "../llm";
 
@@ -17,6 +17,7 @@ export async function synthesisNode(
   const technical = (analyst_outputs.technical ?? {}) as Partial<TechnicalOutput>;
   const fundamental = (analyst_outputs.fundamental ?? {}) as Partial<FundamentalOutput>;
   const sentiment = (analyst_outputs.sentiment ?? {}) as Partial<SentimentOutput>;
+  const review = analyst_outputs.review as Partial<ReviewOutput> | undefined;
 
   const signals = [
     technical.signal,
@@ -25,7 +26,18 @@ export async function synthesisNode(
   ];
   const signalSummary = `Technical: ${signals[0]} | Fundamental: ${signals[1]} | Sentiment: ${signals[2]}`;
 
-  const prompt = `You are a synthesis agent aggregating three analyst reports for ${ticker} into a unified trading thesis.
+  const reviewSection = review
+    ? `\nRetrospective review:
+${review.reasoning ?? "N/A"}
+Signal bias: ${review.signal_bias ?? "N/A"} | Win rate: ${review.recent_win_rate != null ? `${Math.round(review.recent_win_rate * 100)}%` : "N/A"} | Trades reviewed: ${review.recent_trade_count ?? 0}
+Consecutive losses: ${review.consecutive_losses ?? 0} | Consecutive wins: ${review.consecutive_wins ?? 0}
+Patterns: ${(review.patterns ?? []).join("; ") || "none"}
+`
+    : "";
+
+  const analystCount = review ? "four" : "three";
+
+  const prompt = `You are a synthesis agent aggregating ${analystCount} analyst reports for ${ticker} into a unified trading thesis.
 
 ${signalSummary}
 
@@ -40,13 +52,13 @@ Valuation: ${fundamental.valuation ?? "N/A"} | Upside to target: ${fundamental.u
 Sentiment analysis:
 ${sentiment.reasoning ?? "N/A"}
 Sentiment score: ${sentiment.sentiment_score ?? "N/A"} | Themes: ${JSON.stringify((sentiment.dominant_themes ?? []) as unknown[])}
-
+${reviewSection}
 Construct a bull case and bear case, then give a verdict. Return ONLY valid JSON:
 {
   "bull_case": "strongest argument for buying",
   "bear_case": "strongest argument against buying",
   "verdict": "BUY" or "SELL" or "HOLD",
-  "reasoning": "2-3 sentence synthesis weighing all three analysts"
+  "reasoning": "2-3 sentence synthesis weighing all ${analystCount} analysts"
 }`;
 
   const llmConfig = llmConfigFromState(state);

@@ -120,10 +120,24 @@ export const PortfolioDecisionSchema = z.object({
   latency_ms: z.number(),
 });
 
+export const ReviewOutputSchema = z.object({
+  recent_trade_count: z.number(),
+  recent_win_rate: z.number().min(0).max(1).nullable(),
+  signal_bias: z.enum(["buy_biased", "sell_biased", "balanced", "insufficient_data"]),
+  consecutive_losses: z.number(),
+  consecutive_wins: z.number(),
+  patterns: z.array(z.string()),
+  reasoning: z.string(),
+  model: z.string(),
+  latency_ms: z.number(),
+});
+export type ReviewOutput = z.infer<typeof ReviewOutputSchema>;
+
 export const AnalystOutputsSchema = z.object({
   technical: TechnicalOutputSchema.optional(),
   fundamental: FundamentalOutputSchema.optional(),
   sentiment: SentimentOutputSchema.optional(),
+  review: ReviewOutputSchema.optional(),
 });
 
 export const AccountInfoSchema = z.object({
