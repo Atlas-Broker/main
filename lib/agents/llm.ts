@@ -31,13 +31,29 @@ export type LLMConfig = {
   apiKey?: string;
 };
 
+// ─── Groq model catalogue ──────────────────────────────────────────────────────
+// Models available on Groq's free tier as of 2026-04.
+// "fast"     = smaller, lower latency, lower cost   → use for quick analyst rounds
+// "balanced" = larger, more capable                 → use for synthesis / deep rounds
+
+export const GROQ_MODELS = [
+  { id: "llama-3.3-70b-versatile",  label: "Llama 3.3 70B",        tier: "balanced" },
+  { id: "llama-3.1-8b-instant",     label: "Llama 3.1 8B (fast)",   tier: "fast"     },
+  { id: "gemma2-9b-it",             label: "Gemma 2 9B",            tier: "fast"     },
+  { id: "mixtral-8x7b-32768",       label: "Mixtral 8×7B",          tier: "balanced" },
+  { id: "llama3-70b-8192",          label: "Llama 3 70B",           tier: "balanced" },
+] as const;
+
+export type GroqModelId = (typeof GROQ_MODELS)[number]["id"];
+
 // ─── Default models per provider × tier ───────────────────────────────────────
 
 export const PROVIDER_DEFAULTS: Record<LLMProvider, Record<LlmMode, string>> = {
-  gemini:             { quick: "gemini-2.5-flash", deep: "gemini-2.5-flash" },
-  groq:               { quick: "llama-3.3-70b-versatile", deep: "llama-3.3-70b-versatile" },
-  ollama:             { quick: "gemma3:12b", deep: "llama3.2:latest" },
-  "openai-compatible": { quick: "", deep: "" },
+  gemini:             { quick: "gemini-2.5-flash",       deep: "gemini-2.5-flash"       },
+  // quick → 8B (analysts — speed over depth); deep → 70B (synthesis / portfolio node)
+  groq:               { quick: "llama-3.1-8b-instant",   deep: "llama-3.3-70b-versatile" },
+  ollama:             { quick: "gemma3:12b",              deep: "llama3.2:latest"         },
+  "openai-compatible": { quick: "",                       deep: ""                        },
 };
 
 // ─── Legacy env-var model resolver (unchanged) ────────────────────────────────

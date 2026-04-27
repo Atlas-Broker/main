@@ -26,6 +26,13 @@ export interface BacktestRequest {
    * Live trading always ignores this field.
    */
   llmConfig?: LLMConfig;
+  /**
+   * EBC execution mode for the virtual portfolio simulation.
+   * "advisory"   — no trades executed; metrics reflect signal quality only.
+   * "autonomous" — trades execute above 0.65 confidence; P&L / Sharpe are meaningful.
+   * Defaults to "advisory" for safe backward-compatibility.
+   */
+  ebc_mode?: "advisory" | "autonomous";
 }
 
 export interface BacktestSlice {

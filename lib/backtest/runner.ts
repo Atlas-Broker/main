@@ -14,6 +14,8 @@ import { runGraph } from "../agents";
 import { getModelId } from "../agents/llm";
 import { inngest } from "./inngest-client";
 import { computeMetrics } from "./metrics";
+import { VirtualPortfolio } from "./simulator";
+import type { AtlasState } from "../agents/state";
 import type { BacktestMetrics, BacktestRequest, BacktestSlice } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -130,7 +132,7 @@ export const runBacktest = inngest.createFunction(
     triggers: [{ event: "app/backtest.requested" }],
   },
   async ({ event, step }: { event: { data: BacktestRequest }; step: { run: <T>(id: string, fn: () => Promise<T>) => Promise<T> } }) => {
-    const { userId, tickers, startDate, endDate, philosophy, jobId, llmConfig } = event.data;
+    const { userId, tickers, startDate, endDate, philosophy, jobId, llmConfig, ebc_mode } = event.data;
 
     // Default to Gemini when no config supplied
     const resolvedLlmConfig = llmConfig ?? {
@@ -175,7 +177,45 @@ export const runBacktest = inngest.createFunction(
       }
     }
 
-    const metrics = computeMetrics(slices);
+    // Portfolio simulation pass — deterministic over the collected slices so
+    // Inngest step replay doesn't corrupt state (each step returns cached results;
+    // we re-simulate from those cached decisions in one sequential sweep).
+    const resolvedEbcMode = ebc_mode ?? "advisory";
+    const portfolio = new VirtualPortfolio();
+    const lastDate = dates[dates.length - 1];
+
+    const simulatedSlices: BacktestSlice[] = slices.map((slice) => {
+      const agentState = slice.decision as AtlasState;
+      const decision = agentState.portfolio_decision;
+      const currentPrice = agentState.current_price ?? null;
+      const isLastDay = slice.date === lastDate;
+
+      const tradeResult = portfolio.process({
+        date: slice.date,
+        ticker: slice.ticker,
+        action: decision?.action ?? "HOLD",
+        confidence: decision?.confidence ?? 0,
+        ebcMode: resolvedEbcMode,
+        executionPrice: currentPrice,
+        isLastDay,
+      });
+
+      const portfolioValueAfter = portfolio.portfolioValue(
+        currentPrice !== null ? { [slice.ticker]: currentPrice } : {},
+      );
+
+      return {
+        ...slice,
+        decision: {
+          ...(agentState as Record<string, unknown>),
+          executed: tradeResult.executed,
+          pnl: tradeResult.pnl ?? null,
+          portfolio_value_after: portfolioValueAfter,
+        },
+      };
+    });
+
+    const metrics = computeMetrics(simulatedSlices);
     await markJobComplete(jobId, metrics);
 
     return { jobId, slices: slices.length, metrics };
