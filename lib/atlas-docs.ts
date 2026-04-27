@@ -9,7 +9,10 @@ export type DocSlug =
   | "FINAL_REPORT"
   | "BIWEEKLY_LOGS"
   | "INBOX"
-  | "PROPOSAL";
+  | "PROPOSAL"
+  | "LOGS"
+  | "LEARNINGS"
+  | "BRAND";
 export const KNOWN_SLUGS: readonly DocSlug[] = [
   "CONTEXT",
   "BUILD",
@@ -20,6 +23,9 @@ export const KNOWN_SLUGS: readonly DocSlug[] = [
   "BIWEEKLY_LOGS",
   "INBOX",
   "PROPOSAL",
+  "LOGS",
+  "LEARNINGS",
+  "BRAND",
 ] as const;
 
 export interface Section {

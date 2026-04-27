@@ -34,6 +34,9 @@ const SLUG_GUIDANCE = `Valid doc_slug values: ${KNOWN_SLUGS.join(", ")}.
 - BIWEEKLY_LOGS = running biweekly progress log for school check-ins.
 - INBOX = incoming proposals from external agents (e.g. ELZ OS); triaged by Atlas Claude Chat.
 - PROPOSAL = archival record of the original BAC3004 capstone project proposal submitted to SIT.
+- LOGS = archive destination for closed sprints and OPS items. Read rarely; low token cost.
+- LEARNINGS = durable, reusable wisdom extracted before archiving. Read frequently by PO Chat.
+- BRAND = Atlas positioning and identity — what shipping Atlas signals, to whom, and how to talk about it.
 Sections are markdown; headings are H2 text without the "## " prefix (e.g. "Agent Pipeline").`;
 
 const TOOLS = [
