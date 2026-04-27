@@ -1844,7 +1844,7 @@ export default function UserDashboard({ initialData }: { initialData?: Dashboard
       // Signals + profile skip if SSR already populated them via initialData.
       const fetches: [Promise<Response | null>, Promise<Response | null> | null, Promise<import("@/lib/api").MyProfile | null> | null] = [
         fetchWithAuth(`${API_URL}/v1/portfolio`),
-        initialData ? null : fetchWithAuth(`${API_URL}/v1/signals?limit=20`),
+        initialData ? null : fetchWithAuth(`${API_URL}/v1/signals?limit=200`),
         initialData ? null : fetchMyProfile(),
       ];
       const [portRes, sigsRes, profile] = await Promise.all(fetches);

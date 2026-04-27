@@ -41,7 +41,7 @@ async function fetchSignals(userId: string): Promise<Signal[]> {
       .collection("reasoning_traces")
       .find({ user_id: userId })
       .sort({ created_at: -1 })
-      .limit(20)
+      .limit(200)
       .toArray();
 
     return docs.map((d) => {

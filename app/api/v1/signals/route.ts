@@ -9,7 +9,7 @@ import { getUserFromRequest } from "@/lib/auth/context";
 
 const MONGO_URI = process.env.MONGODB_URI!;
 const MONGO_DB = process.env.MONGODB_DB_NAME ?? "atlas";
-const MAX_LIMIT = 50;
+const MAX_LIMIT = 500;
 
 let _mongoClient: MongoClient | null = null;
 
@@ -29,7 +29,7 @@ export async function GET(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const rawLimit = url.searchParams.get("limit");
   const limit = Math.min(
-    rawLimit ? Math.max(1, parseInt(rawLimit, 10)) : 20,
+    rawLimit ? Math.max(1, parseInt(rawLimit, 10)) : 200,
     MAX_LIMIT
   );
 
