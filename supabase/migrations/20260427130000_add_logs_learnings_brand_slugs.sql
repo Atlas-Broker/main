@@ -1,8 +1,20 @@
-alter table public.docs_sections
-  drop constraint if exists docs_sections_slug_check;
+alter table public.atlas_docs_sections
+  drop constraint if exists atlas_docs_sections_doc_slug_check;
 
-alter table public.docs_sections
-  add constraint docs_sections_slug_check check (
+alter table public.atlas_docs_sections
+  add constraint atlas_docs_sections_doc_slug_check check (
+    doc_slug in (
+      'CONTEXT', 'BUILD', 'INSTRUCTIONS', 'IDEAS',
+      'INTERIM_REPORT', 'FINAL_REPORT', 'BIWEEKLY_LOGS',
+      'INBOX', 'PROPOSAL', 'LOGS', 'LEARNINGS', 'BRAND'
+    )
+  );
+
+alter table public.atlas_docs_section_versions
+  drop constraint if exists atlas_docs_section_versions_doc_slug_check;
+
+alter table public.atlas_docs_section_versions
+  add constraint atlas_docs_section_versions_doc_slug_check check (
     doc_slug in (
       'CONTEXT', 'BUILD', 'INSTRUCTIONS', 'IDEAS',
       'INTERIM_REPORT', 'FINAL_REPORT', 'BIWEEKLY_LOGS',
