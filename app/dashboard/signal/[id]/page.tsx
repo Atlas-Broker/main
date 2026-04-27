@@ -1227,14 +1227,13 @@ export default function SignalDetailPage({ params }: { params: Promise<{ id: str
 
   useEffect(() => {
     params.then(({ id }) => {
-      fetchWithAuth(`${API_URL}/v1/signals?limit=50`).then(async (res) => {
-        if (!res) {
+      fetchWithAuth(`${API_URL}/v1/signals/${id}`).then(async (res) => {
+        if (!res || !res.ok) {
           setLoading(false);
           return;
         }
-        const list: Signal[] = await res.json();
-        const found = list.find((s) => s.id === id) ?? null;
-        setSignal(found);
+        const data: Signal = await res.json();
+        setSignal(data);
         setLoading(false);
       });
     });
