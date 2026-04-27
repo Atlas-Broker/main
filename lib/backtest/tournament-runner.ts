@@ -16,7 +16,9 @@ import { randomUUID } from "crypto";
 import { runGraph } from "../agents";
 import { inngest } from "../inngest";
 import { computeMetrics } from "./metrics";
+import { VirtualPortfolio } from "./simulator";
 import { generateDateRange, upsertSlice } from "./runner";
+import type { AtlasState } from "../agents/state";
 import {
   rankVariants,
   crossModelConsistency,
@@ -114,7 +116,7 @@ async function executeVariant(
   const { tickers, user_id: userId } = config;
   const agentPhilosophy = PHILOSOPHY_MAP[variant.philosophy] ?? "balanced";
 
-  const backtestSlices = [];
+  const rawSlices = [];
   for (const date of dates) {
     for (const ticker of tickers) {
       const decision = await runGraph(ticker, {
@@ -130,7 +132,7 @@ async function executeVariant(
         model: llmConfig.model,
         base_url: llmConfig.baseUrl,
       });
-      backtestSlices.push({
+      rawSlices.push({
         jobId,
         date,
         ticker,
@@ -139,6 +141,40 @@ async function executeVariant(
       });
     }
   }
+
+  // Post-loop simulation pass — mirrors runner.ts
+  const portfolio = new VirtualPortfolio();
+  const lastDate = dates[dates.length - 1];
+
+  const backtestSlices = rawSlices.map((slice) => {
+    const agentState = slice.decision as AtlasState;
+    const pd = agentState.portfolio_decision;
+    const currentPrice = agentState.current_price ?? null;
+
+    const tradeResult = portfolio.process({
+      date: slice.date,
+      ticker: slice.ticker,
+      action: pd?.action ?? "HOLD",
+      confidence: pd?.confidence ?? 0,
+      ebcMode: variant.mode,
+      executionPrice: currentPrice,
+      isLastDay: slice.date === lastDate,
+    });
+
+    const portfolioValueAfter = portfolio.portfolioValue(
+      currentPrice !== null ? { [slice.ticker]: currentPrice } : {},
+    );
+
+    return {
+      ...slice,
+      decision: {
+        ...(agentState as Record<string, unknown>),
+        executed: tradeResult.executed,
+        pnl: tradeResult.pnl ?? null,
+        portfolio_value_after: portfolioValueAfter,
+      },
+    };
+  });
 
   const metrics = computeMetrics(backtestSlices);
 
