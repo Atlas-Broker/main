@@ -656,7 +656,7 @@ function PortfolioTab({
       )}
 
       {/* Split header cards */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {/* Total Value */}
         <button
           onClick={() => router.push("/dashboard/equity-curve?range=all")}
@@ -688,6 +688,39 @@ function PortfolioTab({
           </div>
           <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginTop: 4 }}>tap for chart →</div>
         </button>
+
+        {/* Cash — desktop only */}
+        <div
+          className="hidden md:block"
+          style={{
+            background: "var(--surface)", border: "1px solid var(--line)",
+            borderRadius: 12, padding: "16px 14px",
+            boxShadow: "var(--card-shadow)",
+          }}
+        >
+          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginBottom: 6, letterSpacing: "0.06em" }}>CASH</div>
+          <div className="num font-display font-bold" style={{ fontSize: 22, color: "var(--ink)", letterSpacing: "-0.02em" }}>
+            {portfolio?.cash != null ? fmt(portfolio.cash) : "—"}
+          </div>
+          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginTop: 4 }}>buying power</div>
+        </div>
+
+        {/* Total P&L — desktop only */}
+        <div
+          className="hidden md:block"
+          style={{
+            background: "var(--surface)",
+            border: `1px solid ${(portfolio?.pnl_total ?? 0) >= 0 ? "var(--bull)" : "var(--bear)"}20`,
+            borderRadius: 12, padding: "16px 14px",
+            boxShadow: "var(--card-shadow)",
+          }}
+        >
+          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginBottom: 6, letterSpacing: "0.06em" }}>TOTAL P&amp;L</div>
+          <div className="num font-display font-bold" style={{ fontSize: 22, color: (portfolio?.pnl_total ?? 0) >= 0 ? "var(--bull)" : "var(--bear)", letterSpacing: "-0.02em" }}>
+            {portfolio != null ? `${(portfolio.pnl_total ?? 0) >= 0 ? "+" : ""}${fmt(portfolio.pnl_total)}` : "—"}
+          </div>
+          <div style={{ color: "var(--ghost)", fontSize: 9, fontFamily: "var(--font-mono)", marginTop: 4 }}>since inception</div>
+        </div>
       </div>
 
       {/* AI Mode Strip — Pro/Max only */}
@@ -701,30 +734,36 @@ function PortfolioTab({
         {!portfolio || !portfolio.positions?.length ? (
           <div style={{ color: "var(--ghost)", fontSize: 13, textAlign: "center", padding: "24px 0" }}>No open positions yet.</div>
         ) : (
-          portfolio.positions!.map((pos) => (
-            <button
-              key={pos.ticker}
-              onClick={() => onPositionClick(pos.ticker)}
-              style={{
-                width: "100%", background: "var(--surface)", border: "1px solid var(--line)",
-                borderRadius: 10, padding: "14px 16px", display: "flex",
-                alignItems: "center", justifyContent: "space-between",
-                cursor: "pointer", marginBottom: 8, textAlign: "left",
-                boxShadow: "var(--card-shadow)",
-              }}
-            >
-              <div>
-                <span className="font-display font-bold" style={{ fontSize: 16, color: "var(--ink)" }}>{pos.ticker}</span>
-                <span className="num" style={{ color: "var(--ghost)", fontSize: 12, marginLeft: 8 }}>{pos.shares} shares</span>
-              </div>
-              <div className="text-right">
-                <div className="num" style={{ color: pos.pnl >= 0 ? "var(--bull)" : "var(--bear)", fontSize: 14, fontWeight: 700 }}>
-                  {pos.pnl >= 0 ? "+" : ""}{fmt(pos.pnl)}
+          <div className="md:grid md:grid-cols-2 md:gap-3">
+            {portfolio.positions!.map((pos) => (
+              <button
+                key={pos.ticker}
+                onClick={() => onPositionClick(pos.ticker)}
+                className="mb-2 md:mb-0"
+                style={{
+                  width: "100%", background: "var(--surface)", border: "1px solid var(--line)",
+                  borderRadius: 10, padding: "14px 16px", display: "flex",
+                  alignItems: "center", justifyContent: "space-between",
+                  cursor: "pointer", textAlign: "left",
+                  boxShadow: "var(--card-shadow)",
+                }}
+              >
+                <div>
+                  <span className="font-display font-bold" style={{ fontSize: 16, color: "var(--ink)" }}>{pos.ticker}</span>
+                  <span className="num" style={{ color: "var(--ghost)", fontSize: 12, marginLeft: 8 }}>{pos.shares} shares</span>
+                  <div className="hidden md:block" style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginTop: 3 }}>
+                    avg {fmt(pos.avg_cost)} · now {fmt(pos.current_price)}
+                  </div>
                 </div>
-                <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-mono)", marginTop: 2 }}>AI log →</div>
-              </div>
-            </button>
-          ))
+                <div className="text-right">
+                  <div className="num" style={{ color: pos.pnl >= 0 ? "var(--bull)" : "var(--bear)", fontSize: 14, fontWeight: 700 }}>
+                    {pos.pnl >= 0 ? "+" : ""}{fmt(pos.pnl)}
+                  </div>
+                  <div style={{ color: "var(--ghost)", fontSize: 10, fontFamily: "var(--font-mono)", marginTop: 2 }}>AI log →</div>
+                </div>
+              </button>
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -1848,7 +1887,7 @@ export default function UserDashboard({ initialData }: { initialData?: Dashboard
   );
 
   return (
-    <div className="flex flex-col min-h-screen" style={{ background: "var(--bg)", maxWidth: 520, margin: "0 auto" }}>
+    <div className="flex flex-col min-h-screen max-w-[520px] md:max-w-[1100px] mx-auto" style={{ background: "var(--bg)" }}>
 
       {/* ── Top header ── */}
       <header className="sticky top-0 z-20 flex items-center justify-between px-5 py-4" style={{
@@ -1863,6 +1902,34 @@ export default function UserDashboard({ initialData }: { initialData?: Dashboard
           </div>
           <span className="font-display font-bold" style={{ fontSize: 17, color: "var(--ink)", letterSpacing: "-0.02em" }}>ATLAS</span>
         </Link>
+
+        {/* Desktop tab navigation */}
+        <div className="hidden md:flex items-center gap-1">
+          {TABS.map((t) => {
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                style={{
+                  background: active ? "var(--elevated)" : "transparent",
+                  border: `1px solid ${active ? "var(--line)" : "transparent"}`,
+                  borderRadius: 8,
+                  padding: "6px 18px",
+                  fontSize: 13,
+                  fontFamily: "var(--font-jb)",
+                  letterSpacing: "0.02em",
+                  color: active ? "var(--ink)" : "var(--ghost)",
+                  fontWeight: active ? 600 : 400,
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
 
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
@@ -1898,7 +1965,7 @@ export default function UserDashboard({ initialData }: { initialData?: Dashboard
       )}
 
       {/* ── Scrollable content ── */}
-      <main className="flex-1 px-4 pt-4 overflow-y-auto">
+      <main className="flex-1 px-4 pt-4 md:px-8 md:pt-6 overflow-y-auto">
         {loading && tab !== "settings" ? (
           <div style={{ color: "var(--ghost)", fontSize: 13, fontFamily: "var(--font-nunito)", padding: "48px 0", textAlign: "center" }}>
             Connecting to Atlas API…
@@ -1929,7 +1996,7 @@ export default function UserDashboard({ initialData }: { initialData?: Dashboard
       </main>
 
       {/* ── Bottom nav ── */}
-      <nav className="sticky bottom-0 z-20 grid grid-cols-3" style={{
+      <nav className="sticky bottom-0 z-20 grid grid-cols-3 md:hidden" style={{
         background: "var(--nav-bg)",
         backdropFilter: "blur(12px)",
         borderTop: "1px solid var(--line)",
