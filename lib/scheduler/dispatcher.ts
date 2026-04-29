@@ -15,8 +15,8 @@ const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY!
 
 /**
- * Returns Supabase rows from `user_schedules` where window_name matches and
- * is_enabled is true.
+ * Returns (user_id, ticker, mode, philosophy) tuples for users who have the
+ * given window enabled. Joins user_schedules → watchlist → profiles.
  */
 export async function queryEnabledUsers(
   window: ScheduleWindow
@@ -25,23 +25,48 @@ export async function queryEnabledUsers(
     auth: { persistSession: false },
   })
 
-  const { data, error } = await client
+  const { data: schedules, error: schedErr } = await client
     .from("user_schedules")
-    .select("user_id, ticker, mode, philosophy")
-    .eq("window_name", window)
-    .eq("is_enabled", true)
+    .select("user_id")
+    .eq("window", window)
+    .eq("enabled", true)
 
-  if (error) {
-    console.warn(`[Scheduler] Supabase query failed for window "${window}":`, error.message)
+  if (schedErr) {
+    console.warn(`[Scheduler] Supabase query failed for window "${window}":`, schedErr.message)
+    return []
+  }
+  if (!schedules || schedules.length === 0) return []
+
+  const userIds = schedules.map((s: { user_id: string }) => s.user_id)
+
+  const [watchlistResult, profilesResult] = await Promise.all([
+    client.from("watchlist").select("user_id, ticker").in("user_id", userIds),
+    client.from("profiles").select("id, boundary_mode, investment_philosophy").in("id", userIds),
+  ])
+
+  if (watchlistResult.error) {
+    console.warn(`[Scheduler] Watchlist query failed for window "${window}":`, watchlistResult.error.message)
+    return []
+  }
+  if (profilesResult.error) {
+    console.warn(`[Scheduler] Profiles query failed for window "${window}":`, profilesResult.error.message)
     return []
   }
 
-  return (data ?? []) as Array<{
-    user_id: string
-    ticker: string
-    mode: "advisory" | "autonomous"
-    philosophy: string
-  }>
+  const profileMap = new Map(
+    (profilesResult.data ?? []).map((p: { id: string; boundary_mode: string; investment_philosophy: string }) => [
+      p.id,
+      { mode: p.boundary_mode as "advisory" | "autonomous", philosophy: p.investment_philosophy },
+    ])
+  )
+
+  return (watchlistResult.data ?? []).flatMap(
+    (row: { user_id: string; ticker: string }) => {
+      const profile = profileMap.get(row.user_id)
+      if (!profile) return []
+      return [{ user_id: row.user_id, ticker: row.ticker, mode: profile.mode, philosophy: profile.philosophy }]
+    }
+  )
 }
 
 /**
