@@ -8,35 +8,8 @@
  */
 
 import { inngest } from "../inngest"
-
-// runGraph is provided by sprint 009 (frontend/lib/agents/index.ts).
-// We import it dynamically so this file compiles even before 009 merges;
-// once 009 lands the real implementation is used automatically.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type RunGraphOptions = {
-  mode: "advisory" | "autonomous"
-  philosophy: string
-  isBacktest: boolean
-  userId: string
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type GraphResult = {
-  confidence: number
-  [key: string]: unknown
-}
-
-async function resolveRunGraph(): Promise<(ticker: string, opts: RunGraphOptions) => Promise<GraphResult>> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require("../agents/index")
-    return mod.runGraph
-  } catch {
-    throw new Error(
-      "[pipeline-handler] frontend/lib/agents/index.ts not found — ensure sprint 009 has been merged."
-    )
-  }
-}
+import { runGraph } from "../agents"
+import type { RunGraphOptions } from "../agents"
 
 const LOW_CONFIDENCE_THRESHOLD = 0.65
 
@@ -51,19 +24,19 @@ export const onPipelineTriggered = inngest.createFunction(
       asOfDate: string
     }
 
-    const result: GraphResult = await step.run("run-graph", async () => {
-      const runGraph = await resolveRunGraph()
+    const result = await step.run("run-graph", async () => {
       return runGraph(ticker, {
         mode,
         philosophy,
         isBacktest: false,
         userId,
-      })
+      } as RunGraphOptions)
     })
 
+    const confidence = result.portfolio_decision?.confidence ?? 1
+
     // In autonomous mode with low confidence → notify the user.
-    // The notification service (sprint 013) subscribes to "app/notification.requested".
-    if (mode === "autonomous" && result.confidence < LOW_CONFIDENCE_THRESHOLD) {
+    if (mode === "autonomous" && confidence < LOW_CONFIDENCE_THRESHOLD) {
       await step.run("notify-low-confidence", async () => {
         await inngest.send({
           name: "app/notification.requested",
