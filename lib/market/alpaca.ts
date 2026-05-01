@@ -33,7 +33,7 @@ export async function fetchBars(
   const bars: Bar[] = [];
 
   try {
-    const generator = client.getBarsV2(ticker, { start, end, timeframe }) as AsyncGenerator<{
+    const generator = client.getBarsV2(ticker, { start, end, timeframe, feed: "iex" }) as AsyncGenerator<{
       Timestamp: string;
       OpenPrice: number;
       HighPrice: number;

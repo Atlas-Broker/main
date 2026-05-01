@@ -5,7 +5,7 @@
  *   START
  *     → fetch_data
  *         → [technical_analyst, fundamental_analyst, sentiment_analyst]  (parallel fan-out)
- *         → synthesis → fetch_account → risk → portfolio → save_trace
+ *         → synthesize → fetch_account → assess_risk → portfolio → save_trace
  *     → END
  *
  * analyst_outputs uses a merge reducer so parallel analyst nodes each write their
@@ -95,9 +95,9 @@ function buildGraph() {
   builder.addNode("fundamental_analyst", fundamentalAnalystNode);
   builder.addNode("sentiment_analyst", sentimentAnalystNode);
   builder.addNode("review_analyst", reviewAnalystNode);
-  builder.addNode("synthesis", synthesisNode);
+  builder.addNode("synthesize", synthesisNode);
   builder.addNode("fetch_account", fetchAccountNode);
-  builder.addNode("risk", riskNode);
+  builder.addNode("assess_risk", riskNode);
   builder.addNode("portfolio", portfolioDecisionNode);
   builder.addNode("save_trace", saveTraceNode);
 
@@ -109,15 +109,15 @@ function buildGraph() {
   builder.addEdge("fetch_data", "review_analyst");
 
   // Fan-in: all four analysts → synthesis (LangGraph waits for all four)
-  builder.addEdge("technical_analyst", "synthesis");
-  builder.addEdge("fundamental_analyst", "synthesis");
-  builder.addEdge("sentiment_analyst", "synthesis");
-  builder.addEdge("review_analyst", "synthesis");
+  builder.addEdge("technical_analyst", "synthesize");
+  builder.addEdge("fundamental_analyst", "synthesize");
+  builder.addEdge("sentiment_analyst", "synthesize");
+  builder.addEdge("review_analyst", "synthesize");
 
   // Sequential tail
-  builder.addEdge("synthesis", "fetch_account");
-  builder.addEdge("fetch_account", "risk");
-  builder.addEdge("risk", "portfolio");
+  builder.addEdge("synthesize", "fetch_account");
+  builder.addEdge("fetch_account", "assess_risk");
+  builder.addEdge("assess_risk", "portfolio");
   builder.addEdge("portfolio", "save_trace");
   builder.addEdge("save_trace", END);
 
