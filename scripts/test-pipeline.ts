@@ -6,13 +6,6 @@
  *   npx tsx scripts/test-pipeline.ts
  */
 
-import "dotenv/config"
-import path from "path"
-import { config } from "dotenv"
-
-// Load .env.local explicitly (tsx doesn't load it by default)
-config({ path: path.resolve(process.cwd(), ".env.local") })
-
 async function main() {
   console.log("Loading runGraph…")
   const { runGraph } = await import("../lib/agents/index")
