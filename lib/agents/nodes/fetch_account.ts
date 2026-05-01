@@ -7,6 +7,7 @@
 
 import type { AtlasState, AccountInfo } from "../state";
 import { AlpacaAdapter } from "@/lib/broker";
+import { getBrokerCredentials } from "@/lib/broker/credentials";
 
 function isBacktest(state: AtlasState): boolean {
   return state.as_of_date != null;
@@ -21,7 +22,8 @@ export async function fetchAccountNode(
   }
 
   try {
-    const broker = new AlpacaAdapter();
+    const creds = await getBrokerCredentials(state.user_id);
+    const broker = new AlpacaAdapter(creds.apiKey, creds.secretKey, creds.paper);
     const acct = await broker.getAccount();
     const accountInfo: AccountInfo = {
       portfolio_value: acct.portfolioValue,

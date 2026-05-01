@@ -6,6 +6,7 @@
  */
 
 import { fetchBars, fetchNews, fetchTickerInfoCached } from "@/lib/market";
+import { getBrokerCredentials } from "@/lib/broker/credentials";
 import type { AtlasState, AnalystOutputs } from "../state";
 import { validateStateSlice, AnalystOutputsSchema } from "../state";
 
@@ -28,7 +29,9 @@ function ninetyDaysBefore(isoDate: string): string {
 export async function marketDataNode(
   state: AtlasState,
 ): Promise<Partial<AtlasState>> {
-  const { ticker, as_of_date } = state;
+  const { ticker, user_id, as_of_date } = state;
+
+  const creds = await getBrokerCredentials(user_id);
 
   let bars;
   let newsItems;
@@ -36,15 +39,15 @@ export async function marketDataNode(
   if (as_of_date) {
     const start = ninetyDaysBefore(as_of_date);
     [bars, newsItems] = await Promise.all([
-      fetchBars(ticker, start, as_of_date, "1Day"),
-      fetchNews(ticker, { end: as_of_date, limit: 10 }),
+      fetchBars(ticker, start, as_of_date, "1Day", creds),
+      fetchNews(ticker, { end: as_of_date, limit: 10 }, creds),
     ]);
   } else {
     const end = new Date().toISOString().slice(0, 10);
     const start = ninetyDaysBefore(end);
     [bars, newsItems] = await Promise.all([
-      fetchBars(ticker, start, end, "1Day"),
-      fetchNews(ticker, { limit: 10 }),
+      fetchBars(ticker, start, end, "1Day", creds),
+      fetchNews(ticker, { limit: 10 }, creds),
     ]);
   }
 

@@ -8,6 +8,7 @@ import type { AtlasState, PortfolioDecision, AccountInfo } from "../state";
 import { PortfolioDecisionSchema, validateStateSlice, llmConfigFromState } from "../state";
 import { getLlm } from "../llm";
 import { AlpacaAdapter, MockBrokerAdapter } from "@/lib/broker";
+import { getBrokerCredentials } from "@/lib/broker/credentials";
 import type { Account, Position } from "@/lib/broker";
 
 const MAX_POSITION_PCT = 0.15; // must match risk node
@@ -113,7 +114,8 @@ export async function portfolioDecisionNode(
     currentPositions = (state.current_positions as Record<string, PositionRecord> | null) ?? {};
   } else {
     try {
-      const broker = new AlpacaAdapter();
+      const creds = await getBrokerCredentials(state.user_id);
+      const broker = new AlpacaAdapter(creds.apiKey, creds.secretKey, creds.paper);
       const rawPositions = await broker.getPositions();
       currentPositions = normaliseBrokerPositions(rawPositions);
     } catch {
