@@ -25,12 +25,17 @@ export const onPipelineTriggered = inngest.createFunction(
     }
 
     const result = await step.run("run-graph", async () => {
-      return runGraph(ticker, {
-        mode,
-        philosophy,
-        isBacktest: false,
-        userId,
-      } as RunGraphOptions)
+      try {
+        return await runGraph(ticker, {
+          mode,
+          philosophy,
+          isBacktest: false,
+          userId,
+        } as RunGraphOptions)
+      } catch (err) {
+        console.error("[pipeline] runGraph failed:", err instanceof Error ? err.message : String(err), err instanceof Error ? err.stack : "")
+        throw err
+      }
     })
 
     const confidence = result.portfolio_decision?.confidence ?? 1
