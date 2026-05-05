@@ -62,9 +62,14 @@ Construct a bull case and bear case, then give a verdict. Return ONLY valid JSON
 }`;
 
   const llmConfig = llmConfigFromState(state);
-  const llm = await getLlm("deep", llmConfig);
-  const response = await llm.invoke(prompt);
-  const text = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
+  let text = "";
+  try {
+    const llm = await getLlm("deep", llmConfig);
+    const response = await llm.invoke(prompt);
+    text = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
+  } catch (err) {
+    console.error("[synthesis] LLM error:", err instanceof Error ? err.message : String(err));
+  }
 
   let parsed: Record<string, unknown>;
   try {

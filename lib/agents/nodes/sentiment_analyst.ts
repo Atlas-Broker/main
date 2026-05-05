@@ -55,9 +55,14 @@ Return ONLY valid JSON with this exact structure:
 }`;
 
   const llmConfig = llmConfigFromState(state);
-  const llm = await getLlm("quick", llmConfig);
-  const response = await llm.invoke(prompt);
-  const text = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
+  let text = "";
+  try {
+    const llm = await getLlm("quick", llmConfig);
+    const response = await llm.invoke(prompt);
+    text = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
+  } catch (err) {
+    console.error("[sentiment] LLM error:", err instanceof Error ? err.message : String(err));
+  }
 
   let parsed: Record<string, unknown>;
   try {

@@ -134,13 +134,17 @@ Return ONLY valid JSON with this exact structure:
 }`;
 
   const llmConfig = llmConfigFromState(state);
-  const llm = await getLlm("quick", llmConfig);
-  const response = await llm.invoke(prompt);
-  const text = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
+  let text = "";
+  try {
+    const llm = await getLlm("quick", llmConfig);
+    const response = await llm.invoke(prompt);
+    text = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
+  } catch (err) {
+    console.error("[technical] LLM error:", err instanceof Error ? err.message : String(err));
+  }
 
   let parsed: Record<string, unknown>;
   try {
-    // Strip markdown code fences if present
     const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
     parsed = JSON.parse(clean) as Record<string, unknown>;
   } catch {
