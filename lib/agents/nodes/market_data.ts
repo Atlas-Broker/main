@@ -31,7 +31,13 @@ export async function marketDataNode(
 ): Promise<Partial<AtlasState>> {
   const { ticker, user_id, as_of_date } = state;
 
-  const creds = await getBrokerCredentials(user_id);
+  // Try per-user credentials first; fall back to global ALPACA_API_KEY env vars.
+  let creds: Awaited<ReturnType<typeof getBrokerCredentials>> | undefined;
+  try {
+    creds = await getBrokerCredentials(user_id);
+  } catch {
+    // No broker_connections record — fetchBars/fetchNews will fall back to env vars.
+  }
 
   let bars;
   let newsItems;

@@ -277,9 +277,9 @@ export async function handleWriteTool(name: string, args: Record<string, unknown
           data: {
             userId,
             ticker,
-            boundaryMode: "advisory",
-            philosophyMode: resolvedPhilosophy,
-            triggeredAt: new Date().toISOString(),
+            mode: "advisory",
+            philosophy: resolvedPhilosophy,
+            asOfDate: null,
           },
         });
 
