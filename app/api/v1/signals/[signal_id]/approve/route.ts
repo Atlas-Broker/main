@@ -7,6 +7,7 @@ import { MongoClient, ObjectId } from "mongodb";
 import { createClient } from "@supabase/supabase-js";
 import { getUserFromRequest } from "@/lib/auth/context";
 import { AlpacaAdapter } from "@/lib/broker/alpaca";
+import { getEffectiveGate } from "@/lib/boundary/circuit-breaker";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY =
@@ -62,6 +63,25 @@ export async function POST(
       return Response.json({ status: "skipped", message: "HOLD signal — no order placed." });
     }
 
+    // EBC circuit breaker gate — apply before any broker call
+    const gate = await getEffectiveGate(user.userId);
+    if (!gate.canExecute) {
+      return Response.json({
+        status: "blocked",
+        ebc_state: gate.state,
+        message: gate.reason ?? "EBC circuit breaker is active — execution paused.",
+      });
+    }
+    const confidence = parseFloat(String(decision["confidence"] ?? "0"));
+    if (confidence < gate.confidenceGate) {
+      return Response.json({
+        status: "blocked",
+        ebc_state: gate.state,
+        message: `Signal confidence ${confidence.toFixed(2)} is below the EBC gate (${gate.confidenceGate}) for ${gate.state} state.`,
+      });
+    }
+    const effectiveNotional = NOTIONAL_USD * gate.notionalMultiplier;
+
     // Fetch broker credentials
     const sb = getServiceClient();
     const { data: conn } = await sb
@@ -86,7 +106,7 @@ export async function POST(
       connRow["environment"] === "paper",
     );
 
-    const order = await adapter.submitOrder({ ticker, action: action as "BUY" | "SELL", notional: NOTIONAL_USD });
+    const order = await adapter.submitOrder({ ticker, action: action as "BUY" | "SELL", notional: effectiveNotional });
 
     // Persist trade to Supabase — failure must not fail the response
     let supabaseSync = true;
@@ -128,7 +148,9 @@ export async function POST(
       order_id: order.orderId,
       ticker,
       action,
-      message: `Order placed: ${action} $${NOTIONAL_USD} of ${ticker}.`,
+      ebc_state: gate.state,
+      notional: effectiveNotional,
+      message: `Order placed: ${action} $${effectiveNotional} of ${ticker}.`,
       supabase_sync: supabaseSync,
     });
   } finally {

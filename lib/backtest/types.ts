@@ -33,6 +33,12 @@ export interface BacktestRequest {
    * Defaults to "advisory" for safe backward-compatibility.
    */
   ebc_mode?: "advisory" | "autonomous";
+  /**
+   * When true, the simulation pass applies the 3-state circuit breaker on top of
+   * ebc_mode. Enables the paper's comparison experiment: autonomous vs.
+   * autonomous-with-circuit-breaker. Only meaningful when ebc_mode = "autonomous".
+   */
+  circuit_breaker_enabled?: boolean;
 }
 
 export interface BacktestSlice {

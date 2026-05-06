@@ -1303,6 +1303,8 @@ export function SettingsTab({
   const [philosophy, setPhilosophy] = useState<PhilosophyMode>(initialPhilosophy);
   const [tempMode, setTempMode] = useState<"advisory" | "autonomous" | "autonomous_guardrail">("advisory");
   const [tempPhilosophy, setTempPhilosophy] = useState<PhilosophyMode>(initialPhilosophy);
+  const [ebcState, setEbcState] = useState<"green" | "yellow" | "red">("green");
+  const [ebcResetting, setEbcResetting] = useState(false);
 
   // Keep local state in sync if the prop changes (e.g. profile loaded after render)
   useEffect(() => {
@@ -1338,6 +1340,9 @@ export function SettingsTab({
         if (data?.boundary_mode) {
           setMode(data.boundary_mode);
           setTempMode(data.boundary_mode);
+        }
+        if (data?.ebc_state) {
+          setEbcState(data.ebc_state as "green" | "yellow" | "red");
         }
       })
       .catch(() => {});
@@ -1721,6 +1726,64 @@ export function SettingsTab({
           </button>
         )}
       </div>
+
+      {/* EBC Circuit Breaker status — shown when mode is not advisory */}
+      {mode !== "advisory" && (
+        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "14px 18px", boxShadow: "var(--card-shadow)" }}>
+          <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 10 }}>CIRCUIT BREAKER</div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2" style={{ marginBottom: 4 }}>
+                {ebcState === "green" && (
+                  <><span style={{ color: "var(--bull)", fontSize: 13 }}>●</span>
+                  <span style={{ color: "var(--ink)", fontSize: 14, fontFamily: "var(--font-nunito)", fontWeight: 600 }}>Tracking</span></>
+                )}
+                {ebcState === "yellow" && (
+                  <><span style={{ color: "var(--hold)", fontSize: 13 }}>⚠</span>
+                  <span style={{ color: "var(--hold)", fontSize: 14, fontFamily: "var(--font-nunito)", fontWeight: 600 }}>Reduced</span></>
+                )}
+                {ebcState === "red" && (
+                  <><span style={{ color: "var(--bear)", fontSize: 13 }}>⏸</span>
+                  <span style={{ color: "var(--bear)", fontSize: 14, fontFamily: "var(--font-nunito)", fontWeight: 600 }}>Paused</span></>
+                )}
+              </div>
+              <div style={{ color: "var(--ghost)", fontSize: 12, fontFamily: "var(--font-nunito)" }}>
+                {ebcState === "green" && "Full execution — $1 000 notional, confidence ≥ 0.65"}
+                {ebcState === "yellow" && "Reduced execution — $500 notional, confidence ≥ 0.75"}
+                {ebcState === "red" && "Execution paused after 5 consecutive losses — manual reset required"}
+              </div>
+            </div>
+            {ebcState === "red" && (
+              <button
+                disabled={ebcResetting}
+                onClick={async () => {
+                  setEbcResetting(true);
+                  try {
+                    await fetchWithAuth(`${API_URL}/v1/user/settings`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ ebc_reset: true }),
+                    });
+                    setEbcState("green");
+                  } catch { /* non-fatal */ } finally {
+                    setEbcResetting(false);
+                  }
+                }}
+                style={{
+                  fontSize: 11, fontFamily: "var(--font-jb)",
+                  color: ebcResetting ? "var(--ghost)" : "var(--bear)",
+                  background: "none", border: "1px solid var(--bear)",
+                  borderRadius: 4, padding: "3px 10px",
+                  cursor: ebcResetting ? "default" : "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                {ebcResetting ? "Resetting…" : "Reset"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Claude Integration */}
       <div style={{ marginBottom: 32 }}>

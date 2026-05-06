@@ -15,6 +15,8 @@ import { getModelId } from "../agents/llm";
 import { inngest } from "./inngest-client";
 import { computeMetrics } from "./metrics";
 import { VirtualPortfolio } from "./simulator";
+import { computeNextState, gateFromState } from "../boundary/circuit-breaker";
+import type { EbcRecord, EbcState } from "../boundary/circuit-breaker";
 import type { AtlasState } from "../agents/state";
 import type { BacktestMetrics, BacktestRequest, BacktestSlice } from "./types";
 
@@ -132,7 +134,7 @@ export const runBacktest = inngest.createFunction(
     triggers: [{ event: "app/backtest.requested" }],
   },
   async ({ event, step }: { event: { data: BacktestRequest }; step: { run: <T>(id: string, fn: () => Promise<T>) => Promise<T> } }) => {
-    const { userId, tickers, startDate, endDate, philosophy, jobId, llmConfig, ebc_mode } = event.data;
+    const { userId, tickers, startDate, endDate, philosophy, jobId, llmConfig, ebc_mode, circuit_breaker_enabled } = event.data;
 
     // Default to Gemini when no config supplied
     const resolvedLlmConfig = llmConfig ?? {
@@ -181,8 +183,17 @@ export const runBacktest = inngest.createFunction(
     // Inngest step replay doesn't corrupt state (each step returns cached results;
     // we re-simulate from those cached decisions in one sequential sweep).
     const resolvedEbcMode = ebc_mode ?? "advisory";
+    const useCb = circuit_breaker_enabled === true && resolvedEbcMode !== "advisory";
     const portfolio = new VirtualPortfolio();
     const lastDate = dates[dates.length - 1];
+
+    // In-memory circuit breaker state for backtest (no Supabase I/O needed)
+    let cbRecord: EbcRecord = {
+      state: "green" as EbcState,
+      consecutiveLosses: 0,
+      recoveryWins: 0,
+      stateChangedAt: new Date(startDate + "T00:00:00Z"),
+    };
 
     const simulatedSlices: BacktestSlice[] = slices.map((slice) => {
       const agentState = slice.decision as AtlasState;
@@ -190,15 +201,33 @@ export const runBacktest = inngest.createFunction(
       const currentPrice = agentState.current_price ?? null;
       const isLastDay = slice.date === lastDate;
 
+      // Derive gate for this step (circuit breaker or plain mode)
+      const cbGate = useCb ? gateFromState(cbRecord.state) : null;
+      const confidenceOverride = cbGate?.confidenceGate ?? null;
+      const notionalOverride = cbGate
+        ? cbGate.canExecute ? 1000 * cbGate.notionalMultiplier : 0
+        : null;
+
       const tradeResult = portfolio.process({
         date: slice.date,
         ticker: slice.ticker,
-        action: decision?.action ?? "HOLD",
+        action: cbGate && !cbGate.canExecute ? "HOLD" : (decision?.action ?? "HOLD"),
         confidence: decision?.confidence ?? 0,
         ebcMode: resolvedEbcMode,
         executionPrice: currentPrice,
         isLastDay,
+        confidenceThresholdOverride: confidenceOverride,
+        positionValueOverride: notionalOverride,
       });
+
+      // Update in-memory circuit breaker state after each executed trade
+      if (useCb && tradeResult.executed) {
+        const outcome: "win" | "loss" =
+          tradeResult.pnl !== undefined && tradeResult.pnl !== null && tradeResult.pnl > 0
+            ? "win"
+            : "loss";
+        cbRecord = computeNextState(cbRecord, outcome);
+      }
 
       const portfolioValueAfter = portfolio.portfolioValue(
         currentPrice !== null ? { [slice.ticker]: currentPrice } : {},
@@ -211,6 +240,7 @@ export const runBacktest = inngest.createFunction(
           executed: tradeResult.executed,
           pnl: tradeResult.pnl ?? null,
           portfolio_value_after: portfolioValueAfter,
+          ebc_state: cbRecord.state,
         },
       };
     });

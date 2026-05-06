@@ -7,6 +7,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { getUserFromRequest } from "@/lib/auth/context";
+import { resetCircuitBreaker } from "@/lib/boundary/circuit-breaker";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY =
@@ -24,6 +25,7 @@ const PatchSettingsSchema = z.object({
   boundary_mode: z.enum(VALID_BOUNDARY_MODES).optional(),
   display_name: z.string().optional(),
   investment_philosophy: z.enum(VALID_PHILOSOPHIES).optional(),
+  ebc_reset: z.boolean().optional(),
 });
 
 function getServiceClient() {
@@ -45,7 +47,7 @@ export async function GET(req: Request): Promise<Response> {
   const { data, error } = await sb
     .from("profiles")
     .select(
-      "id, boundary_mode, display_name, email, investment_philosophy, onboarding_completed, role, tier"
+      "id, boundary_mode, display_name, email, investment_philosophy, onboarding_completed, role, tier, ebc_state, ebc_consecutive_losses, ebc_recovery_wins"
     )
     .eq("id", user.userId)
     .maybeSingle();
@@ -83,16 +85,22 @@ export async function PATCH(req: Request): Promise<Response> {
     );
   }
 
+  // Handle EBC reset before building profile updates
+  const { ebc_reset, ...rest } = parsed.data;
+  if (ebc_reset) {
+    await resetCircuitBreaker(user.userId);
+  }
+
   // Strip undefined — only update provided fields
   const updates = Object.fromEntries(
-    Object.entries(parsed.data).filter(([, v]) => v !== undefined)
+    Object.entries(rest).filter(([, v]) => v !== undefined)
   );
 
-  if (Object.keys(updates).length === 0) {
+  if (!ebc_reset && Object.keys(updates).length === 0) {
     return Response.json(
       {
         error:
-          "No valid fields provided. Writable fields: boundary_mode, display_name, investment_philosophy.",
+          "No valid fields provided. Writable fields: boundary_mode, display_name, investment_philosophy, ebc_reset.",
       },
       { status: 422 }
     );
@@ -100,20 +108,22 @@ export async function PATCH(req: Request): Promise<Response> {
 
   const sb = getServiceClient();
 
-  const { error: updateError } = await sb
-    .from("profiles")
-    .update(updates)
-    .eq("id", user.userId);
+  if (Object.keys(updates).length > 0) {
+    const { error: updateError } = await sb
+      .from("profiles")
+      .update(updates)
+      .eq("id", user.userId);
 
-  if (updateError) {
-    return Response.json({ error: updateError.message }, { status: 500 });
+    if (updateError) {
+      return Response.json({ error: updateError.message }, { status: 500 });
+    }
   }
 
   // Return the updated profile
   const { data, error } = await sb
     .from("profiles")
     .select(
-      "id, boundary_mode, display_name, email, investment_philosophy, onboarding_completed, role, tier"
+      "id, boundary_mode, display_name, email, investment_philosophy, onboarding_completed, role, tier, ebc_state, ebc_consecutive_losses, ebc_recovery_wins"
     )
     .eq("id", user.userId)
     .maybeSingle();
