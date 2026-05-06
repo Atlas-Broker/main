@@ -25,6 +25,7 @@ export const onPipelineTriggered = inngest.createFunction(
     }
 
     const result = await step.run("run-graph", async () => {
+      console.log("[pipeline] env check — GOOGLE_GENERATIVE_AI_API_KEY set:", !!process.env.GOOGLE_GENERATIVE_AI_API_KEY, "| GROQ_API_KEY set:", !!process.env.GROQ_API_KEY)
       try {
         return await runGraph(ticker, {
           mode,
