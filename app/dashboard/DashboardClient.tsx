@@ -1254,6 +1254,228 @@ const PHILOSOPHY_OPTIONS: {
   },
 ];
 
+function ProfileSection() {
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [website, setWebsite] = useState("");
+  const [telegram, setTelegram] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetchWithAuth(`${API_URL}/v1/user/settings`)
+      .then((r) => r?.json())
+      .then((d) => {
+        if (!d) return;
+        setDisplayName(d.display_name ?? "");
+        setEmail(d.email ?? "");
+        setWebsite(d.website ?? "");
+        setTelegram(d.telegram_handle ?? "");
+      })
+      .catch(() => {});
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await fetchWithAuth(`${API_URL}/v1/user/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          display_name: displayName,
+          website: website,
+          telegram_handle: telegram,
+        }),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // non-fatal
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const previewName = displayName || "Your Name";
+  const previewInitial = previewName.charAt(0).toUpperCase();
+  const previewWebsite = website.replace(/^https?:\/\//, "");
+  const previewTelegram = telegram.startsWith("@") ? telegram : telegram ? `@${telegram}` : null;
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    background: "var(--bg)",
+    border: "1px solid var(--line)",
+    borderRadius: 8,
+    padding: "9px 12px",
+    fontSize: 13,
+    fontFamily: "var(--font-nunito)",
+    color: "var(--ink)",
+    outline: "none",
+    boxSizing: "border-box",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 11,
+    fontFamily: "var(--font-jb)",
+    color: "var(--ghost)",
+    marginBottom: 5,
+    display: "block",
+  };
+
+  return (
+    <div>
+      <div style={{ color: "var(--ghost)", fontSize: 11, fontFamily: "var(--font-jb)", marginBottom: 10 }}>PUBLIC PROFILE</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+
+        {/* ── Left: config ── */}
+        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "16px 18px", boxShadow: "var(--card-shadow)" }}>
+          <div className="flex flex-col gap-3">
+            <div>
+              <label style={labelStyle}>DISPLAY NAME</label>
+              <input
+                style={inputStyle}
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Edmund Lin"
+                maxLength={80}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>EMAIL</label>
+              <input
+                style={{ ...inputStyle, opacity: 0.5, cursor: "not-allowed" }}
+                value={email}
+                readOnly
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>WEBSITE</label>
+              <input
+                style={inputStyle}
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+                placeholder="https://whatelz.vercel.app"
+                type="url"
+                maxLength={200}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>TELEGRAM</label>
+              <div style={{ position: "relative" }}>
+                <span style={{
+                  position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
+                  fontSize: 13, fontFamily: "var(--font-nunito)", color: "var(--ghost)", pointerEvents: "none",
+                }}>@</span>
+                <input
+                  style={{ ...inputStyle, paddingLeft: 26 }}
+                  value={telegram.replace(/^@/, "")}
+                  onChange={(e) => setTelegram(e.target.value.replace(/^@/, ""))}
+                  placeholder="username"
+                  maxLength={60}
+                />
+              </div>
+              <p style={{ fontSize: 11, color: "var(--ghost)", fontFamily: "var(--font-nunito)", marginTop: 4 }}>
+                Used for signal notifications via Atlas Bot.
+              </p>
+            </div>
+
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              style={{
+                width: "100%",
+                padding: "10px",
+                borderRadius: 8,
+                border: "none",
+                background: saved ? "var(--bull)" : saving ? "var(--line2)" : "var(--brand)",
+                color: saving ? "var(--ghost)" : "#fff",
+                fontSize: 13,
+                fontFamily: "var(--font-nunito)",
+                fontWeight: 700,
+                cursor: saving ? "default" : "pointer",
+                transition: "background 0.2s ease",
+              }}
+            >
+              {saved ? "Saved ✓" : saving ? "Saving…" : "Save Profile"}
+            </button>
+          </div>
+        </div>
+
+        {/* ── Right: preview ── */}
+        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "20px 18px", boxShadow: "var(--card-shadow)" }}>
+          <div style={{ fontSize: 11, fontFamily: "var(--font-jb)", color: "var(--ghost)", marginBottom: 14 }}>PREVIEW</div>
+
+          {/* Avatar + name */}
+          <div className="flex items-center gap-3" style={{ marginBottom: 14 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: "50%",
+              background: "var(--brand)", color: "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 20, fontFamily: "var(--font-nunito)", fontWeight: 700,
+              flexShrink: 0,
+            }}>
+              {previewInitial}
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontFamily: "var(--font-nunito)", fontWeight: 700, color: "var(--ink)" }}>
+                {previewName}
+              </div>
+              <div style={{ fontSize: 11, fontFamily: "var(--font-jb)", color: "var(--ghost)" }}>
+                Atlas Trader
+              </div>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div style={{ height: 1, background: "var(--line)", marginBottom: 14 }} />
+
+          {/* Links */}
+          <div className="flex flex-col gap-2">
+            {email && (
+              <div className="flex items-center gap-2">
+                <span style={{ fontSize: 12, color: "var(--ghost)", fontFamily: "var(--font-jb)", width: 20 }}>✉</span>
+                <span style={{ fontSize: 12, color: "var(--dim)", fontFamily: "var(--font-nunito)" }}>{email}</span>
+              </div>
+            )}
+            {previewWebsite ? (
+              <div className="flex items-center gap-2">
+                <span style={{ fontSize: 12, color: "var(--ghost)", fontFamily: "var(--font-jb)", width: 20 }}>↗</span>
+                <span style={{ fontSize: 12, color: "var(--brand)", fontFamily: "var(--font-nunito)" }}>{previewWebsite}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2" style={{ opacity: 0.35 }}>
+                <span style={{ fontSize: 12, color: "var(--ghost)", fontFamily: "var(--font-jb)", width: 20 }}>↗</span>
+                <span style={{ fontSize: 12, color: "var(--ghost)", fontFamily: "var(--font-nunito)" }}>your-site.com</span>
+              </div>
+            )}
+            {previewTelegram ? (
+              <div className="flex items-center gap-2">
+                <span style={{ fontSize: 12, color: "var(--ghost)", fontFamily: "var(--font-jb)", width: 20 }}>✈</span>
+                <span style={{ fontSize: 12, color: "var(--dim)", fontFamily: "var(--font-nunito)" }}>{previewTelegram}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2" style={{ opacity: 0.35 }}>
+                <span style={{ fontSize: 12, color: "var(--ghost)", fontFamily: "var(--font-jb)", width: 20 }}>✈</span>
+                <span style={{ fontSize: 12, color: "var(--ghost)", fontFamily: "var(--font-nunito)" }}>@telegram</span>
+              </div>
+            )}
+          </div>
+
+          {/* Atlas badge */}
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+            <div style={{ fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)", letterSpacing: "0.06em" }}>
+              POWERED BY ATLAS
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ManageBillingButton() {
   const [loading, setLoading] = useState(false);
 
@@ -1621,6 +1843,9 @@ export function SettingsTab({
           <ManageBillingButton />
         )}
       </div>
+
+      {/* Public Profile */}
+      <ProfileSection />
 
       {/* About */}
       <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: "16px 18px", boxShadow: "var(--card-shadow)" }}>
