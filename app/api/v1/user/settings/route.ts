@@ -22,10 +22,8 @@ const VALID_PHILOSOPHIES = ["balanced", "buffett", "soros", "lynch"] as const;
 
 const PatchSettingsSchema = z.object({
   boundary_mode: z.enum(VALID_BOUNDARY_MODES).optional(),
-  display_name: z.string().max(80).optional(),
+  display_name: z.string().optional(),
   investment_philosophy: z.enum(VALID_PHILOSOPHIES).optional(),
-  website: z.string().url().max(200).or(z.literal("")).optional(),
-  telegram_handle: z.string().max(60).optional(),
 });
 
 function getServiceClient() {
@@ -47,7 +45,7 @@ export async function GET(req: Request): Promise<Response> {
   const { data, error } = await sb
     .from("profiles")
     .select(
-      "id, boundary_mode, display_name, email, investment_philosophy, onboarding_completed, role, tier, website, telegram_handle"
+      "id, boundary_mode, display_name, email, investment_philosophy, onboarding_completed, role, tier"
     )
     .eq("id", user.userId)
     .maybeSingle();
@@ -94,7 +92,7 @@ export async function PATCH(req: Request): Promise<Response> {
     return Response.json(
       {
         error:
-          "No valid fields provided. Writable fields: boundary_mode, display_name, investment_philosophy, website, telegram_handle.",
+          "No valid fields provided. Writable fields: boundary_mode, display_name, investment_philosophy.",
       },
       { status: 422 }
     );
@@ -115,7 +113,7 @@ export async function PATCH(req: Request): Promise<Response> {
   const { data, error } = await sb
     .from("profiles")
     .select(
-      "id, boundary_mode, display_name, email, investment_philosophy, onboarding_completed, role, tier, website, telegram_handle"
+      "id, boundary_mode, display_name, email, investment_philosophy, onboarding_completed, role, tier"
     )
     .eq("id", user.userId)
     .maybeSingle();
