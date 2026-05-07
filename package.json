@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "jest",
     "verify-prompts": "tsx scripts/verify-prompt-hashes.ts",
-    "check-api-parity": "tsx scripts/api-parity-check.ts"
+    "check-api-parity": "tsx scripts/api-parity-check.ts",
+    "experiment:philosophy": "tsx --env-file .env.local scripts/run-philosophy-experiment.ts"
   },
   "dependencies": {
     "@alpacahq/alpaca-trade-api": "^3.1.3",
