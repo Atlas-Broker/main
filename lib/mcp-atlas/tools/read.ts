@@ -357,7 +357,7 @@ export async function handleReadTool(name: string, args: Record<string, unknown>
 
       case "health_check": {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_APP_URL ?? "https://atlas-broker-uat.vercel.app"}/api/v1/health`,
+          `${process.env.NEXT_PUBLIC_APP_URL ?? "https://atlas-broker.vercel.app"}/api/v1/health`,
         );
         const body = await res.json() as Record<string, unknown>;
         return textContent({ status: res.ok ? "healthy" : "degraded", http_status: res.status, ...body });

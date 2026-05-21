@@ -437,7 +437,7 @@ async function dispatch(req: JsonRpcRequest, httpReq: NextRequest) {
 const BASE_URL = (
   process.env.NEXT_PUBLIC_MCP_BASE_URL ??
   process.env.NEXT_PUBLIC_BASE_URL ??
-  "https://atlas-broker-uat.vercel.app"
+  "https://atlas-broker.vercel.app"
 ).replace(/\/$/, "");
 
 const WWW_AUTHENTICATE = `Bearer realm="atlas-mcp-docs", resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`;

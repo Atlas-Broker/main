@@ -16,7 +16,7 @@ import { NextResponse } from "next/server";
 const BASE_URL = (
   process.env.NEXT_PUBLIC_MCP_BASE_URL ??
   process.env.NEXT_PUBLIC_BASE_URL ??
-  "https://atlas-broker-uat.vercel.app"
+  "https://atlas-broker.vercel.app"
 ).replace(/\/$/, "");
 
 const MCP_RESOURCE = `${BASE_URL}/api/mcp/docs`;

@@ -6,7 +6,7 @@ Atlas is a multi-agent AI trading assistant that runs a full analysis pipeline o
 
 **Capstone project BAC3004, Singapore Institute of Technology (Applied Computing Fintech). Interim report submitted 12 April 2026. Final report due 19 July 2026.**
 
-UAT: [`https://atlas-broker-uat.vercel.app`](https://atlas-broker-uat.vercel.app)
+UAT: [`https://atlas-broker.vercel.app`](https://atlas-broker.vercel.app)
 
 ---
 
@@ -357,6 +357,6 @@ Migrations live in `supabase/migrations/`. Reference schema at `supabase/schema.
 
 Connect repo to Vercel. Set root directory to `frontend/`. Add env vars in the Vercel dashboard.
 
-**UAT:** `https://atlas-broker-uat.vercel.app` (branch: `uat`)
+**UAT:** `https://atlas-broker.vercel.app` (branch: `uat`)
 
 Push policy: always push to `uat` branch. Do not merge to `main` unless explicitly promoting to production.

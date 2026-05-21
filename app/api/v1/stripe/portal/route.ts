@@ -25,7 +25,7 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: "No active subscription" }, { status: 400 });
   }
 
-  const origin = req.headers.get("origin") ?? "https://atlas-broker-uat.vercel.app";
+  const origin = req.headers.get("origin") ?? "https://atlas-broker.vercel.app";
 
   const session = await getStripe().billingPortal.sessions.create({
     customer: customerId,
