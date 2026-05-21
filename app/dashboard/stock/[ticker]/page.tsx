@@ -1,255 +1,78 @@
-// frontend/app/dashboard/stock/[ticker]/page.tsx
-"use client";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { MongoClient } from "mongodb";
+import { type DecisionLogEntry } from "@/lib/api";
+import { StockLogClient } from "./StockLogClient";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { fetchDecisionLog, type DecisionLogEntry } from "@/lib/api";
+export default async function StockLogPage({
+  params,
+}: {
+  params: Promise<{ ticker: string }>;
+}) {
+  const { userId } = await auth();
+  if (!userId) redirect("/login");
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+  const { ticker: rawTicker } = await params;
+  const ticker = rawTicker.toUpperCase();
 
-/** Format a UTC ISO string into dual-timezone display: local (SGT) + US Eastern. */
-function formatDualTime(iso: string): { local: string; us: string } {
-  const d = new Date(iso);
-  const local = d.toLocaleString("en-SG", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Asia/Singapore",
-  });
-  const us = d.toLocaleString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "America/New_York",
-  }) + " ET";
-  return { local, us };
+  const entries = await fetchDecisionLog(userId, ticker, 20);
+
+  return <StockLogClient ticker={ticker} entries={entries} />;
 }
 
-/** Pastel action colors (agent recommendation). */
-const ACTION_COLOR = {
-  BUY: "var(--bull)",
-  SELL: "var(--bear)",
-  HOLD: "var(--hold)",
-} as const;
+async function fetchDecisionLog(
+  userId: string,
+  ticker: string,
+  limit: number,
+): Promise<DecisionLogEntry[]> {
+  const mongo = new MongoClient(process.env.MONGODB_URI!);
+  try {
+    await mongo.connect();
+    const docs = await mongo
+      .db(process.env.MONGODB_DB_NAME ?? "atlas")
+      .collection("reasoning_traces")
+      .find(
+        { user_id: userId, ticker },
+        {
+          projection: {
+            created_at: 1,
+            "pipeline_run.final_decision.action": 1,
+            "pipeline_run.final_decision.confidence": 1,
+            "pipeline_run.final_decision.reasoning": 1,
+            execution: 1,
+          },
+          sort: { created_at: -1 },
+          limit,
+        },
+      )
+      .toArray();
 
-/** Solid action colors (executed on Alpaca). */
-const EXECUTED_COLOR = {
-  BUY: "#16a34a",
-  SELL: "#dc2626",
-  HOLD: "var(--hold)",
-} as const;
+    return docs.map((doc): DecisionLogEntry => {
+      const run = (doc.pipeline_run ?? {}) as Record<string, unknown>;
+      const decision = (run.final_decision ?? {}) as Record<string, unknown>;
+      const exec = (doc.execution ?? {}) as Record<string, unknown>;
 
-// ─── Page ───────────────────────────────────────────────────────────────────
+      const rawAction = String(decision.action ?? "HOLD").toUpperCase();
+      const action: DecisionLogEntry["action"] =
+        rawAction === "BUY" || rawAction === "SELL" ? rawAction : "HOLD";
 
-export default function StockLogPage({ params }: { params: Promise<{ ticker: string }> }) {
-  const router = useRouter();
-  const [ticker, setTicker] = useState<string>("");
-  const [entries, setEntries] = useState<DecisionLogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showAll, setShowAll] = useState(false);
-  const scrollRestoredRef = useRef(false);
-
-  useEffect(() => {
-    params.then(({ ticker: t }) => {
-      const upper = t.toUpperCase();
-      setTicker(upper);
-      fetchDecisionLog(upper, 20).then((data) => {
-        setEntries(data);
-        setLoading(false);
-      });
+      return {
+        action,
+        confidence: Number(decision.confidence ?? 0),
+        reasoning: String(decision.reasoning ?? ""),
+        created_at:
+          doc.created_at instanceof Date
+            ? doc.created_at.toISOString()
+            : String(doc.created_at ?? ""),
+        trace_id: doc._id?.toHexString?.() ?? null,
+        executed: exec.status === "executed",
+        shares: exec.shares != null ? Number(exec.shares) : null,
+        price: exec.price != null ? Number(exec.price) : null,
+      };
     });
-  }, [params]);
-
-  // Restore scroll position after entries have loaded
-  useEffect(() => {
-    if (loading || scrollRestoredRef.current || !ticker) return;
-    scrollRestoredRef.current = true;
-    const key = `atlas_log_scroll_${ticker}`;
-    const saved = sessionStorage.getItem(key);
-    if (saved) {
-      const y = parseInt(saved, 10);
-      sessionStorage.removeItem(key);
-      requestAnimationFrame(() => {
-        window.scrollTo({ top: y, behavior: "instant" });
-      });
-    }
-  }, [loading, ticker]);
-
-  function handleEntryClick(entry: DecisionLogEntry) {
-    if (!entry.trace_id) return;
-    sessionStorage.setItem(`atlas_log_scroll_${ticker}`, String(window.scrollY));
-    router.push(`/dashboard/signal/${entry.trace_id}`);
+  } catch {
+    return [];
+  } finally {
+    await mongo.close();
   }
-
-  const visible = showAll ? entries : entries.slice(0, 10);
-
-  return (
-    <div style={{ background: "var(--bg)", minHeight: "100vh", maxWidth: 520, margin: "0 auto" }}>
-      {/* Header */}
-      <header style={{
-        background: "var(--header-bg)", backdropFilter: "blur(12px)",
-        borderBottom: "1px solid var(--line)", padding: "16px 20px",
-        display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 20,
-      }}>
-        <button onClick={() => router.back()} style={{
-          background: "transparent", border: "none", cursor: "pointer",
-          color: "var(--ghost)", fontSize: 20, padding: 0, lineHeight: 1,
-        }}>
-          ←
-        </button>
-        <span className="font-display font-bold" style={{ fontSize: 17, color: "var(--ink)" }}>
-          {ticker} — AI Decision Log
-        </span>
-      </header>
-
-      <main style={{ padding: "16px 20px" }}>
-        {loading ? (
-          <div style={{ color: "var(--ghost)", fontSize: 13, textAlign: "center", paddingTop: 48 }}>Loading...</div>
-        ) : entries.length === 0 ? (
-          <div style={{ color: "var(--ghost)", fontSize: 13, textAlign: "center", paddingTop: 48 }}>
-            No AI decisions recorded for {ticker} yet.
-          </div>
-        ) : (
-          <>
-            {/* Column header */}
-            <div style={{
-              display: "flex", alignItems: "center", padding: "0 4px 8px",
-              fontSize: 9, fontFamily: "var(--font-jb)", color: "var(--ghost)",
-              letterSpacing: "0.08em", textTransform: "uppercase" as const,
-            }}>
-              <span style={{ width: 46 }}>Action</span>
-              <span style={{ flex: 1 }}>Time</span>
-              <span style={{ width: 46, textAlign: "right" as const }}>Conf</span>
-              <span style={{ width: 16 }} />
-            </div>
-
-            {/* Decision rows */}
-            <div style={{
-              background: "var(--surface)", border: "1px solid var(--line)",
-              borderRadius: 10, overflow: "hidden",
-              boxShadow: "var(--card-shadow)",
-            }}>
-              {visible.map((entry, i) => {
-                const executed = entry.executed === true;
-                const c = executed ? EXECUTED_COLOR[entry.action] : ACTION_COLOR[entry.action];
-                const isClickable = Boolean(entry.trace_id);
-                const time = formatDualTime(entry.created_at);
-                const isLast = i === visible.length - 1;
-
-                return (
-                  <div
-                    key={entry.trace_id ?? i}
-                    onClick={isClickable ? () => handleEntryClick(entry) : undefined}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "10px 12px",
-                      borderBottom: isLast ? "none" : "1px solid var(--line)",
-                      cursor: isClickable ? "pointer" : "default",
-                      transition: "background 0.1s",
-                    }}
-                    onMouseEnter={isClickable ? (e) => {
-                      (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.04)";
-                    } : undefined}
-                    onMouseLeave={isClickable ? (e) => {
-                      (e.currentTarget as HTMLDivElement).style.background = "";
-                    } : undefined}
-                  >
-                    {/* Action badge */}
-                    {executed ? (
-                      <span style={{
-                        flexShrink: 0, padding: "2px 6px", borderRadius: 4,
-                        fontSize: 9, fontFamily: "var(--font-jb)", fontWeight: 700,
-                        color: "#fff", background: c,
-                        letterSpacing: "0.05em", minWidth: 34, textAlign: "center" as const,
-                      }}>
-                        {entry.action}
-                      </span>
-                    ) : (
-                      <span style={{
-                        flexShrink: 0, padding: "2px 6px", borderRadius: 4,
-                        fontSize: 9, fontFamily: "var(--font-jb)", fontWeight: 700,
-                        color: c, background: `${c}15`, border: `1px solid ${c}35`,
-                        letterSpacing: "0.05em", minWidth: 34, textAlign: "center" as const,
-                      }}>
-                        {entry.action}
-                      </span>
-                    )}
-
-                    {/* Time + trade details */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        fontSize: 12, fontFamily: "var(--font-jb)", color: "var(--ink)",
-                        fontWeight: 600, lineHeight: 1.3,
-                      }}>
-                        {time.local}
-                      </div>
-                      <div style={{
-                        fontSize: 10, fontFamily: "var(--font-jb)", color: "var(--ghost)",
-                        lineHeight: 1.3,
-                      }}>
-                        {time.us}
-                        {entry.action !== "HOLD" && entry.shares != null && entry.price != null && (
-                          <span style={{ color: c, fontWeight: 600 }}>
-                            {" · "}{entry.shares % 1 === 0 ? entry.shares : entry.shares.toFixed(2)} sh @ ${entry.price.toFixed(2)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Confidence */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-                      <div style={{
-                        width: 28, height: 3, borderRadius: 2,
-                        background: "var(--line2)", overflow: "hidden",
-                      }}>
-                        <div style={{
-                          width: `${Math.round(entry.confidence * 100)}%`,
-                          height: "100%", background: c, borderRadius: 2,
-                        }} />
-                      </div>
-                      <span style={{
-                        fontSize: 11, fontFamily: "var(--font-jb)", fontWeight: 700,
-                        color: c, minWidth: 28, textAlign: "right" as const,
-                      }}>
-                        {Math.round(entry.confidence * 100)}%
-                      </span>
-                    </div>
-
-                    {/* Arrow */}
-                    {isClickable && (
-                      <span style={{
-                        flexShrink: 0, color: "var(--ghost)", fontSize: 13,
-                        fontFamily: "var(--font-jb)", lineHeight: 1,
-                      }}>
-                        ›
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Show more */}
-            {entries.length > 10 && !showAll && (
-              <button
-                onClick={() => setShowAll(true)}
-                style={{
-                  width: "100%", padding: "10px 0", marginTop: 10,
-                  background: "var(--surface)", border: "1px solid var(--line)",
-                  borderRadius: 8, color: "var(--ghost)", fontSize: 11,
-                  fontFamily: "var(--font-jb)", cursor: "pointer",
-                }}
-              >
-                Show all {entries.length} decisions
-              </button>
-            )}
-          </>
-        )}
-      </main>
-    </div>
-  );
 }
