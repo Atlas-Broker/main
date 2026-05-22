@@ -1,16 +1,23 @@
 /**
- * OAuth 2.1 token endpoint.
+ * OAuth 2.1 token endpoint — exchanges an authorization_code for a fresh,
+ * user-tied PAT.
  *
- * Accepts an authorization_code + PKCE code_verifier, verifies the code was
- * issued by /oauth/authorize and matches the PKCE challenge, then returns the
- * real `ATLAS_MCP_TOKEN` as the access_token.
+ * Replaces the prior single-tenant flow where this endpoint returned the
+ * shared ATLAS_MCP_TOKEN as the access_token. Now:
+ *   1. Verify the HMAC-signed authorization code (PKCE + redirect_uri + uid).
+ *   2. Mint a new row in user_pats for the embedded uid — random 256-bit
+ *      token, SHA-256 hash stored, raw token returned ONCE.
+ *   3. Return the raw token as the bearer access_token. The MCP server
+ *      (/api/mcp) resolves it back to (user_id, role, scope) via
+ *      user_pats.token_hash on every call.
  *
- * For a single-tenant setup this collapses the OAuth dance down to: "prove you
- * came from the same browser that started /authorize" (via PKCE), and you get
- * the shared PAT.
+ * Pattern source: EMDEE_OS — LEARNINGS,
+ *   "Replace copy-paste PATs with an OAuth authorize page" (2026-05-22).
  */
+import { createHash, randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { accessToken, verifyAuthorizationCode } from "@/lib/mcp-oauth";
+import { verifyAuthorizationCode } from "@/lib/mcp-oauth";
+import { getServiceClient } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +28,11 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
   "Cache-Control": "no-store",
 };
+
+// Tokens minted via the OAuth flow expire after 90 days. Long enough to feel
+// stable to a connected client, short enough to bound the blast radius of a
+// leak. Users can revoke earlier in Settings → Connected apps.
+const PAT_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
 function tokenError(code: string, description: string, status: number = 400) {
   return NextResponse.json(
@@ -57,6 +69,7 @@ export async function POST(req: NextRequest) {
   const code = fields.code;
   const codeVerifier = fields.code_verifier;
   const redirectUri = fields.redirect_uri;
+  const clientId = fields.client_id || "atlas-mcp-client";
 
   if (grantType !== "authorization_code") {
     return tokenError("unsupported_grant_type", "only authorization_code is supported");
@@ -70,12 +83,33 @@ export async function POST(req: NextRequest) {
     return tokenError("invalid_grant", verification.error);
   }
 
+  // Mint a PAT scoped to the user who approved at /oauth/authorize. Same
+  // entropy + storage shape as /api/v1/pats POST so MCP auth (which already
+  // looks up user_pats by token_hash) works without changes.
+  const rawToken = "at_" + randomBytes(32).toString("hex");
+  const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+  const expiresAt = new Date(Date.now() + PAT_TTL_MS).toISOString();
+  const patName = `OAuth: ${clientId} (${new Date().toISOString().slice(0, 10)})`;
+
+  const sb = getServiceClient();
+  const { error } = await sb.from("user_pats").insert({
+    user_id: verification.userId,
+    name: patName,
+    token_hash: tokenHash,
+    scope: "read_write",
+    expires_at: expiresAt,
+  });
+
+  if (error) {
+    return tokenError("server_error", `failed to mint token: ${error.message}`, 500);
+  }
+
   return NextResponse.json(
     {
-      access_token: accessToken(),
+      access_token: rawToken,
       token_type: "Bearer",
-      expires_in: 60 * 60 * 24 * 365, // 1 year — token is the static PAT, lifetime is "until rotated"
-      scope: "mcp:docs",
+      expires_in: Math.floor(PAT_TTL_MS / 1000),
+      scope: "mcp",
     },
     { status: 200, headers: CORS_HEADERS },
   );

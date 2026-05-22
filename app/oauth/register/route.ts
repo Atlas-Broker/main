@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       response_types: ["code"],
       redirect_uris: redirectUris,
       client_name: clientName,
-      scope: "mcp:docs",
+      scope: "mcp",
     },
     { status: 201, headers: CORS_HEADERS },
   );

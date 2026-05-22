@@ -19,7 +19,7 @@ const BASE_URL = (
   "https://atlas-broker.vercel.app"
 ).replace(/\/$/, "");
 
-const MCP_RESOURCE = `${BASE_URL}/api/mcp/docs`;
+const MCP_RESOURCE = `${BASE_URL}/api/mcp`;
 
 const JSON_HEADERS = {
   "Content-Type": "application/json",
@@ -35,7 +35,7 @@ export function protectedResourceMetadata() {
     authorization_servers: [BASE_URL],
     bearer_methods_supported: ["header"],
     resource_documentation: `${BASE_URL}/api/mcp/docs`,
-    scopes_supported: ["mcp:docs"],
+    scopes_supported: ["mcp"],
   };
 }
 
@@ -49,7 +49,7 @@ export function authorizationServerMetadata() {
     grant_types_supported: ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
-    scopes_supported: ["mcp:docs"],
+    scopes_supported: ["mcp"],
     service_documentation: `${BASE_URL}/api/mcp/docs`,
   };
 }
