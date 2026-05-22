@@ -2,17 +2,17 @@
  * OAuth 2.1 token endpoint — exchanges an authorization_code for a fresh,
  * user-tied PAT.
  *
- * Replaces the prior single-tenant flow where this endpoint returned the
- * shared ATLAS_MCP_TOKEN as the access_token. Now:
- *   1. Verify the HMAC-signed authorization code (PKCE + redirect_uri + uid).
- *   2. Mint a new row in user_pats for the embedded uid — random 256-bit
+ *   1. Verify the DB-backed authorization code (single-use, PKCE,
+ *      redirect_uri, expiry). The code lookup returns the userId who
+ *      clicked Approve at /oauth/authorize.
+ *   2. Mint a new row in user_pats for that userId — random 256-bit
  *      token, SHA-256 hash stored, raw token returned ONCE.
  *   3. Return the raw token as the bearer access_token. The MCP server
  *      (/api/mcp) resolves it back to (user_id, role, scope) via
  *      user_pats.token_hash on every call.
  *
- * Pattern source: EMDEE_OS — LEARNINGS,
- *   "Replace copy-paste PATs with an OAuth authorize page" (2026-05-22).
+ * No global signing secret involved. Both the code and the token derive
+ * from unique random bytes per request.
  */
 import { createHash, randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
   if (!codeVerifier) return tokenError("invalid_request", "code_verifier required (PKCE)");
   if (!redirectUri) return tokenError("invalid_request", "redirect_uri required");
 
-  const verification = verifyAuthorizationCode(code, codeVerifier, redirectUri);
+  const verification = await verifyAuthorizationCode(code, codeVerifier, redirectUri);
   if (!verification.ok) {
     return tokenError("invalid_grant", verification.error);
   }

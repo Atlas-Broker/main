@@ -114,7 +114,7 @@ export default async function AuthorizePage({
       redirect("/oauth/authorize?error=invalid_request");
     }
 
-    const code = issueAuthorizationCode({
+    const code = await issueAuthorizationCode({
       codeChallenge: cc,
       redirectUri: ru,
       userId: approvingUserId!,
