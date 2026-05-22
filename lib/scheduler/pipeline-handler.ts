@@ -10,6 +10,7 @@
 import { inngest } from "../inngest"
 import { runGraph } from "../agents"
 import type { RunGraphOptions } from "../agents"
+import { executeTrade } from "./execute-trade"
 
 const LOW_CONFIDENCE_THRESHOLD = 0.65
 
@@ -40,8 +41,28 @@ export const onPipelineTriggered = inngest.createFunction(
 
     const confidence = result.portfolio_decision?.confidence ?? 1
 
+    // Live trade execution — gated to autonomous mode + non-HOLD action +
+    // EBC green/yellow + confidence above the gate. Idempotent on signal_id.
+    // See lib/scheduler/execute-trade.ts for the full trigger table.
+    const tradeOutcome = await step.run("execute-trade", async () => {
+      return executeTrade({
+        userId,
+        ticker,
+        mode,
+        signalId: result.trace_id ?? undefined,
+        portfolioDecision: result.portfolio_decision ?? undefined,
+        risk: result.risk ?? undefined,
+      })
+    })
+
     // In autonomous mode with low confidence → notify the user.
-    if (mode === "autonomous" && confidence < LOW_CONFIDENCE_THRESHOLD) {
+    // Skip the notification if a trade actually executed (the order itself
+    // is the notification at that point).
+    if (
+      mode === "autonomous" &&
+      confidence < LOW_CONFIDENCE_THRESHOLD &&
+      tradeOutcome.skipped
+    ) {
       await step.run("notify-low-confidence", async () => {
         await inngest.send({
           name: "app/notification.requested",
